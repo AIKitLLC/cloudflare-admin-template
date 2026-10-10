@@ -63,7 +63,7 @@ export const guardAuthCredentialOperation: CollectionBeforeOperationHook = async
   operation,
   req,
 }) => {
-  if (operation !== 'forgotPassword' && operation !== 'resetPassword') {
+  if (operation !== 'forgotPassword' && operation !== 'resetPassword' && operation !== 'unlock') {
     return args
   }
   if (skipsPrivilegeChecks(req.context) || !req.user) {
@@ -71,9 +71,9 @@ export const guardAuthCredentialOperation: CollectionBeforeOperationHook = async
   }
   const data = (args as { data?: { email?: unknown; token?: unknown } }).data
   const target =
-    operation === 'forgotPassword'
-      ? await findUser(req, emailWhere(data?.email))
-      : await findUser(req, tokenWhere(data?.token))
+    operation === 'resetPassword'
+      ? await findUser(req, tokenWhere(data?.token))
+      : await findUser(req, emailWhere(data?.email))
   await assertMayMutateUser({
     context: req.context,
     req,
