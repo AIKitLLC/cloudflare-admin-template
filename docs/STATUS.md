@@ -101,4 +101,4 @@ Searched `src/`, `tests/`, and `README.md` for `TODO` and `FIXME`. None. The REA
 
 ## This change
 
-The standards pull request adds `AGENTS.md`, vendored ponytail and i-have-adhd skills, Cursor rules, `.cursor/mcp.json`, this file, `docs/ARCHITECTURE.md`, and `.github/workflows/architecture.yml`. It does not change product behavior.
+Pull request #17 (draft, `cursor/agent-standards-94c6`, closes #16) adds `AGENTS.md`, vendored ponytail and i-have-adhd skills, Cursor rules, `.cursor/mcp.json`, this file, `docs/ARCHITECTURE.md`, and `.github/workflows/architecture.yml`. It does not change product behavior.
