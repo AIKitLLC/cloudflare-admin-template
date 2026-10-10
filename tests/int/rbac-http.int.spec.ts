@@ -1,16 +1,21 @@
 // @vitest-environment node
-import { GRAPHQL_POST, REST_PATCH, REST_POST } from '@payloadcms/next/routes'
+import { GRAPHQL_POST, REST_DELETE, REST_PATCH, REST_POST } from '@payloadcms/next/routes'
 import { getPayload, type CollectionSlug, type Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import config from '@/payload.config'
-import { SUBSET_ASSIGNMENT_ERROR, SUBSET_GRANT_ERROR } from '@/rbac/guards/privilege-errors'
+import {
+  PRIVILEGED_USER_ERROR,
+  SUBSET_ASSIGNMENT_ERROR,
+  SUBSET_GRANT_ERROR,
+} from '@/rbac/guards/privilege-errors'
 import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
 import { setRoleGrant } from '@/rbac/matrix/set-role-grant'
 
 const ORIGIN = 'http://localhost:3000'
 const post = REST_POST(config)
 const patch = REST_PATCH(config)
+const remove = REST_DELETE(config)
 const graphql = GRAPHQL_POST(config)
 
 let payload: Payload
@@ -198,6 +203,162 @@ describe('RBAC HTTP privilege boundaries', () => {
     )
     expect(forged.status).toBe(401)
   })
+
+  it('refuses taking over a more privileged account and still allows a lesser account', async () => {
+    const actorRole = await createRole(`takeover-actor-${stamp}`)
+    for (const key of ['users:read', 'users:update', 'users:delete', 'users:writeField:email']) {
+      await grant(actorRole.id, key)
+    }
+    const lesserRole = await createRole(`takeover-lesser-${stamp}`)
+    await grant(lesserRole.id, 'users:read')
+    const broaderRole = await createRole(`takeover-broader-${stamp}`)
+    await grant(broaderRole.id, 'users:read')
+    await grant(broaderRole.id, 'media:read')
+    const superAdmin = await findSuperAdminRole()
+    const password = 'test-password-123'
+    const actor = await createAccount(`takeover-actor-${stamp}@example.com`, password, [
+      actorRole.id,
+    ])
+    const lesser = await createAccount(`takeover-lesser-${stamp}@example.com`, password, [
+      lesserRole.id,
+    ])
+    const broader = await createAccount(`takeover-broader-${stamp}@example.com`, password, [
+      broaderRole.id,
+    ])
+    const admin = await createAccount(`takeover-admin-${stamp}@example.com`, password, [
+      superAdmin.id,
+    ])
+    const selfService = await createAccount(`takeover-self-${stamp}@example.com`, password, [
+      lesserRole.id,
+    ])
+
+    const cookie = await loginCookie(actor.email, password)
+
+    const passwordPatch = await patch(
+      jsonRequest(
+        `/api/users/${admin.id}`,
+        { password: 'stolen-password-456' },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['users', String(admin.id)]),
+    )
+    expect(passwordPatch.status).toBe(403)
+    expect(JSON.stringify(await passwordPatch.json())).toContain(PRIVILEGED_USER_ERROR)
+    expect((await loginCookie(admin.email, password)).length).toBeGreaterThan(0)
+    const stolen = await post(
+      jsonRequest('/api/users/login', { email: admin.email, password: 'stolen-password-456' }),
+      route(['users', 'login']),
+    )
+    expect(stolen.status).toBeGreaterThanOrEqual(400)
+
+    const emailPatch = await patch(
+      jsonRequest(
+        `/api/users/${broader.id}`,
+        { email: `taken-${stamp}@example.com` },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['users', String(broader.id)]),
+    )
+    expect(emailPatch.status).toBe(403)
+    expect(JSON.stringify(await emailPatch.json())).toContain(PRIVILEGED_USER_ERROR)
+
+    const graphqlPassword = await graphql(
+      jsonRequest(
+        '/api/graphql',
+        {
+          query: `mutation Take($id: Int!, $password: String) {
+            updateUser(id: $id, data: { password: $password }) { id }
+          }`,
+          variables: { id: admin.id, password: 'stolen-password-456' },
+        },
+        cookie,
+      ),
+    )
+    expect(JSON.stringify(await graphqlPassword.json())).toContain(PRIVILEGED_USER_ERROR)
+
+    const deleted = await remove(
+      jsonRequest(`/api/users/${broader.id}`, {}, cookie, ORIGIN, 'DELETE'),
+      route(['users', String(broader.id)]),
+    )
+    expect(deleted.status).toBe(403)
+    expect(JSON.stringify(await deleted.json())).toContain(PRIVILEGED_USER_ERROR)
+
+    const lesserEmail = `edited-${stamp}@example.com`
+    const edited = await patch(
+      jsonRequest(`/api/users/${lesser.id}`, { email: lesserEmail }, cookie, ORIGIN, 'PATCH'),
+      route(['users', String(lesser.id)]),
+    )
+    expect(edited.status).toBeLessThan(300)
+    const freshLesser = await payload.findByID({
+      collection: 'users',
+      id: lesser.id,
+      overrideAccess: true,
+    })
+    expect(freshLesser.email).toBe(lesserEmail)
+
+    const forgotPrivileged = await post(
+      jsonRequest('/api/users/forgot-password', { email: admin.email }, cookie),
+      route(['users', 'forgot-password']),
+    )
+    expect(forgotPrivileged.status).toBe(403)
+    expect(JSON.stringify(await forgotPrivileged.json())).toContain(PRIVILEGED_USER_ERROR)
+
+    const publicAdminForgot = await post(
+      jsonRequest('/api/users/forgot-password', { email: admin.email }),
+      route(['users', 'forgot-password']),
+    )
+    expect(publicAdminForgot.status).toBeLessThan(300)
+    const adminToken = await readResetToken(admin.email)
+    expect(adminToken).toBeTruthy()
+    const blockedReset = await post(
+      jsonRequest(
+        '/api/users/reset-password',
+        { token: adminToken, password: 'stolen-password-456' },
+        cookie,
+      ),
+      route(['users', 'reset-password']),
+    )
+    expect(blockedReset.status).toBe(403)
+    expect(JSON.stringify(await blockedReset.json())).toContain(PRIVILEGED_USER_ERROR)
+    expect((await loginCookie(admin.email, password)).length).toBeGreaterThan(0)
+
+    const publicForgot = await post(
+      jsonRequest('/api/users/forgot-password', { email: selfService.email }),
+      route(['users', 'forgot-password']),
+    )
+    expect(publicForgot.status).toBeLessThan(300)
+    const token = await readResetToken(selfService.email)
+    expect(token).toBeTruthy()
+    const reset = await post(
+      jsonRequest('/api/users/reset-password', {
+        token,
+        password: 'self-service-password-456',
+      }),
+      route(['users', 'reset-password']),
+    )
+    expect(reset.status).toBeLessThan(300)
+    expect(
+      (await loginCookie(selfService.email, 'self-service-password-456')).length,
+    ).toBeGreaterThan(0)
+
+    const ownCookie = await loginCookie(actor.email, password)
+    const ownPassword = await patch(
+      jsonRequest(
+        `/api/users/${actor.id}`,
+        { password: 'actor-new-password-456' },
+        ownCookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['users', String(actor.id)]),
+    )
+    expect(ownPassword.status).toBeLessThan(300)
+    expect((await loginCookie(actor.email, 'actor-new-password-456')).length).toBeGreaterThan(0)
+  })
 })
 
 function route(slug: string[]) {
@@ -250,6 +411,63 @@ async function grant(roleId: number, key: string): Promise<void> {
     permissionId: await permissionIdFor(key),
     granted: true,
   })
+}
+
+async function createAccount(
+  email: string,
+  password: string,
+  roles: number[],
+): Promise<{ id: number; email: string }> {
+  const user = await payload.create({
+    collection: 'users',
+    data: { email, password, roles },
+    overrideAccess: true,
+    context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+  })
+  createdUserIds.push(user.id)
+  return { id: Number(user.id), email: user.email }
+}
+
+async function findSuperAdminRole(): Promise<{ id: number }> {
+  const result = await payload.find({
+    collection: 'roles' as CollectionSlug,
+    depth: 0,
+    limit: 1,
+    overrideAccess: true,
+    where: { slug: { equals: 'super-admin' } },
+  })
+  if (!result.docs[0]) {
+    throw new Error('super-admin role was not seeded')
+  }
+  return { id: Number(result.docs[0].id) }
+}
+
+async function loginCookie(email: string, password: string): Promise<string> {
+  const response = await post(
+    jsonRequest('/api/users/login', { email, password }),
+    route(['users', 'login']),
+  )
+  expect(response.status).toBe(200)
+  const cookie = cookieHeader(response)
+  expect(cookie).toContain('payload-token=')
+  return cookie
+}
+
+async function readResetToken(email: string): Promise<string | null> {
+  const adapter = payload.db as {
+    client?: {
+      prepare: (query: string) => {
+        bind: (...values: unknown[]) => {
+          first: <T>() => Promise<T | null>
+        }
+      }
+    }
+  }
+  const row = await adapter.client
+    ?.prepare('SELECT reset_password_token FROM users WHERE email = ?')
+    .bind(email)
+    .first<{ reset_password_token?: string | null }>()
+  return row?.reset_password_token ?? null
 }
 
 async function permissionIdFor(key: string): Promise<number> {

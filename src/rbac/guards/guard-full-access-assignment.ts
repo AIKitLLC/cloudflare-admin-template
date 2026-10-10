@@ -1,6 +1,7 @@
 import type {
   CollectionBeforeChangeHook,
   CollectionBeforeDeleteHook,
+  CollectionBeforeOperationHook,
   CollectionSlug,
   PayloadRequest,
 } from 'payload'
@@ -14,6 +15,7 @@ import { addedRoleIds, changedRoleIds, roleIdList, sameRoleIds } from './role-id
 import {
   FULL_ACCESS_ASSIGNMENT_ERROR,
   LAST_FULL_ACCESS_ERROR,
+  PRIVILEGED_USER_ERROR,
   SUBSET_ASSIGNMENT_ERROR,
 } from './privilege-errors'
 import { skipsPrivilegeChecks } from './privilege-context'
@@ -22,9 +24,13 @@ import { grantedKeysByRole } from './role-permission-keys'
 export const guardUserRoleAssignment: CollectionBeforeChangeHook = async ({
   context,
   data,
+  operation,
   originalDoc,
   req,
 }) => {
+  if (operation !== 'create') {
+    await assertMayMutateUser({ context, req, target: originalDoc, targetId: originalDoc?.id })
+  }
   if (skipsPrivilegeChecks(context) || !req.user || !data) {
     return data
   }
@@ -52,6 +58,31 @@ export const guardUserRoleAssignment: CollectionBeforeChangeHook = async ({
   return data
 }
 
+export const guardAuthCredentialOperation: CollectionBeforeOperationHook = async ({
+  args,
+  operation,
+  req,
+}) => {
+  if (operation !== 'forgotPassword' && operation !== 'resetPassword') {
+    return args
+  }
+  if (skipsPrivilegeChecks(req.context) || !req.user) {
+    return args
+  }
+  const data = (args as { data?: { email?: unknown; token?: unknown } }).data
+  const target =
+    operation === 'forgotPassword'
+      ? await findUser(req, emailWhere(data?.email))
+      : await findUser(req, tokenWhere(data?.token))
+  await assertMayMutateUser({
+    context: req.context,
+    req,
+    target,
+    targetId: target?.id,
+  })
+  return args
+}
+
 export const guardLastFullAccessDeletion: CollectionBeforeDeleteHook = async ({
   context,
   id,
@@ -67,7 +98,8 @@ export const guardLastFullAccessDeletion: CollectionBeforeDeleteHook = async ({
     disableErrors: true,
     overrideAccess: true,
     req,
-  })) as { roles?: unknown } | null
+  })) as { id?: number | string; roles?: unknown } | null
+  await assertMayMutateUser({ context, req, target: user, targetId: id })
   const assigned = relationIds(user?.roles)
   const privilegedRoles = await fullAccessRoleIds(req)
   if (!assigned.some((roleId) => privilegedRoles.has(roleId))) {
@@ -101,6 +133,75 @@ export async function assertRemainingFullAccessHolder(
   if (holders.totalDocs === 0) {
     throw new APIError(LAST_FULL_ACCESS_ERROR, 403)
   }
+}
+
+async function assertMayMutateUser(args: {
+  context: unknown
+  req: PayloadRequest
+  target: { roles?: unknown } | null | undefined
+  targetId: unknown
+}): Promise<void> {
+  if (skipsPrivilegeChecks(args.context) || !args.req.user || args.targetId == null) {
+    return
+  }
+  if (isSelf(args.req, args.targetId)) {
+    return
+  }
+  if (await userGrantsFullAccess(args.req)) {
+    return
+  }
+  const roleIds = relationIds(args.target?.roles)
+  const privilegedRoles = await fullAccessRoleIds(args.req)
+  if (roleIds.some((roleId) => privilegedRoles.has(roleId))) {
+    throw new APIError(PRIVILEGED_USER_ERROR, 403)
+  }
+  const [actor, keysByRole] = await Promise.all([
+    loadUserGrants(args.req),
+    grantedKeysByRole(args.req, roleIds),
+  ])
+  for (const roleId of roleIds) {
+    for (const key of keysByRole.get(roleId) ?? []) {
+      if (!actor?.permissionKeys.has(key)) {
+        throw new APIError(PRIVILEGED_USER_ERROR, 403)
+      }
+    }
+  }
+}
+
+function isSelf(req: PayloadRequest, targetId: unknown): boolean {
+  return String(req.user?.id) === String(targetId)
+}
+
+function emailWhere(email: unknown): Record<string, { equals: string }> | undefined {
+  if (typeof email !== 'string' || email.trim() === '') {
+    return undefined
+  }
+  return { email: { equals: email.trim().toLowerCase() } }
+}
+
+function tokenWhere(token: unknown): Record<string, { equals: string }> | undefined {
+  if (typeof token !== 'string' || token.trim() === '') {
+    return undefined
+  }
+  return { resetPasswordToken: { equals: token } }
+}
+
+async function findUser(
+  req: PayloadRequest,
+  where: Record<string, { equals: string }> | undefined,
+): Promise<{ id: number | string; roles?: unknown } | null> {
+  if (!where) {
+    return null
+  }
+  const found = await req.payload.find({
+    collection: USERS_SLUG,
+    depth: 0,
+    limit: 1,
+    overrideAccess: true,
+    req,
+    where,
+  })
+  return (found.docs[0] as { id: number | string; roles?: unknown } | undefined) ?? null
 }
 
 async function assertAddedRolesAreSubset(req: PayloadRequest, roleIds: string[]): Promise<void> {
