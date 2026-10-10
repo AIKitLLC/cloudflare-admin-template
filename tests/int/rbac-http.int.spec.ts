@@ -359,6 +359,186 @@ describe('RBAC HTTP privilege boundaries', () => {
     expect(ownPassword.status).toBeLessThan(300)
     expect((await loginCookie(actor.email, 'actor-new-password-456')).length).toBeGreaterThan(0)
   })
+
+  it('refuses unlock unless the actor has users:update and the target is within their grants', async () => {
+    const updaterRole = await createRole(`unlock-actor-${stamp}`)
+    await grant(updaterRole.id, 'users:update')
+    await grant(updaterRole.id, 'users:read')
+    const lesserRole = await createRole(`unlock-lesser-${stamp}`)
+    await grant(lesserRole.id, 'users:read')
+    const password = 'test-password-123'
+    const updater = await createAccount(`unlock-actor-${stamp}@example.com`, password, [
+      updaterRole.id,
+    ])
+    const stranger = await createAccount(`unlock-stranger-${stamp}@example.com`, password, [])
+    const lesser = await createAccount(`unlock-lesser-${stamp}@example.com`, password, [
+      lesserRole.id,
+    ])
+    const peer = await createAccount(`unlock-peer-${stamp}@example.com`, password, [])
+    const admin = await createAccount(`unlock-admin-${stamp}@example.com`, password, [
+      (await findSuperAdminRole()).id,
+    ])
+    await lockAccount(admin.email)
+    await lockAccount(lesser.email)
+    await lockAccount(peer.email)
+
+    const strangerCookie = await loginCookie(stranger.email, password)
+    const strangerUnlock = await post(
+      jsonRequest('/api/users/unlock', { email: admin.email }, strangerCookie),
+      route(['users', 'unlock']),
+    )
+    expect(strangerUnlock.status).toBe(403)
+    expect(await readLock(admin.email)).toBeTruthy()
+
+    const cookie = await loginCookie(updater.email, password)
+    const privilegedUnlock = await post(
+      jsonRequest('/api/users/unlock', { email: admin.email.toUpperCase() }, cookie),
+      route(['users', 'unlock']),
+    )
+    expect(privilegedUnlock.status).toBe(403)
+    expect(JSON.stringify(await privilegedUnlock.json())).toContain(PRIVILEGED_USER_ERROR)
+    expect(await readLock(admin.email)).toBeTruthy()
+
+    const peerUnlock = await post(
+      jsonRequest('/api/users/unlock', { email: peer.email }, strangerCookie),
+      route(['users', 'unlock']),
+    )
+    expect(peerUnlock.status).toBe(403)
+    expect(await readLock(peer.email)).toBeTruthy()
+
+    const allowed = await post(
+      jsonRequest('/api/users/unlock', { email: lesser.email }, cookie),
+      route(['users', 'unlock']),
+    )
+    expect(allowed.status).toBe(200)
+    expect(await readLock(lesser.email)).toBeFalsy()
+  })
+
+  it('refuses a bulk update and bulk delete that include a super admin', async () => {
+    const actorRole = await createRole(`bulk-actor-${stamp}`)
+    for (const key of ['users:read', 'users:update', 'users:delete', 'users:writeField:email']) {
+      await grant(actorRole.id, key)
+    }
+    const lesserRole = await createRole(`bulk-lesser-${stamp}`)
+    await grant(lesserRole.id, 'users:read')
+    const password = 'test-password-123'
+    const actor = await createAccount(`bulk-actor-${stamp}@example.com`, password, [actorRole.id])
+    const lesser = await createAccount(`bulk-lesser-${stamp}@example.com`, password, [
+      lesserRole.id,
+    ])
+    const removable = await createAccount(`bulk-remove-${stamp}@example.com`, password, [
+      lesserRole.id,
+    ])
+    const admin = await createAccount(`bulk-admin-${stamp}@example.com`, password, [
+      (await findSuperAdminRole()).id,
+    ])
+    const cookie = await loginCookie(actor.email, password)
+    const nextEmail = `bulk-edited-${stamp}@example.com`
+
+    const updated = await patch(
+      jsonRequest(
+        `/api/users?where[id][in][0]=${admin.id}&where[id][in][1]=${lesser.id}`,
+        { email: nextEmail },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['users']),
+    )
+    expect(updated.status).toBe(400)
+    const updateBody = (await updated.json()) as {
+      docs: Array<{ id: number; email?: string }>
+      errors: Array<{ id: number | string; message: string }>
+    }
+    expect(updateBody.errors.map((error) => String(error.id))).toContain(String(admin.id))
+    expect(updateBody.errors.some((error) => error.message.includes(PRIVILEGED_USER_ERROR))).toBe(
+      true,
+    )
+    expect(updateBody.docs.map((doc) => String(doc.id))).toContain(String(lesser.id))
+    const freshAdmin = await payload.findByID({
+      collection: 'users',
+      id: admin.id,
+      overrideAccess: true,
+    })
+    expect(freshAdmin.email).toBe(admin.email)
+    const freshLesser = await payload.findByID({
+      collection: 'users',
+      id: lesser.id,
+      overrideAccess: true,
+    })
+    expect(freshLesser.email).toBe(nextEmail)
+
+    const deleted = await remove(
+      jsonRequest(
+        `/api/users?where[id][in][0]=${admin.id}&where[id][in][1]=${removable.id}`,
+        {},
+        cookie,
+        ORIGIN,
+        'DELETE',
+      ),
+      route(['users']),
+    )
+    expect(deleted.status).toBe(400)
+    const deleteBody = (await deleted.json()) as {
+      docs: Array<{ id: number }>
+      errors: Array<{ id: number | string; message: string }>
+    }
+    expect(deleteBody.errors.map((error) => String(error.id))).toContain(String(admin.id))
+    expect(deleteBody.errors.some((error) => error.message.includes(PRIVILEGED_USER_ERROR))).toBe(
+      true,
+    )
+    expect(deleteBody.docs.map((doc) => String(doc.id))).toContain(String(removable.id))
+    const adminStillThere = await payload.findByID({
+      collection: 'users',
+      id: admin.id,
+      overrideAccess: true,
+    })
+    expect(adminStillThere.email).toBe(admin.email)
+  })
+
+  it('treats a different-cased super-admin email as the same account', async () => {
+    const actorRole = await createRole(`case-actor-${stamp}`)
+    for (const key of ['users:create', 'users:update', 'users:writeField:email']) {
+      await grant(actorRole.id, key)
+    }
+    const password = 'test-password-123'
+    const mixed = `Case.Admin.${stamp}@Example.com`
+    const admin = await createAccount(mixed, password, [(await findSuperAdminRole()).id])
+    expect(admin.email).toBe(mixed.toLowerCase())
+    const actor = await createAccount(`case-actor-${stamp}@example.com`, password, [actorRole.id])
+    const cookie = await loginCookie(actor.email, password)
+
+    const duplicate = await post(
+      jsonRequest(
+        '/api/users',
+        { email: mixed.toUpperCase(), password: 'another-password-456' },
+        cookie,
+      ),
+      route(['users']),
+    )
+    expect(duplicate.status).toBeGreaterThanOrEqual(400)
+    const sameAddress = await payload.find({
+      collection: 'users',
+      overrideAccess: true,
+      where: { email: { equals: mixed.toLowerCase() } },
+    })
+    expect(sameAddress.totalDocs).toBe(1)
+
+    const loggedIn = await post(
+      jsonRequest('/api/users/login', { email: mixed.toUpperCase(), password }),
+      route(['users', 'login']),
+    )
+    expect(loggedIn.status).toBe(200)
+    const session = (await loggedIn.json()) as { user?: { id?: number | string } }
+    expect(String(session.user?.id)).toBe(String(admin.id))
+
+    const forgot = await post(
+      jsonRequest('/api/users/forgot-password', { email: mixed.toUpperCase() }, cookie),
+      route(['users', 'forgot-password']),
+    )
+    expect(forgot.status).toBe(403)
+    expect(JSON.stringify(await forgot.json())).toContain(PRIVILEGED_USER_ERROR)
+  })
 })
 
 function route(slug: string[]) {
@@ -451,6 +631,46 @@ async function loginCookie(email: string, password: string): Promise<string> {
   const cookie = cookieHeader(response)
   expect(cookie).toContain('payload-token=')
   return cookie
+}
+
+async function lockAccount(email: string): Promise<void> {
+  const until = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  await db()
+    .prepare('UPDATE users SET login_attempts = 5, lock_until = ? WHERE email = ?')
+    .bind(until, email)
+    .run()
+}
+
+async function readLock(email: string): Promise<string | null> {
+  const row = await db()
+    .prepare('SELECT lock_until FROM users WHERE email = ?')
+    .bind(email)
+    .first<{ lock_until?: string | null }>()
+  return row?.lock_until ?? null
+}
+
+function db(): {
+  prepare: (query: string) => {
+    bind: (...values: unknown[]) => {
+      first: <T>() => Promise<T | null>
+      run: () => Promise<unknown>
+    }
+  }
+} {
+  const adapter = payload.db as {
+    client?: {
+      prepare: (query: string) => {
+        bind: (...values: unknown[]) => {
+          first: <T>() => Promise<T | null>
+          run: () => Promise<unknown>
+        }
+      }
+    }
+  }
+  if (!adapter.client) {
+    throw new Error('D1 client is unavailable')
+  }
+  return adapter.client
 }
 
 async function readResetToken(email: string): Promise<string | null> {
