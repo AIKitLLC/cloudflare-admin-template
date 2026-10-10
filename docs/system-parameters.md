@@ -46,7 +46,7 @@ Clearing `sensitive` (true to false) is not a reveal. Both of these rules apply:
 
 A user who can update a row cannot read it back by unchecking `sensitive`.
 
-Filtering or sorting on `value` is refused for anyone who does not have full access, including nested `and` / `or` filters. That blocks guessing a sensitive value one character at a time through `totalDocs`. Full-access users may filter and sort on `value`. `getParameter` looks up by `key` and is unaffected.
+Filtering or sorting on `value` is refused for anyone who does not have full access. The check walks every `where` key, at any depth, under `and` / `or` in any casing. A path counts when its first segment is `value`, after `__` is read as `.`, so `value`, `value.flag`, `value__flag`, and `-value` are all refused. The same rule covers list, count, GraphQL `where` and `sort`, CSV export, and `findDistinct` `field`. That blocks guessing a sensitive value one character at a time through `totalDocs` or a filtered export. Full-access users may filter and sort on `value`. `getParameter` looks up by `key` and is unaffected.
 
 ## Permissions
 

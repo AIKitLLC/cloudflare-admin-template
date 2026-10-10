@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest'
 
 import { REDACTED_PARAMETER_VALUE } from '@/system-parameters/constants'
 import { recordSystemParameterAudit } from '@/system-parameters/hooks/record-audit'
-import { queryTargetsValue, sortTargetsValue } from '@/system-parameters/query/refuse-value-query'
+import {
+  fieldTargetsValue,
+  queryTargetsValue,
+  refuseValueQuery,
+  sortTargetsValue,
+} from '@/system-parameters/query/refuse-value-query'
 import {
   buildSystemParameterAudit,
   readSystemParameterAudits,
@@ -21,6 +26,7 @@ import {
   PARAMETER_NUMBER_VALUE_ERROR,
   PARAMETER_SECRET_KEY_ERROR,
   PARAMETER_STRING_VALUE_ERROR,
+  PARAMETER_VALUE_QUERY_ERROR,
 } from '@/system-parameters/validation/messages'
 import { validateParameterKey } from '@/system-parameters/validation/field-validators'
 import {
@@ -251,8 +257,27 @@ describe('system parameter rules', () => {
     expect(
       queryTargetsValue({ and: [{ key: { equals: 'mode' } }, { value: { equals: 'x' } }] }),
     ).toBe(true)
+    expect(queryTargetsValue({ AND: [{ value: { like: 'a%' } }] })).toBe(true)
+    expect(queryTargetsValue({ Or: [{ key: { equals: 'mode' } }] })).toBe(false)
+    expect(queryTargetsValue({ Or: [{ value__flag: { like: 'a%' } }] })).toBe(true)
+    expect(queryTargetsValue({ 'value.flag': { exists: true } })).toBe(true)
     expect(sortTargetsValue('key')).toBe(false)
     expect(sortTargetsValue('-value')).toBe(true)
     expect(sortTargetsValue('category,-value')).toBe(true)
+    expect(sortTargetsValue(['category', '-value__flag'])).toBe(true)
+    expect(fieldTargetsValue('value')).toBe(true)
+    expect(fieldTargetsValue('value__flag')).toBe(true)
+    expect(fieldTargetsValue('key')).toBe(false)
+  })
+
+  it('refuses findDistinct on a value path for a user without full access', async () => {
+    const req = { context: {}, user: null } as PayloadRequest
+    await expect(
+      refuseValueQuery({
+        args: { field: 'value__flag' },
+        overrideAccess: false,
+        req,
+      }),
+    ).rejects.toMatchObject({ message: PARAMETER_VALUE_QUERY_ERROR, status: 400 })
   })
 })

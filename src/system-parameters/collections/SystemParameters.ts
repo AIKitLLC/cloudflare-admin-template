@@ -11,7 +11,7 @@ import {
   recordSystemParameterDeletion,
 } from '../hooks/record-audit'
 import { AUDIT_REDACT_WHEN_SENSITIVE, SYSTEM_PARAMETERS_SLUG } from '../constants'
-import { refuseValueQuery } from '../query/refuse-value-query'
+import { guardSystemParameterExport, refuseValueQuery } from '../query/refuse-value-query'
 import { maskSensitiveParameterOnRead } from '../sensitive/mask-on-read'
 import { guardSensitiveUnmask } from '../sensitive/guard-unmask'
 import { prepareSystemParameterWrite } from '../sensitive/prepare-write'
@@ -127,6 +127,13 @@ export const SystemParameters: CollectionConfig = withRbac({
         description:
           'Hides the value on read, list, export, and audit diffs. getParameter still returns it on the server. Do not use this for credentials.',
       },
+    },
+  ],
+  endpoints: [
+    {
+      path: '/export',
+      method: 'get',
+      handler: (req) => guardSystemParameterExport(req),
     },
   ],
   hooks: {

@@ -636,6 +636,40 @@ describe('system parameters over HTTP', () => {
     expect(sorted.status).toBe(400)
     expect(JSON.stringify(await sorted.json())).toContain(PARAMETER_VALUE_QUERY_ERROR)
 
+    for (const path of [
+      `/api/system-parameters?where[AND][0][value][like]=${encodeURIComponent('a%')}`,
+      '/api/system-parameters?where[Or][0][value][equals]=x',
+      `/api/system-parameters?where[value__flag][like]=${encodeURIComponent('a%')}`,
+      '/api/system-parameters?sort=-value__flag',
+      `/api/system-parameters/count?where[AND][0][value][like]=${encodeURIComponent('a%')}`,
+      '/api/system-parameters/count?where[Or][0][value__flag][exists]=true',
+      `/api/system-parameters/export?where[AND][0][value][like]=${encodeURIComponent('a%')}`,
+      '/api/system-parameters/export?where[Or][0][value__flag][like]=a',
+      '/api/system-parameters/export?sort=value__flag',
+    ]) {
+      const response = await get(
+        jsonRequest(path, undefined, editor, ORIGIN, 'GET'),
+        apiRoute(path),
+      )
+      const body = await response.text()
+      expect(response.status, `${path} ${body}`).toBe(400)
+      expect(body, path).toContain(PARAMETER_VALUE_QUERY_ERROR)
+      expect(body, path).not.toContain(secret)
+    }
+
+    for (const query of [
+      `query { SystemParameters(where: { AND: [{ value: { like: "a%" } }] }, limit: 1) { totalDocs } }`,
+      `query { SystemParameters(where: { OR: [{ value: { equals: "x" } }] }, limit: 1) { totalDocs } }`,
+      `query { SystemParameters(sort: "value", limit: 1) { totalDocs } }`,
+      `query { SystemParameters(sort: "-value__flag", limit: 1) { totalDocs } }`,
+      `query { countSystemParameters(where: { value: { like: "a%" } }) { totalDocs } }`,
+    ]) {
+      const response = await graphql(jsonRequest('/api/graphql', { query }, editor))
+      const body = JSON.stringify(await response.json())
+      expect(body, query).toContain(PARAMETER_VALUE_QUERY_ERROR)
+      expect(body, query).not.toContain(secret)
+    }
+
     const allowed = await get(
       jsonRequest(
         `/api/system-parameters?where[key][equals]=${key}`,
@@ -768,6 +802,16 @@ async function expectGraphqlUnmask(
 
 function route(slug: string[]) {
   return { params: Promise.resolve({ slug }) }
+}
+
+function apiRoute(path: string) {
+  const pathname = path.split('?')[0] ?? path
+  return route(
+    pathname
+      .replace(/^\/api\//, '')
+      .split('/')
+      .filter(Boolean),
+  )
 }
 
 function jsonRequest(
