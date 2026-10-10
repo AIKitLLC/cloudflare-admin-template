@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { DELETE as restDelete, PATCH as restPatch } from '@/app/(payload)/api/[...slug]/route'
 import { POST as graphqlPost } from '@/app/(payload)/api/graphql/route'
 import { AUDIT_LOG_READER_EMAILS_ENV } from '@/audit/constants'
+import { droppedAuditWriteCount } from '@/audit/logging/droppedAuditWrites'
 
 let payload: Payload
 
@@ -261,6 +262,48 @@ describe('audit operations', () => {
       oldValue: 'before-20',
       newValue: 'after-20',
     })
+  })
+
+  it('removes a partial audit log when a later change batch fails', async () => {
+    const initial: Record<string, unknown> = { title: 'partial' }
+    const next: Record<string, unknown> = { title: 'partial-next' }
+    for (let index = 1; index <= 20; index += 1) {
+      const name = `field${String(index).padStart(2, '0')}`
+      initial[name] = `before-${index}`
+      next[name] = `after-${index}`
+    }
+    const subject = await createSubject(initial)
+    const before = await latestAuditId()
+    const droppedBefore = droppedAuditWriteCount()
+    const originalUpdate = payload.update.bind(payload)
+    payload.update = (async (args: Parameters<Payload['update']>[0]) => {
+      if (args.collection === 'audit-logs') throw new Error('later batch failed')
+      return originalUpdate(args)
+    }) as Payload['update']
+
+    try {
+      await payload.update({
+        collection: subjects,
+        id: subject.id,
+        data: next as never,
+        overrideAccess: true,
+      })
+    } finally {
+      payload.update = originalUpdate
+    }
+
+    const saved = await payload.findByID({
+      collection: subjects,
+      id: subject.id,
+      depth: 0,
+      overrideAccess: true,
+    })
+    expect((saved as { title?: string }).title).toBe('partial-next')
+    const updates = (await findLogs(before)).filter(
+      (log) => log.action === 'UPDATE' && log.documentId === String(subject.id),
+    )
+    expect(updates).toHaveLength(0)
+    expect(droppedAuditWriteCount()).toBe(droppedBefore + 1)
   })
 
   it('denies audit log reads for users who are not the earliest user or on the allowlist', async () => {

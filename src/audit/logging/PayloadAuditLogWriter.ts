@@ -1,13 +1,12 @@
-import { randomUUID } from 'node:crypto'
-
 import type { Payload, RequiredDataFromCollectionSlug } from 'payload'
 
-import { AUDIT_LOGS_SLUG, CHANGE_ROW_INSERT_CHUNK } from '../constants'
+import { AUDIT_LOGS_SLUG, AUDIT_LOG_INTERNAL_WRITE, CHANGE_ROW_INSERT_CHUNK } from '../constants'
 import type { AuditLogEntry } from '../types'
 import type { AuditLogWriter } from './AuditLogWriter'
 
 type AuditLogData = RequiredDataFromCollectionSlug<'audit-logs'>
 type JsonValue = NonNullable<NonNullable<AuditLogData['changes']>[number]['oldValue']>
+type ChangeRow = NonNullable<AuditLogData['changes']>[number]
 
 /**
  * Writes one audit row outside the caller's Payload operation.
@@ -26,11 +25,19 @@ type JsonValue = NonNullable<NonNullable<AuditLogData['changes']>[number]['oldVa
  * relationship cleared. Other errors are not retried, so a committed row is
  * not written twice. The operator id and email snapshots stay on the entry.
  *
- * Change rows are inserted in batches of {@link CHANGE_ROW_INSERT_CHUNK}. D1
- * rejects a statement with more than 100 bound parameters, and each change row
- * uses six. The insert stays on the request. `waitUntil` is not used: a
- * detached insert can outlive a failed request, and the worker can exit before
- * it finishes, dropping the row with no caller left to notice.
+ * The parent row and the first batch of change rows are created together.
+ * Further rows go through `payload.update`, which is the supported write path.
+ * The D1 adapter then chunks those rows so a statement stays under 100 bound
+ * parameters. `payload.db.insert` is not used.
+ *
+ * If a later batch fails, the partial log is deleted. Readers never see a
+ * short diff that looks complete, and the failure counts as dropped. If that
+ * delete also fails, the row is kept and marked `[incomplete]` with a
+ * `_partial` change row, and the write is not counted as fully dropped.
+ *
+ * The insert stays on the request. `waitUntil` is not used: a detached insert
+ * can outlive a failed request, and the worker can exit before it finishes,
+ * dropping the row with no caller left to notice.
  */
 export class PayloadAuditLogWriter implements AuditLogWriter {
   constructor(private readonly payload: Payload) {}
@@ -38,21 +45,38 @@ export class PayloadAuditLogWriter implements AuditLogWriter {
   async write(entry: AuditLogEntry): Promise<void> {
     const data = toAuditData(entry)
     try {
-      await this.insertParentAndChanges(data)
+      await this.insertComplete(data)
     } catch (error) {
-      if (data.actor == null || !isForeignKeyError(error)) throw error
-      await this.insertParentAndChanges({ ...data, actor: null })
+      if (data.actor == null || error instanceof AuditPartialWriteError || !isForeignKeyError(error)) {
+        throw error
+      }
+      await this.insertComplete({ ...data, actor: null })
     }
   }
 
-  private async insertParentAndChanges(data: AuditLogData): Promise<void> {
+  private async insertComplete(data: AuditLogData): Promise<void> {
     const changes = data.changes ?? []
     const [first, ...rest] = chunk(changes, CHANGE_ROW_INSERT_CHUNK)
     const created = await this.insert({ ...data, changes: first ?? [] })
-    let written = first?.length ?? 0
-    for (const batch of rest) {
-      await this.insertChangeRows(created.id, batch, written)
-      written += batch.length
+    if (rest.length === 0) return
+
+    try {
+      await this.payload.update({
+        collection: AUDIT_LOGS_SLUG,
+        id: created.id,
+        data: { changes },
+        context: internalWriteContext(),
+        depth: 0,
+        disableTransaction: true,
+        overrideAccess: true,
+      })
+    } catch (error) {
+      const removed = await this.compensatePartial(created.id, data, first ?? [])
+      if (removed) throw new AuditPartialWriteError(error)
+      this.payload.logger.error({
+        err: error,
+        msg: `Audit log #${created.id} is marked incomplete after a later change batch failed.`,
+      })
     }
   }
 
@@ -66,30 +90,78 @@ export class PayloadAuditLogWriter implements AuditLogWriter {
     })
   }
 
-  private async insertChangeRows(
-    parentId: number,
-    rows: NonNullable<AuditLogData['changes']>,
-    alreadyWritten: number,
-  ): Promise<void> {
-    const db = this.payload.db as unknown as ChangeRowDb
-    await db.insert({
-      db: db.drizzle,
-      tableName: 'audit_logs_changes',
-      values: rows.map((row, index) => ({
-        _order: alreadyWritten + index + 1,
-        _parentID: parentId,
-        id: randomUUID(),
-        newValue: row.newValue ?? null,
-        oldValue: row.oldValue ?? null,
-        path: row.path,
-      })),
+  /**
+   * @returns true when the partial row is gone. False when it had to be marked instead.
+   */
+  private async compensatePartial(
+    id: number,
+    data: AuditLogData,
+    written: ChangeRow[],
+  ): Promise<boolean> {
+    try {
+      await this.payload.delete({
+        collection: AUDIT_LOGS_SLUG,
+        id,
+        context: internalWriteContext(),
+        disableTransaction: true,
+        overrideAccess: true,
+      })
+      return true
+    } catch (deleteError) {
+      this.payload.logger.error({
+        err: deleteError,
+        msg: `Could not remove partial audit log #${id}. Marking it incomplete.`,
+      })
+    }
+
+    const summary = incompleteSummary(data.summary)
+    const markedChanges = [
+      ...written,
+      {
+        path: '_partial',
+        oldValue: null,
+        newValue: 'Later change rows failed and the partial log could not be removed.',
+      },
+    ]
+    try {
+      await this.payload.db.updateOne({
+        collection: AUDIT_LOGS_SLUG,
+        id,
+        data: { summary, changes: markedChanges },
+      })
+      return false
+    } catch (markError) {
+      this.payload.logger.error({
+        err: markError,
+        msg: `Could not add a _partial row to audit log #${id}. Marking the summary.`,
+      })
+    }
+
+    await this.payload.db.updateOne({
+      collection: AUDIT_LOGS_SLUG,
+      id,
+      data: { summary },
     })
+    return false
   }
 }
 
-type ChangeRowDb = {
-  drizzle: unknown
-  insert: (args: { db: unknown; tableName: string; values: Record<string, unknown>[] }) => Promise<unknown>
+class AuditPartialWriteError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : 'Audit change rows failed after the log row was created.', {
+      cause,
+    })
+    this.name = 'AuditPartialWriteError'
+  }
+}
+
+function internalWriteContext(): { [AUDIT_LOG_INTERNAL_WRITE]: true } {
+  return { [AUDIT_LOG_INTERNAL_WRITE]: true }
+}
+
+function incompleteSummary(summary: string | null | undefined): string {
+  const base = summary && summary.length > 0 ? summary : 'Audit log'
+  return base.includes('[incomplete]') ? base : `${base} [incomplete]`
 }
 
 function chunk<T>(items: readonly T[], size: number): T[][] {

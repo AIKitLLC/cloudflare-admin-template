@@ -1,6 +1,6 @@
 import type { CollectionConfig } from 'payload'
 
-import { withAuditTrail } from '../hooks/withAuditTrail'
+import { withAuditTrail } from '../../src/audit/hooks/withAuditTrail'
 
 const wideFields = Array.from({ length: 20 }, (_, index) => ({
   name: `field${String(index + 1).padStart(2, '0')}`,
@@ -8,8 +8,9 @@ const wideFields = Array.from({ length: 20 }, (_, index) => ({
 }))
 
 /**
- * Registered only while Vitest is running. Exercises bulk writes, relationship
- * diffs, and wide updates without adding a production table.
+ * Registered only from Vitest setup. Not part of the production config or the
+ * generated Payload types. Exercises bulk writes, relationship diffs, and wide
+ * updates without adding a production table.
  */
 export const AuditSubjects: CollectionConfig = withAuditTrail({
   slug: 'audit-subjects',

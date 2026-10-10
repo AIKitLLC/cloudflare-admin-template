@@ -1,17 +1,19 @@
 import type { PayloadRequest } from 'payload'
 import { describe, expect, it } from 'vitest'
 
-import { REDACTED_VALUE } from '@/audit/constants'
+import { CHANGE_ROW_INSERT_CHUNK, MAX_CHANGE_ROWS, REDACTED_VALUE } from '@/audit/constants'
 import {
   applyAuditLogViewerFilters,
   readAuditLogViewerFilters,
   toAuditLogWhere,
 } from '@/audit/admin/auditLogViewerQuery'
 import { buildChangeSummary } from '@/audit/diff/buildChangeSummary'
+import { capFieldChanges } from '@/audit/diff/capFieldChanges'
 import { computeFieldDiff } from '@/audit/diff/computeFieldDiff'
 import { projectBeforeOntoAfter } from '@/audit/diff/projectBeforeOntoAfter'
 import { SensitiveFieldPolicy } from '@/audit/diff/SensitiveFieldPolicy'
 import { FailOpenAuditLogWriter } from '@/audit/logging/FailOpenAuditLogWriter'
+import { PayloadAuditLogWriter } from '@/audit/logging/PayloadAuditLogWriter'
 import { runAuditChange } from '@/audit/logging/runAuditRecord'
 import { normalizeRelations } from '@/audit/diff/normalizeRelations'
 import { droppedAuditWriteCount } from '@/audit/logging/droppedAuditWrites'
@@ -392,3 +394,96 @@ describe('sensitive names', () => {
     expect(changes.map((change) => change.path).sort()).toEqual(['otp', 'pin', 'ssn'])
   })
 })
+
+describe('change row cap', () => {
+  it('keeps a redacted password row when the cap would otherwise drop it', () => {
+    const ordinary: { path: string; oldValue: string; newValue: string }[] = Array.from(
+      { length: MAX_CHANGE_ROWS + 5 },
+      (_, index) => ({
+        path: `field-${String(index).padStart(2, '0')}`,
+        oldValue: `before-${index}`,
+        newValue: `after-${index}`,
+      }),
+    )
+    const password = {
+      path: 'password',
+      oldValue: null as string | null,
+      newValue: REDACTED_VALUE,
+    }
+    const capped = capFieldChanges([...ordinary, password], SensitiveFieldPolicy.fromExtraFields())
+
+    expect(capped).toHaveLength(MAX_CHANGE_ROWS)
+    expect(capped.at(-1)).toMatchObject({ path: '_truncated' })
+    expect(capped.some((change) => change.path === 'password' && change.newValue === REDACTED_VALUE)).toBe(
+      true,
+    )
+    expect(capped.some((change) => change.path === 'field-68')).toBe(false)
+  })
+})
+
+describe('partial audit batches', () => {
+  it('rejects and deletes the log when a later batch fails', async () => {
+    const deleted: number[] = []
+    const writer = new PayloadAuditLogWriter({
+      create: async () => ({ id: 9 }),
+      delete: async (args: { id: number }) => {
+        deleted.push(args.id)
+        return { id: args.id }
+      },
+      logger: { error() {} },
+      update: async () => {
+        throw new Error('later batch failed')
+      },
+    } as never)
+
+    await expect(writer.write(wideEntry())).rejects.toThrow(/later batch failed/)
+    expect(deleted).toEqual([9])
+  })
+
+  it('marks the log incomplete when the partial row cannot be removed', async () => {
+    const marks: { data?: { summary?: string; changes?: { path: string }[] } }[] = []
+    const writer = new PayloadAuditLogWriter({
+      create: async () => ({ id: 4 }),
+      db: {
+        updateOne: async (args: { data?: { summary?: string; changes?: { path: string }[] } }) => {
+          marks.push(args)
+        },
+      },
+      delete: async () => {
+        throw new Error('delete blocked')
+      },
+      logger: { error() {} },
+      update: async () => {
+        throw new Error('later batch failed')
+      },
+    } as never)
+
+    await expect(writer.write(wideEntry())).resolves.toBeUndefined()
+    expect(marks[0]?.data?.summary).toContain('[incomplete]')
+    expect(marks[0]?.data?.changes?.some((change) => change.path === '_partial')).toBe(true)
+  })
+})
+
+function wideEntry(): AuditLogEntry {
+  const changes = Array.from({ length: CHANGE_ROW_INSERT_CHUNK + 1 }, (_, index) => ({
+    path: `field${index}`,
+    oldValue: 'before',
+    newValue: 'after',
+  }))
+  return {
+    action: 'UPDATE',
+    changes,
+    collectionSlug: 'audit-subjects',
+    documentId: '1',
+    metadata: {
+      actorEmail: null,
+      actorId: null,
+      actorRelationshipId: null,
+      ipAddress: null,
+      untrustedClientIp: null,
+      userAgent: null,
+    },
+    occurredAt: '2026-10-10T00:00:00.000Z',
+    summary: 'UPDATE audit-subjects #1',
+  }
+}

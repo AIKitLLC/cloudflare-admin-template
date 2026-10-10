@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
-import { buildConfig } from 'payload'
+import { buildConfig, type CollectionConfig } from 'payload'
 import { fileURLToPath } from 'url'
 import { CloudflareContext, getCloudflareContext } from '@opennextjs/cloudflare'
 import { GetPlatformProxyOptions } from 'wrangler'
@@ -11,7 +11,18 @@ import { r2Storage } from '@payloadcms/storage-r2'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
 import { AuditLogs } from './audit'
-import { AuditSubjects } from './audit/collections/AuditSubjects'
+
+/**
+ * Vitest setup assigns this before the config module loads. Production and
+ * `payload generate:types` leave it unset, so the test collection stays out of
+ * the shipped config and `payload-types.ts`.
+ */
+function testOnlyCollections(): CollectionConfig[] {
+  const holder = globalThis as typeof globalThis & {
+    __payloadTestCollections?: CollectionConfig[]
+  }
+  return holder.__payloadTestCollections ?? []
+}
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -53,9 +64,7 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: process.env.VITEST
-    ? [Users, Media, AuditLogs, AuditSubjects]
-    : [Users, Media, AuditLogs],
+  collections: [Users, Media, AuditLogs, ...testOnlyCollections()],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {

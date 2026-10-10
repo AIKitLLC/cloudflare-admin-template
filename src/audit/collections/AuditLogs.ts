@@ -137,7 +137,7 @@ export const AuditLogs: CollectionConfig = {
       admin: {
         readOnly: true,
         description:
-          'First X-Forwarded-For hop, or X-Real-IP. Not authenticated. Do not treat this as the client.',
+          'First X-Forwarded-For hop, or X-Real-IP. Personal data. Anyone who can read audit logs can see it. Not authenticated. Do not treat this as the client.',
       },
     },
     {

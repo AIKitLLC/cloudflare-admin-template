@@ -11,6 +11,13 @@ export const REDACTED_VALUE = '[REDACTED]'
  */
 export const AUDIT_CONTEXT_KEY = '__auditTrail'
 
+/**
+ * Set on the local API `context` by the audit writer when it appends change
+ * rows or removes a partial log. REST and GraphQL callers cannot set this.
+ * Payload copies `req.context` with object spread, which drops symbol keys.
+ */
+export const AUDIT_LOG_INTERNAL_WRITE = '__auditLogInternalWrite'
+
 /** Bookkeeping fields that change on every write and are not business data. */
 export const IGNORED_DIFF_PATHS = new Set(['id', 'createdAt', 'updatedAt', 'collection'])
 

@@ -51,6 +51,7 @@ export async function runAuditChange(args: AuditChangeArgs): Promise<void> {
           ...writeOnlySecretChanges(args.data, rawBefore, after, action, args.policy),
         ],
       ),
+      args.policy,
     )
     if (action === 'UPDATE' && changes.length === 0) return
 
@@ -86,6 +87,7 @@ export async function runAuditDelete(args: {
   try {
     const changes = capFieldChanges(
       computeFieldDiff(asRecord(normalizeRelations(args.doc, args.fields)), null, args.policy),
+      args.policy,
     )
     await args.writer.write(
       buildAuditLogEntry({

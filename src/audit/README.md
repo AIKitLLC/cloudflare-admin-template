@@ -14,7 +14,7 @@ Collection: `audit-logs` (admin label **Audit Logs**, D1 table `audit_logs`).
 | `actor` | Relationship to `users` (`actor_id`). Set null if that user is later deleted |
 | `operatorId`, `actorEmail` | Operator snapshot. These survive user deletion. `operatorId` is its own column so it does not collide with the relationship |
 | `ipAddress` | `CF-Connecting-IP` only. Null when that header is absent. Forwarded headers are never copied here |
-| `untrustedClientIp` | First `X-Forwarded-For` hop, or `X-Real-IP`. Not authenticated. Do not treat it as the client |
+| `untrustedClientIp` | First `X-Forwarded-For` hop, or `X-Real-IP`. Personal data: anyone allowed to read audit logs can see it. Not authenticated. Do not treat it as the client |
 | `userAgent` | `User-Agent` header |
 | `occurredAt` | Timestamp of the audit row |
 | `changes[]` | `{ path, oldValue, newValue }` for each changed field |
@@ -45,7 +45,7 @@ Do not wrap `audit-logs`. The helper throws. The record hooks also ignore that s
 
 Captures are not a stack. An update is stored under `collection:id` and replaced if that id is written again, and also under the `data` object for that call. A missing key is a miss. A failed write cannot hand its snapshot to the next document. Parallel and bulk writes in one request each keep their own `previousDoc`.
 
-Updates with no business-field diff (only `updatedAt`) do not insert a row. Creates and deletes always do. At most 64 change rows are stored; the last row is a `_truncated` marker when the diff is wider.
+Updates with no business-field diff (only `updatedAt`) do not insert a row. Creates and deletes always do. At most 64 change rows are stored. Redacted rows, including "password submitted", are kept ahead of ordinary fields. The last row is a `_truncated` marker when the diff is wider.
 
 ## Secrets
 
@@ -85,7 +85,9 @@ The D1 adapter's `beginTransaction` is a no-op unless `transactionOptions` is co
 
 `FailOpenAuditLogWriter` decorates that writer and swallows a still-failing insert. Each dropped write increments `droppedAuditWriteCount` and is logged as a structured error (`err`, `msg`, `droppedAuditWrites`) without field values.
 
-Change rows are inserted in batches of 16. D1 allows 100 bound parameters, and each change row uses six (`16 * 6 = 96`). The insert stays on the request. `waitUntil` is not used: the user's row is already committed before `afterChange` returns, and a detached insert can outlive a failed request or be dropped when the isolate exits, with nobody left to notice.
+The parent row and the first 16 change rows are created together. D1 allows 100 bound parameters, and each change row uses six (`16 * 6 = 96`). Further rows are written with `payload.update` (the adapter chunks the SQL). `payload.db.insert` is not used. If a later batch fails, that partial log is deleted and the write counts as dropped, so a short diff is never shown as complete. If the delete fails, the row stays and is marked `[incomplete]` with a `_partial` change row, and it is not counted as fully dropped. The insert stays on the request. `waitUntil` is not used: the user's row is already committed before `afterChange` returns, and a detached insert can outlive a failed request or be dropped when the isolate exits, with nobody left to notice.
+
+`untrustedClientIp` is personal data. Readers who can open Audit Logs can see it. It is not a trusted client address.
 
 Tradeoff: the audit row is not atomic with the user's row. A crash between the two can leave a change without a log. That is accepted so logging cannot roll back or 500 the user's write.
 
