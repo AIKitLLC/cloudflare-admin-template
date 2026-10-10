@@ -428,6 +428,13 @@ describe('row scope access', () => {
         user: asUser(fixture.actor),
       }),
     ).rejects.toThrow(SCOPE_ROLE_TARGET_ERROR)
+    await payload.update({
+      collection: 'users',
+      id: fixture.childUser.id,
+      data: { roles: [fixture.insideRoleId, fixture.freshRoleId] },
+      overrideAccess: false,
+      user: asUser(fixture.actor),
+    })
     await grantKey(payload, fixture.insideRoleId, 'media:read')
     await expect(
       payload.update({
@@ -438,13 +445,6 @@ describe('row scope access', () => {
         user: asUser(fixture.actor),
       }),
     ).rejects.toThrow(SCOPE_TARGET_KEYS_ERROR)
-    await payload.update({
-      collection: 'users',
-      id: fixture.childUser.id,
-      data: { roles: [fixture.insideRoleId, fixture.freshRoleId] },
-      overrideAccess: false,
-      user: asUser(fixture.actor),
-    })
   })
 })
 

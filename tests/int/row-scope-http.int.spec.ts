@@ -3,12 +3,16 @@ import { GRAPHQL_POST, REST_DELETE, REST_GET, REST_PATCH, REST_POST } from '@pay
 import { getPayload, type CollectionSlug, type Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
+import { SUPER_ADMIN_SLUG } from '@/access/constants'
 import { relationIds } from '@/access/relation-id'
 import config from '@/payload.config'
+import { PRIVILEGED_USER_ERROR } from '@/rbac/guards/privilege-errors'
+import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
 import {
   SCOPE_ASSIGNMENT_ERROR,
   SCOPE_GRANT_ERROR,
   SCOPE_RECORD_ERROR,
+  SCOPE_ROLE_TARGET_ERROR,
   SCOPE_TARGET_KEYS_ERROR,
   SELF_SCOPE_ASSIGNMENT_ERROR,
 } from '@/scope/errors'
@@ -298,8 +302,8 @@ describe('row scope HTTP and GraphQL', () => {
       ),
       route(['users', String(fixture.eastUser.id)]),
     )
-    expect(roleTarget.status).toBeGreaterThanOrEqual(400)
-    expect(JSON.stringify(await roleTarget.json())).toMatch(/not found|forbidden|not allowed/i)
+    expect(roleTarget.status).toBe(403)
+    expect(JSON.stringify(await roleTarget.json())).toContain(SCOPE_ROLE_TARGET_ERROR)
 
     const graphqlRole = await graphql(
       jsonRequest('/api/graphql', {
@@ -312,7 +316,7 @@ describe('row scope HTTP and GraphQL', () => {
         },
       }),
     )
-    expect(JSON.stringify(await graphqlRole.json())).toMatch(/not found|forbidden|not allowed/i)
+    expect(JSON.stringify(await graphqlRole.json())).toContain(SCOPE_ROLE_TARGET_ERROR)
 
     const insideAssign = await patch(
       jsonRequest(
@@ -446,6 +450,117 @@ describe('row scope HTTP and GraphQL', () => {
       route(['users', String(fixture.emptyUser.id)]),
     )
     expect(peer.status).toBeLessThan(300)
+  })
+
+  it('keeps account-takeover refusals for in-scope and unscoped privileged users', async () => {
+    const superAdminRole = await payload.find({
+      collection: 'roles' as CollectionSlug,
+      depth: 0,
+      limit: 1,
+      overrideAccess: true,
+      where: { slug: { equals: SUPER_ADMIN_SLUG } },
+    })
+    const adminEmail = `scope-admin-${fixture.stamp}@example.com`
+    const adminPassword = 'test-password-123'
+    const admin = await payload.create({
+      collection: 'users',
+      data: {
+        email: adminEmail,
+        password: adminPassword,
+        roles: [superAdminRole.docs[0].id],
+      },
+      overrideAccess: true,
+      context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+    })
+    fixture.userIds.push(Number(admin.id))
+
+    const passwordPatch = await patch(
+      jsonRequest(
+        `/api/users/${admin.id}`,
+        { password: 'stolen-password-456' },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['users', String(admin.id)]),
+    )
+    expect(passwordPatch.status).toBe(403)
+    expect(JSON.stringify(await passwordPatch.json())).toContain(PRIVILEGED_USER_ERROR)
+    const adminLogin = await post(
+      jsonRequest('/api/users/login', { email: adminEmail, password: adminPassword }, ''),
+      route(['users', 'login']),
+    )
+    expect(adminLogin.status).toBe(200)
+    const stolen = await post(
+      jsonRequest('/api/users/login', { email: adminEmail, password: 'stolen-password-456' }, ''),
+      route(['users', 'login']),
+    )
+    expect(stolen.status).toBeGreaterThanOrEqual(400)
+
+    const graphqlPassword = await graphql(
+      jsonRequest('/api/graphql', {
+        query: `mutation Take($id: Int!, $password: String) {
+          updateUser(id: $id, data: { password: $password }) { id }
+        }`,
+        variables: { id: Number(admin.id), password: 'stolen-password-456' },
+      }),
+    )
+    expect(JSON.stringify(await graphqlPassword.json())).toContain(PRIVILEGED_USER_ERROR)
+
+    const forgot = await post(
+      jsonRequest('/api/users/forgot-password', { email: adminEmail }, cookie),
+      route(['users', 'forgot-password']),
+    )
+    expect(forgot.status).toBe(403)
+    expect(JSON.stringify(await forgot.json())).toContain(PRIVILEGED_USER_ERROR)
+
+    const childPassword = await patch(
+      jsonRequest(
+        `/api/users/${fixture.childUser.id}`,
+        { password: 'stolen-password-456' },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['users', String(fixture.childUser.id)]),
+    )
+    expect(childPassword.status).toBe(403)
+    expect(JSON.stringify(await childPassword.json())).toContain(PRIVILEGED_USER_ERROR)
+    const childLogin = await post(
+      jsonRequest(
+        '/api/users/login',
+        { email: fixture.childUser.email, password: fixture.childUser.password },
+        '',
+      ),
+      route(['users', 'login']),
+    )
+    expect(childLogin.status).toBe(200)
+
+    const childDelete = await remove(
+      getRequest(`/api/users/${fixture.childUser.id}`, 'DELETE'),
+      route(['users', String(fixture.childUser.id)]),
+    )
+    expect(childDelete.status).toBe(403)
+    expect(JSON.stringify(await childDelete.json())).toContain(PRIVILEGED_USER_ERROR)
+
+    const lesserEmail = `scope-lesser-${fixture.stamp}@example.com`
+    const edited = await patch(
+      jsonRequest(
+        `/api/users/${fixture.emptyUser.id}`,
+        { email: lesserEmail },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['users', String(fixture.emptyUser.id)]),
+    )
+    expect(edited.status).toBeLessThan(300)
+    const stored = await payload.findByID({
+      collection: 'users',
+      id: fixture.emptyUser.id,
+      overrideAccess: true,
+    })
+    expect(stored.email).toBe(lesserEmail)
   })
 })
 
