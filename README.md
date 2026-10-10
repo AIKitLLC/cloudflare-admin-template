@@ -17,7 +17,7 @@ Designed as an extensible starter kit for building custom back-office portals, i
 - **Storage:** [Cloudflare R2](https://developers.cloudflare.com/r2/) (S3-compatible asset storage via `@payloadcms/storage-r2`)
 - **Testing:** [Vitest](https://vitest.dev) & [Playwright](https://playwright.dev)
 
-> **Note:** Deploying Next.js via OpenNext on Cloudflare Workers currently requires the **Cloudflare Workers Paid** plan due to worker bundle size requirements (>3MB).
+> **Workers Paid.** A dry run of this Worker is about **15.2 MiB** uncompressed and **3.5 MiB** gzip. Gzip is over 3 MiB, so deploy on the **Workers Paid** plan. Details are in [docs/worker-build.md](docs/worker-build.md).
 
 ---
 
@@ -133,23 +133,60 @@ pnpm generate:types
 ### 1. Create Cloudflare Resources
 
 Create your D1 Database:
+
 ```bash
 pnpm wrangler d1 create <YOUR_DATABASE_NAME>
 ```
 
 Create your R2 Bucket:
+
 ```bash
 pnpm wrangler r2 bucket create <YOUR_BUCKET_NAME>
 ```
 
 Update `wrangler.jsonc` with your D1 `database_id` and R2 bucket name.
 
-### 2. Run Database Migrations & Deploy
+### 2. Apply database migrations
+
+The template already includes `src/migrations/20250929_111647`. Apply it to the local D1 database:
 
 ```bash
-pnpm payload migrate:create
+pnpm payload migrate
+```
+
+Run `pnpm payload migrate:create` only after a schema change, when you need a new migration file.
+
+`pnpm run deploy` applies those migrations to the remote D1 database (`payload migrate` with `NODE_ENV=production`) and then runs `PRAGMA optimize`.
+
+### 3. Build the Worker and deploy
+
+Build the OpenNext bundle. `pnpm build` only runs Next.js. `pnpm build:worker` runs that build through OpenNext and applies the preview-props patch described in [docs/worker-build.md](docs/worker-build.md).
+
+```bash
+pnpm build:worker
+```
+
+Check the bundle without uploading anything:
+
+```bash
+pnpm exec wrangler deploy --dry-run
+```
+
+Serve that bundle on your machine with local D1 and R2:
+
+```bash
+pnpm exec wrangler dev --local
+```
+
+Open [http://localhost:8787/admin](http://localhost:8787/admin).
+
+Set `PAYLOAD_SECRET` on the Worker before the first real deploy (`wrangler secret put PAYLOAD_SECRET`). Then deploy migrations and the app:
+
+```bash
 pnpm run deploy
 ```
+
+The dry-run bundle is about 15.2 MiB uncompressed and 3.5 MiB gzip. Gzip is over 3 MiB. Use the Workers Paid plan.
 
 ---
 
@@ -161,6 +198,9 @@ pnpm test:int
 
 # Run end-to-end Playwright tests
 pnpm test:e2e
+
+# Rebuild the Worker, dry-run the bundle, and serve /admin locally
+pnpm test:worker
 ```
 
 ---
