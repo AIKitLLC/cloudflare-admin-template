@@ -16,6 +16,8 @@ import { resolvePublicServerURL } from './config/public-server-url'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
 import { migrations } from './migrations'
+import { Jobs } from './jobs/collection/Jobs'
+import { retryJobMutation } from './jobs/graphql/retry-job-mutation'
 import { Permissions } from './rbac/collections/Permissions'
 import { RolePermissions } from './rbac/collections/RolePermissions'
 import { Roles } from './rbac/collections/Roles'
@@ -77,7 +79,10 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
     components: {
-      afterNavLinks: ['/components/rbac/PermissionMatrixNavLink#PermissionMatrixNavLink'],
+      afterNavLinks: [
+        '/components/rbac/PermissionMatrixNavLink#PermissionMatrixNavLink',
+        '/components/jobs/JobsNavLink#JobsNavLink',
+      ],
       views: {
         permissionMatrix: {
           Component: '/components/rbac/PermissionMatrixView#PermissionMatrixView',
@@ -87,11 +92,22 @@ export default buildConfig({
             title: 'Permission Matrix',
           },
         },
+        jobMonitor: {
+          Component: '/components/jobs/JobsDashboardView#JobsDashboardView',
+          path: '/job-monitor',
+          exact: true,
+          meta: {
+            title: 'Job Monitor',
+          },
+        },
       },
     },
   },
-  collections: ensureRbacCoverage([Users, Media, Roles, Permissions, RolePermissions]),
+  collections: ensureRbacCoverage([Users, Media, Roles, Permissions, RolePermissions, Jobs]),
   endpoints: [matrixEndpoint, grantEndpoint],
+  graphQL: {
+    mutations: retryJobMutation,
+  },
   serverURL,
   cors: allowedOrigins,
   csrf: allowedOrigins,

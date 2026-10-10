@@ -147,7 +147,13 @@ pnpm payload migrate
 
 `src/migrations/20261010_080938_rbac_permission_matrix.ts` creates `roles`, `permissions`, `role_permissions`, and the user-role join. It is registered in `src/migrations/index.ts` and passed to the D1 adapter as `prodMigrations`, so a production Worker also applies it on connect. See [docs/rbac.md](docs/rbac.md) for the access pipeline and the extension points used by later features.
 
----
+## Background jobs
+
+Long-running work is a row in `jobs`, not an HTTP request. Only names registered with `defineJob` can run. The admin **Job Monitor** (`/admin/job-monitor`) lists jobs, shows redacted payloads and logs, and can trigger or retry when the role has `jobs:trigger` or `jobs:retry`. Viewing requires `jobs:read`. Those keys are denied until granted.
+
+Production delivery uses Cloudflare Queues and a cron trigger. The Worker entry is `custom-worker.ts`, which adds `queue` and `scheduled` on top of the OpenNext `fetch` handler. Local `pnpm dev` and Vitest run jobs in-process when the queue binding is not used. See [docs/jobs.md](docs/jobs.md).
+
+The queue names in `wrangler.jsonc` (`placeholder-jobs`, `placeholder-jobs-dlq`) are placeholders. Create the real queues and replace those names before the first deploy that should process jobs. The cron in that file is also a placeholder schedule.
 
 ## 🚢 Deployment
 

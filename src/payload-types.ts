@@ -72,6 +72,7 @@ export interface Config {
     roles: Role;
     permissions: Permission;
     'role-permissions': RolePermission;
+    jobs: Job;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -84,6 +85,7 @@ export interface Config {
     roles: RolesSelect<false> | RolesSelect<true>;
     permissions: PermissionsSelect<false> | PermissionsSelect<true>;
     'role-permissions': RolePermissionsSelect<false> | RolePermissionsSelect<true>;
+    jobs: JobsSelect<false> | JobsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -202,7 +204,7 @@ export interface Permission {
   label: string;
   description?: string | null;
   collectionSlug: string;
-  action: 'create' | 'read' | 'update' | 'delete' | 'export' | 'readField' | 'writeField';
+  action: 'create' | 'read' | 'update' | 'delete' | 'export' | 'readField' | 'writeField' | 'trigger' | 'retry';
   /**
    * Empty for collection actions. Dotted path for field permissions.
    */
@@ -225,6 +227,46 @@ export interface RolePermission {
   role: number | Role;
   permission: number | Permission;
   granted?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Background jobs. Trigger and retry from the job monitor. Payloads are redacted before they are stored.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "jobs".
+ */
+export interface Job {
+  id: number;
+  name: string;
+  payload:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+  error?: string | null;
+  logs?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  attempt: number;
+  maxAttempts: number;
+  runAt?: string | null;
+  leaseExpiresAt?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  idempotencyKey: string;
+  claimToken?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -388,6 +430,27 @@ export interface RolePermissionsSelect<T extends boolean = true> {
   role?: T;
   permission?: T;
   granted?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "jobs_select".
+ */
+export interface JobsSelect<T extends boolean = true> {
+  name?: T;
+  payload?: T;
+  status?: T;
+  error?: T;
+  logs?: T;
+  attempt?: T;
+  maxAttempts?: T;
+  runAt?: T;
+  leaseExpiresAt?: T;
+  startedAt?: T;
+  finishedAt?: T;
+  idempotencyKey?: T;
+  claimToken?: T;
   updatedAt?: T;
   createdAt?: T;
 }

@@ -1,0 +1,83 @@
+.jobs-nav-link {
+  display: block;
+  margin: 0.25rem 1rem 0.75rem;
+  padding: 0.4rem 0.5rem;
+  color: var(--theme-text);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.jobs-nav-link:hover {
+  text-decoration: underline;
+}
+
+.jobs-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem 0 3rem;
+  color: var(--theme-text);
+}
+
+.jobs-dashboard h1,
+.jobs-dashboard p {
+  margin: 0;
+}
+
+.jobs-dashboard__intro {
+  max-width: 72ch;
+  line-height: 1.5;
+}
+
+.jobs-dashboard__status {
+  color: var(--theme-success-500, #027a48);
+}
+
+.jobs-dashboard__form,
+.jobs-dashboard__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.jobs-dashboard label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.jobs-dashboard textarea,
+.jobs-dashboard select {
+  min-width: 16rem;
+  font: inherit;
+}
+
+.jobs-dashboard__table-wrap {
+  overflow: auto;
+  border: 1px solid var(--theme-elevation-150);
+}
+
+.jobs-dashboard table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.jobs-dashboard th,
+.jobs-dashboard td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--theme-elevation-100);
+  text-align: left;
+  vertical-align: top;
+}
+
+.jobs-dashboard pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 0.8rem;
+}
+
+.jobs-dashboard button {
+  margin-right: 0.4rem;
+}

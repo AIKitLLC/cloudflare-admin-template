@@ -2,6 +2,7 @@ import type { CollectionConfig } from 'payload'
 
 import { PERMISSION_ACTIONS } from '../../access/constants'
 import { withRbac } from '../../access/with-rbac'
+import { JOB_DISPATCH_ACTIONS } from '../../jobs/constants'
 
 export const Permissions: CollectionConfig = withRbac({
   slug: 'permissions',
@@ -48,7 +49,10 @@ export const Permissions: CollectionConfig = withRbac({
       name: 'action',
       type: 'select',
       required: true,
-      options: PERMISSION_ACTIONS.map((action) => ({ label: action, value: action })),
+      options: [...PERMISSION_ACTIONS, ...JOB_DISPATCH_ACTIONS].map((action) => ({
+        label: action,
+        value: action,
+      })),
     },
     {
       name: 'fieldPath',
