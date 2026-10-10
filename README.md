@@ -72,9 +72,12 @@ Open [http://localhost:3000/admin](http://localhost:3000/admin) to access the ad
 ```text
 ├── src/
 │   ├── app/                 # Next.js App Router (Admin & API endpoints)
+│   ├── access/              # RBAC decision pipeline and collection/field helpers
 │   ├── collections/         # Payload Collection definitions
 │   │   ├── Users.ts         # User authentication collection
 │   │   └── Media.ts         # Asset upload collection (R2)
+│   ├── components/rbac/     # Permission matrix admin view
+│   ├── rbac/                # Roles, permissions, seeding, and matrix API
 │   ├── migrations/          # D1 database migrations
 │   ├── payload.config.ts    # Main Payload CMS configuration & bindings
 │   └── payload-types.ts     # Auto-generated TypeScript types
@@ -88,34 +91,32 @@ Open [http://localhost:3000/admin](http://localhost:3000/admin) to access the ad
 
 ## 📦 Adding Custom Service Collections
 
-Define your collections using TypeScript code in `src/collections/`:
+Wrap collections with `withRbac` so they join the permission matrix. Startup sync creates `create`, `read`, `update`, `delete`, and `export` permissions plus field read/write permissions for every data field.
 
 ```typescript
 import type { CollectionConfig } from 'payload'
+import { withRbac } from '../access/with-rbac'
 
-export const Customers: CollectionConfig = {
+export const Customers: CollectionConfig = withRbac({
   slug: 'customers',
   admin: {
     useAsTitle: 'name',
-  },
-  access: {
-    read: ({ req: { user } }) => Boolean(user),
   },
   fields: [
     { name: 'name', type: 'text', required: true },
     { name: 'email', type: 'email', required: true, unique: true },
     { name: 'status', type: 'select', options: ['active', 'suspended'], defaultValue: 'active' },
   ],
-}
+})
 ```
 
-Add your collection to `src/payload.config.ts`:
+Add the collection to `src/payload.config.ts`:
 
 ```typescript
 import { Customers } from './collections/Customers'
 
 export default buildConfig({
-  collections: [Users, Media, Customers],
+  collections: [Users, Media, Roles, Permissions, RolePermissions, Customers],
   // ...
 })
 ```
@@ -126,6 +127,25 @@ Generate updated TypeScript types:
 pnpm generate:types
 ```
 
+Restart the app once so the permission catalog picks up the new collection. Grant the new keys from **Permission Matrix** in the admin nav.
+
+## 🔐 Role-Based Access Control
+
+Roles, permissions, and role-permission grants live in D1.
+
+- **Super Admin** (`grantsFullAccess`) bypasses the matrix. The first user, and every existing user when no roles are assigned yet, receives this role so an upgrade cannot lock the admin out.
+- Other roles start with no grants. Assign actions per collection and read/write per field in `/admin/permission-matrix`.
+- `GET /api/{collection}/export` returns CSV. It requires the `export` action and still applies read and field permissions.
+- Media keeps anonymous read for public file URLs. Signed-in users still need `media:read`.
+
+Run the committed D1 migration before production deploy:
+
+```bash
+pnpm payload migrate
+```
+
+`src/migrations/20261010_080938_rbac_permission_matrix.ts` creates `roles`, `permissions`, `role_permissions`, and the user-role join. It is registered in `src/migrations/index.ts` and passed to the D1 adapter as `prodMigrations`, so a production Worker also applies it on connect. See [docs/rbac.md](docs/rbac.md) for the access pipeline and the extension points used by later features.
+
 ---
 
 ## 🚢 Deployment
@@ -133,11 +153,13 @@ pnpm generate:types
 ### 1. Create Cloudflare Resources
 
 Create your D1 Database:
+
 ```bash
 pnpm wrangler d1 create <YOUR_DATABASE_NAME>
 ```
 
 Create your R2 Bucket:
+
 ```bash
 pnpm wrangler r2 bucket create <YOUR_BUCKET_NAME>
 ```
@@ -161,6 +183,9 @@ pnpm test:int
 
 # Run end-to-end Playwright tests
 pnpm test:e2e
+
+# Compile the Next.js app (Payload 3.82 has no `payload build` command)
+pnpm build
 ```
 
 ---

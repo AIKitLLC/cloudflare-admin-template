@@ -8,8 +8,15 @@ import { CloudflareContext, getCloudflareContext } from '@opennextjs/cloudflare'
 import { GetPlatformProxyOptions } from 'wrangler'
 import { r2Storage } from '@payloadcms/storage-r2'
 
+import { applyFieldAccess } from './access/fields/apply-field-access'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
+import { migrations } from './migrations'
+import { Permissions } from './rbac/collections/Permissions'
+import { RolePermissions } from './rbac/collections/RolePermissions'
+import { Roles } from './rbac/collections/Roles'
+import { grantEndpoint, matrixEndpoint } from './rbac/endpoints/matrix-handlers'
+import { seedRbac } from './rbac/seed/seed-rbac'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -17,6 +24,7 @@ const realpath = (value: string) => (fs.existsSync(value) ? fs.realpathSync(valu
 
 const isCLI = process.argv.some((value) => realpath(value).endsWith(path.join('payload', 'bin.js')))
 const isProduction = process.env.NODE_ENV === 'production'
+const isNextProductionBuild = process.env.NEXT_PHASE === 'phase-production-build'
 
 const createLog =
   (level: string, fn: typeof console.log) => (objOrMsg: object | string, msg?: string) => {
@@ -39,7 +47,7 @@ const cloudflareLogger = {
 } as any // Use PayloadLogger type when it's exported
 
 const cloudflare =
-  isCLI || !isProduction
+  isCLI || !isProduction || isNextProductionBuild
     ? await getCloudflareContextFromWrangler()
     : await getCloudflareContext({ async: true })
 
@@ -49,16 +57,37 @@ export default buildConfig({
     importMap: {
       baseDir: path.resolve(dirname),
     },
+    components: {
+      afterNavLinks: ['/components/rbac/PermissionMatrixNavLink#PermissionMatrixNavLink'],
+      views: {
+        permissionMatrix: {
+          Component: '/components/rbac/PermissionMatrixView#PermissionMatrixView',
+          path: '/permission-matrix',
+          exact: true,
+          meta: {
+            title: 'Permission Matrix',
+          },
+        },
+      },
+    },
   },
-  collections: [Users, Media],
+  collections: [Users, Media, Roles, Permissions, RolePermissions],
+  endpoints: [matrixEndpoint, grantEndpoint],
+  onInit: async (payload) => {
+    applyFieldAccess(payload)
+    await seedRbac(payload)
+  },
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
-  db: sqliteD1Adapter({ binding: cloudflare.env.D1 }),
+  db: sqliteD1Adapter({
+    binding: cloudflare.env.D1,
+    prodMigrations: migrations,
+  }),
   logger: isProduction ? cloudflareLogger : undefined,
-  storage: [
+  plugins: [
     r2Storage({
       bucket: cloudflare.env.R2,
       collections: { media: true },
@@ -72,7 +101,7 @@ function getCloudflareContextFromWrangler(): Promise<CloudflareContext> {
     ({ getPlatformProxy }) =>
       getPlatformProxy({
         environment: process.env.CLOUDFLARE_ENV,
-        remoteBindings: isProduction,
+        remoteBindings: isProduction && !isNextProductionBuild,
       } satisfies GetPlatformProxyOptions),
   )
 }

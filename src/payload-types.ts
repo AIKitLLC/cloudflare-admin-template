@@ -69,6 +69,9 @@ export interface Config {
   collections: {
     users: User;
     media: Media;
+    roles: Role;
+    permissions: Permission;
+    'role-permissions': RolePermission;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -78,6 +81,9 @@ export interface Config {
   collectionsSelect: {
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
+    roles: RolesSelect<false> | RolesSelect<true>;
+    permissions: PermissionsSelect<false> | PermissionsSelect<true>;
+    'role-permissions': RolePermissionsSelect<false> | RolePermissionsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -123,6 +129,10 @@ export interface UserAuthOperations {
  */
 export interface User {
   id: number;
+  /**
+   * Access roles. A user with no roles cannot read or change collections. The roles field itself is not self-service editable.
+   */
+  roles?: (number | Role)[] | null;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -143,6 +153,27 @@ export interface User {
   collection: 'users';
 }
 /**
+ * Named access roles. The super-admin role bypasses the permission matrix.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "roles".
+ */
+export interface Role {
+  id: number;
+  name: string;
+  /**
+   * Stable identifier, for example super-admin or support.
+   */
+  slug: string;
+  description?: string | null;
+  /**
+   * Bypasses every collection, action, and field check. Reserved for super-admin.
+   */
+  grantsFullAccess?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "media".
  */
@@ -158,6 +189,44 @@ export interface Media {
   filesize?: number | null;
   width?: number | null;
   height?: number | null;
+}
+/**
+ * Catalog of collection actions and field permissions. Synced from the Payload config on startup.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "permissions".
+ */
+export interface Permission {
+  id: number;
+  key: string;
+  label: string;
+  description?: string | null;
+  collectionSlug: string;
+  action: 'create' | 'read' | 'update' | 'delete' | 'export' | 'readField' | 'writeField';
+  /**
+   * Empty for collection actions. Dotted path for field permissions.
+   */
+  fieldPath?: string | null;
+  /**
+   * Inactive permissions belong to collections or fields that are no longer in the config.
+   */
+  active?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Grants joining a role to a permission. The permission matrix edits this collection.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "role-permissions".
+ */
+export interface RolePermission {
+  id: number;
+  role: number | Role;
+  permission: number | Permission;
+  granted?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -190,6 +259,18 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'media';
         value: number | Media;
+      } | null)
+    | ({
+        relationTo: 'roles';
+        value: number | Role;
+      } | null)
+    | ({
+        relationTo: 'permissions';
+        value: number | Permission;
+      } | null)
+    | ({
+        relationTo: 'role-permissions';
+        value: number | RolePermission;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -238,6 +319,7 @@ export interface PayloadMigration {
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
+  roles?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;
@@ -270,6 +352,44 @@ export interface MediaSelect<T extends boolean = true> {
   filesize?: T;
   width?: T;
   height?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "roles_select".
+ */
+export interface RolesSelect<T extends boolean = true> {
+  name?: T;
+  slug?: T;
+  description?: T;
+  grantsFullAccess?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "permissions_select".
+ */
+export interface PermissionsSelect<T extends boolean = true> {
+  key?: T;
+  label?: T;
+  description?: T;
+  collectionSlug?: T;
+  action?: T;
+  fieldPath?: T;
+  active?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "role-permissions_select".
+ */
+export interface RolePermissionsSelect<T extends boolean = true> {
+  role?: T;
+  permission?: T;
+  granted?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
