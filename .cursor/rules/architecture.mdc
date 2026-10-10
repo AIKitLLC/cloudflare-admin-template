@@ -1,0 +1,14 @@
+---
+description: Real module boundaries. Ponytail still forbids speculative abstractions.
+alwaysApply: true
+---
+
+# Architecture
+
+The map is `docs/ARCHITECTURE.md`. The full rule is in `AGENTS.md`.
+
+Decouple at real boundaries: domain modules, adapters for external services, and platform bindings. No speculative abstractions or single-implementation interfaces.
+
+Modules talk through explicit public entry points. No deep imports across modules. `src/payload.config.ts` is the composition root.
+
+Ponytail (`full`, `.agents/skills/ponytail/SKILL.md`) still applies. A new interface needs a second real caller or an external system. Otherwise keep the function that already exists.

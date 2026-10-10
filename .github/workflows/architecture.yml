@@ -1,0 +1,29 @@
+# Report-only architecture drift. TypeScript is a supported arcade-agent language.
+# The action is pinned to the 0.4.1 release commit. The PyPI pin is explicit.
+# Read-only permissions: the job logs the report and does not comment or upload artifacts.
+name: Architecture
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  analyze:
+    name: arcade-agent
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Analyze architecture drift
+        uses: arcade-agent/arcade-agent/actions/analyze@2fde72bcf6cd1f861b8f25b09c0a1d7bc83b820d
+        with:
+          arcade-agent-version: "0.4.1"
+          python-version: "3.12"
+          install-extras: "[languages]"
+          language: typescript
+          post-pr-comment: "false"
+          upload-artifacts: "false"
+          store-baseline-on-push: "false"
+          run-secondary-analyses: "true"

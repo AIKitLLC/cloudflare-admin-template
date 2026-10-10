@@ -1,0 +1,16 @@
+---
+description: Cloudflare skills to read before changing Workers, D1, R2, or OpenNext code.
+alwaysApply: true
+---
+
+# Cloudflare
+
+This app runs on Cloudflare Workers through OpenNext, with D1 and R2. Before designing or editing that code, read the matching skill in https://github.com/cloudflare/skills at commit `0871daceb347e3c51693fbe9c77555468df7e410`. Do not vendor those skills. Details and the deploy ban are in `AGENTS.md`.
+
+- `skills/wrangler` for Wrangler config and commands. Use the Wrangler version in `package.json`.
+- `skills/workers-best-practices` for runtime, bindings, secrets, and logs.
+- `skills/durable-objects` only when adding Durable Objects. None exist in this repo.
+- `skills/web-perf` for loading and interaction performance.
+- `skills/nextjs-on-cloudflare` for Next.js on Workers. This repo uses OpenNext (`@opennextjs/cloudflare`), not vinext.
+
+Do not deploy, log in, or set secrets.
