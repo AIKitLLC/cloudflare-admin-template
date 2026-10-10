@@ -18,6 +18,7 @@ import {
   PRIVILEGED_USER_ERROR,
   SUBSET_ASSIGNMENT_ERROR,
 } from './privilege-errors'
+import { assertUserWithinActorScope } from '../../scope/guards/assert-user-within-actor-scope'
 import { skipsPrivilegeChecks } from './privilege-context'
 import { grantedKeysByRole } from './role-permission-keys'
 
@@ -80,6 +81,7 @@ export const guardAuthCredentialOperation: CollectionBeforeOperationHook = async
     target,
     targetId: target?.id,
   })
+  await assertUserWithinActorScope(req, target)
   return args
 }
 

@@ -8,6 +8,7 @@ export {
   SCOPE_RECORD_ERROR,
   SCOPE_RECORD_MISMATCH_ERROR,
   SCOPE_ROLE_TARGET_ERROR,
+  SCOPE_USER_ERROR,
   SELF_SCOPE_ASSIGNMENT_ERROR,
 } from './errors'
 export { ensureRowScopeRegistered } from './register-row-scope'

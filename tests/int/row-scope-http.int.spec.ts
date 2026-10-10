@@ -14,6 +14,7 @@ import {
   SCOPE_RECORD_ERROR,
   SCOPE_ROLE_TARGET_ERROR,
   SCOPE_TARGET_KEYS_ERROR,
+  SCOPE_USER_ERROR,
   SELF_SCOPE_ASSIGNMENT_ERROR,
 } from '@/scope/errors'
 import { RECORDS_SLUG } from '@/scope/constants'
@@ -562,6 +563,26 @@ describe('row scope HTTP and GraphQL', () => {
     })
     expect(stored.email).toBe(lesserEmail)
   })
+
+  it('refuses to unlock a user outside the actor scope', async () => {
+    await lockAccount(fixture.eastUser.email)
+    await lockAccount(fixture.branchUser.email)
+
+    const refused = await post(
+      jsonRequest('/api/users/unlock', { email: fixture.eastUser.email.toUpperCase() }, cookie),
+      route(['users', 'unlock']),
+    )
+    expect(refused.status).toBe(403)
+    expect(JSON.stringify(await refused.json())).toContain(SCOPE_USER_ERROR)
+    expect(await readLock(fixture.eastUser.email)).toBeTruthy()
+
+    const allowed = await post(
+      jsonRequest('/api/users/unlock', { email: fixture.branchUser.email }, cookie),
+      route(['users', 'unlock']),
+    )
+    expect(allowed.status).toBe(200)
+    expect(await readLock(fixture.branchUser.email)).toBeFalsy()
+  })
 })
 
 function route(slug: string[]) {
@@ -598,6 +619,46 @@ function cookieHeader(response: Response): string {
     .map((value) => value.split(';')[0]?.trim())
     .filter((value) => value && value.includes('='))
     .join('; ')
+}
+
+async function lockAccount(email: string): Promise<void> {
+  const until = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  await db()
+    .prepare('UPDATE users SET login_attempts = 5, lock_until = ? WHERE email = ?')
+    .bind(until, email)
+    .run()
+}
+
+async function readLock(email: string): Promise<string | null> {
+  const row = await db()
+    .prepare('SELECT lock_until FROM users WHERE email = ?')
+    .bind(email)
+    .first<{ lock_until?: string | null }>()
+  return row?.lock_until ?? null
+}
+
+function db(): {
+  prepare: (query: string) => {
+    bind: (...values: unknown[]) => {
+      first: <T>() => Promise<T | null>
+      run: () => Promise<unknown>
+    }
+  }
+} {
+  const adapter = payload.db as {
+    client?: {
+      prepare: (query: string) => {
+        bind: (...values: unknown[]) => {
+          first: <T>() => Promise<T | null>
+          run: () => Promise<unknown>
+        }
+      }
+    }
+  }
+  if (!adapter.client) {
+    throw new Error('D1 client is unavailable')
+  }
+  return adapter.client
 }
 
 async function permissionId(key: string): Promise<number> {

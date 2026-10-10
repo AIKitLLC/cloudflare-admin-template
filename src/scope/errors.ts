@@ -4,6 +4,8 @@ export const SCOPE_ASSIGNMENT_ERROR = 'You can only assign scopes within your ow
 
 export const SCOPE_ROLE_TARGET_ERROR = 'You can only assign roles to users inside your scope.'
 
+export const SCOPE_USER_ERROR = 'You can only change a user inside your scope.'
+
 export const SCOPE_TARGET_KEYS_ERROR =
   'You can only assign scope to a user whose permissions are within your own.'
 
