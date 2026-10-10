@@ -10,11 +10,27 @@ export type FieldAccessMode = 'read' | 'write'
 
 export type AccessConstraint = boolean | Where
 
+export type ScopeDimension = 'organization' | 'branch' | 'data-class'
+
+/**
+ * Opt a collection into row scope. Field names narrow records.
+ * `dimension` scopes the scope-node collection itself.
+ * `assignments` enforces who may edit user scope fields.
+ */
+export type RowScopeBinding = {
+  organizationField?: string
+  branchField?: string
+  dataClassField?: string
+  dimension?: ScopeDimension
+  assignments?: boolean
+}
+
 export type RbacCollectionOptions = {
   enabled?: boolean
   anonymousRead?: boolean
   selfService?: boolean
   selfServiceFields?: string[]
+  rowScope?: RowScopeBinding
 }
 
 export type UserGrants = {

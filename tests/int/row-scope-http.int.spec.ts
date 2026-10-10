@@ -1,0 +1,377 @@
+// @vitest-environment node
+import { GRAPHQL_POST, REST_DELETE, REST_GET, REST_PATCH, REST_POST } from '@payloadcms/next/routes'
+import { getPayload, type CollectionSlug, type Payload } from 'payload'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+
+import config from '@/payload.config'
+import {
+  SCOPE_ASSIGNMENT_ERROR,
+  SCOPE_GRANT_ERROR,
+  SCOPE_RECORD_ERROR,
+  SCOPE_ROLE_TARGET_ERROR,
+  SELF_SCOPE_ASSIGNMENT_ERROR,
+} from '@/scope/errors'
+import { RECORDS_SLUG } from '@/scope/constants'
+import {
+  cleanupRowScopeFixture,
+  seedRowScopeFixture,
+  type RowScopeFixture,
+} from '../helpers/row-scope-fixture'
+
+const ORIGIN = 'http://localhost:3000'
+const post = REST_POST(config)
+const patch = REST_PATCH(config)
+const get = REST_GET(config)
+const remove = REST_DELETE(config)
+const graphql = GRAPHQL_POST(config)
+
+let payload: Payload
+let fixture: RowScopeFixture
+let cookie = ''
+
+describe('row scope HTTP and GraphQL', () => {
+  beforeAll(async () => {
+    payload = await getPayload({ config })
+    fixture = await seedRowScopeFixture(payload, `${Date.now()}-http`)
+    const login = await post(
+      jsonRequest('/api/users/login', {
+        email: fixture.actor.email,
+        password: fixture.actor.password,
+      }),
+      route(['users', 'login']),
+    )
+    expect(login.status).toBe(200)
+    cookie = cookieHeader(login)
+    expect(cookie).toContain('payload-token=')
+  }, 120000)
+
+  afterAll(async () => {
+    if (!payload || !fixture) return
+    await cleanupRowScopeFixture(payload, fixture)
+  }, 120000)
+
+  it('scopes REST lists, counts, pagination, reads, updates, deletes, creates, and export', async () => {
+    const page = await get(getRequest(`/api/records?limit=1&page=1`), route(['records']))
+    expect(page.status).toBe(200)
+    const pageBody = (await page.json()) as {
+      docs: Array<{ id: number; title?: string }>
+      hasNextPage: boolean
+      totalDocs: number
+      totalPages: number
+    }
+    expect(pageBody.totalDocs).toBe(3)
+    expect(pageBody.totalPages).toBe(3)
+    expect(pageBody.docs).toHaveLength(1)
+    expect(pageBody.hasNextPage).toBe(true)
+    const firstId = pageBody.docs[0].id
+
+    const nextPage = await get(getRequest('/api/records?limit=1&page=2'), route(['records']))
+    const nextBody = (await nextPage.json()) as { docs: Array<{ id: number }>; totalDocs: number }
+    expect(nextBody.totalDocs).toBe(3)
+    expect(nextBody.docs[0].id).not.toBe(firstId)
+
+    const counted = await get(getRequest('/api/records/count'), route(['records', 'count']))
+    expect(counted.status).toBe(200)
+    expect(await counted.json()).toMatchObject({ totalDocs: 3 })
+
+    const hidden = await get(
+      getRequest(`/api/records/${fixture.eastRecordId}`),
+      route(['records', String(fixture.eastRecordId)]),
+    )
+    expect(hidden.status).toBe(404)
+
+    const crossUpdate = await patch(
+      jsonRequest(
+        `/api/records/${fixture.eastRecordId}`,
+        { title: 'cross' },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['records', String(fixture.eastRecordId)]),
+    )
+    expect(crossUpdate.status).toBeGreaterThanOrEqual(400)
+    const east = await payload.findByID({
+      collection: RECORDS_SLUG,
+      id: fixture.eastRecordId,
+      overrideAccess: true,
+    })
+    expect(east.title).toBe(fixture.eastTitle)
+
+    const retag = await patch(
+      jsonRequest(
+        `/api/records/${fixture.westRecordId}`,
+        { organization: fixture.eastId },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['records', String(fixture.westRecordId)]),
+    )
+    expect(retag.status).toBe(403)
+    expect(JSON.stringify(await retag.json())).toContain(SCOPE_RECORD_ERROR)
+
+    const crossDelete = await remove(
+      getRequest(`/api/records/${fixture.eastRecordId}`, 'DELETE'),
+      route(['records', String(fixture.eastRecordId)]),
+    )
+    expect(crossDelete.status).toBeGreaterThanOrEqual(400)
+    const eastAfterDelete = await payload.findByID({
+      collection: RECORDS_SLUG,
+      id: fixture.eastRecordId,
+      overrideAccess: true,
+    })
+    expect(eastAfterDelete.title).toBe(fixture.eastTitle)
+
+    const created = await post(
+      jsonRequest(
+        '/api/records',
+        {
+          title: `HTTP outside ${fixture.stamp}`,
+          organization: fixture.eastId,
+          branch: fixture.eastBranchId,
+          dataClass: fixture.piiId,
+        },
+        cookie,
+      ),
+      route(['records']),
+    )
+    expect(created.status).toBe(403)
+    expect(JSON.stringify(await created.json())).toContain(SCOPE_RECORD_ERROR)
+
+    const allowed = await post(
+      jsonRequest(
+        '/api/records',
+        {
+          title: `HTTP inside ${fixture.stamp}`,
+          organization: fixture.westId,
+          branch: fixture.westSubBranchId,
+          dataClass: fixture.piiId,
+        },
+        cookie,
+      ),
+      route(['records']),
+    )
+    expect(allowed.status).toBeLessThan(300)
+    const allowedBody = (await allowed.json()) as { doc?: { id?: number } }
+    fixture.recordIds.push(Number(allowedBody.doc?.id))
+
+    const exported = await get(getRequest('/api/records/export'), route(['records', 'export']))
+    expect(exported.status).toBe(200)
+    const csv = await exported.text()
+    expect(csv).toContain(fixture.westTitle)
+    expect(csv).toContain(fixture.westChildTitle)
+    expect(csv).not.toContain(fixture.eastTitle)
+    expect(csv).not.toContain(fixture.publicTitle)
+    expect(csv).toContain(`HTTP inside ${fixture.stamp}`)
+  })
+
+  it('scopes GraphQL lists, updates, and creates', async () => {
+    const listed = await graphql(
+      jsonRequest('/api/graphql', {
+        query: `query {
+          Records(limit: 10, page: 1) { totalDocs docs { id title } }
+        }`,
+      }),
+    )
+    const listedText = JSON.stringify(await listed.json())
+    expect(listedText).toContain(fixture.westTitle)
+    expect(listedText).toContain(`HTTP inside ${fixture.stamp}`)
+    expect(listedText).toContain('"totalDocs":4')
+    expect(listedText).not.toContain(fixture.eastTitle)
+    expect(listedText).not.toContain(fixture.publicTitle)
+
+    const updated = await graphql(
+      jsonRequest('/api/graphql', {
+        query: `mutation Update($id: Int!, $title: String) {
+          updateRecord(id: $id, data: { title: $title }) { id }
+        }`,
+        variables: { id: fixture.eastRecordId, title: 'graphql-cross' },
+      }),
+    )
+    expect(JSON.stringify(await updated.json())).toMatch(/not found|forbidden|not allowed/i)
+
+    const created = await graphql(
+      jsonRequest('/api/graphql', {
+        query: `mutation Create($organization: Int!, $branch: Int!, $dataClass: Int!) {
+          createRecord(data: { title: "graphql-outside", organization: $organization, branch: $branch, dataClass: $dataClass }) { id }
+        }`,
+        variables: {
+          organization: fixture.eastId,
+          branch: fixture.eastBranchId,
+          dataClass: fixture.piiId,
+        },
+      }),
+    )
+    expect(JSON.stringify(await created.json())).toContain(SCOPE_RECORD_ERROR)
+  })
+
+  it('refuses scope escalation over REST, GraphQL, and the grant endpoint', async () => {
+    const selfEdit = await patch(
+      jsonRequest(
+        `/api/users/${fixture.actor.id}`,
+        { organizations: [fixture.westId, fixture.eastId] },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['users', String(fixture.actor.id)]),
+    )
+    expect(selfEdit.status).toBe(403)
+    expect(JSON.stringify(await selfEdit.json())).toContain(SELF_SCOPE_ASSIGNMENT_ERROR)
+
+    const graphqlSelf = await graphql(
+      jsonRequest('/api/graphql', {
+        query: `mutation Self($id: Int!, $organizations: [Int]) {
+          updateUser(id: $id, data: { organizations: $organizations }) { id }
+        }`,
+        variables: { id: fixture.actor.id, organizations: [fixture.westId, fixture.eastId] },
+      }),
+    )
+    expect(JSON.stringify(await graphqlSelf.json())).toContain(SELF_SCOPE_ASSIGNMENT_ERROR)
+
+    const wider = await patch(
+      jsonRequest(
+        `/api/users/${fixture.childUser.id}`,
+        { organizations: [fixture.westChildId, fixture.eastId] },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['users', String(fixture.childUser.id)]),
+    )
+    expect(wider.status).toBe(403)
+    expect(JSON.stringify(await wider.json())).toContain(SCOPE_ASSIGNMENT_ERROR)
+
+    const recordsUpdate = await permissionId('records:update')
+    const restGrant = await post(
+      jsonRequest(
+        '/api/role-permissions',
+        { role: fixture.outsideRoleId, permission: recordsUpdate, granted: true },
+        cookie,
+      ),
+      route(['role-permissions']),
+    )
+    expect(restGrant.status).toBe(403)
+    expect(JSON.stringify(await restGrant.json())).toContain(SCOPE_GRANT_ERROR)
+
+    const endpointGrant = await post(
+      jsonRequest(
+        '/api/rbac/grants',
+        { roleId: fixture.outsideRoleId, permissionId: recordsUpdate, granted: true },
+        cookie,
+      ),
+      route(['rbac', 'grants']),
+    )
+    expect(endpointGrant.status).toBe(403)
+    expect(await endpointGrant.json()).toMatchObject({ error: SCOPE_GRANT_ERROR })
+
+    const graphqlGrant = await graphql(
+      jsonRequest('/api/graphql', {
+        query: `mutation Grant($role: Int!, $permission: Int!) {
+          createRolePermission(data: { role: $role, permission: $permission, granted: true }) { id }
+        }`,
+        variables: { role: fixture.outsideRoleId, permission: recordsUpdate },
+      }),
+    )
+    expect(JSON.stringify(await graphqlGrant.json())).toContain(SCOPE_GRANT_ERROR)
+
+    const allowedGrant = await post(
+      jsonRequest(
+        '/api/rbac/grants',
+        { roleId: fixture.insideRoleId, permissionId: recordsUpdate, granted: true },
+        cookie,
+      ),
+      route(['rbac', 'grants']),
+    )
+    expect(allowedGrant.status).toBe(200)
+
+    const roleTarget = await patch(
+      jsonRequest(
+        `/api/users/${fixture.eastUser.id}`,
+        { roles: [fixture.outsideRoleId, fixture.freshRoleId] },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['users', String(fixture.eastUser.id)]),
+    )
+    expect(roleTarget.status).toBe(403)
+    expect(JSON.stringify(await roleTarget.json())).toContain(SCOPE_ROLE_TARGET_ERROR)
+
+    const graphqlRole = await graphql(
+      jsonRequest('/api/graphql', {
+        query: `mutation Assign($id: Int!, $roles: [Int]) {
+          updateUser(id: $id, data: { roles: $roles }) { id }
+        }`,
+        variables: {
+          id: fixture.eastUser.id,
+          roles: [fixture.outsideRoleId, fixture.freshRoleId],
+        },
+      }),
+    )
+    expect(JSON.stringify(await graphqlRole.json())).toContain(SCOPE_ROLE_TARGET_ERROR)
+
+    const insideAssign = await patch(
+      jsonRequest(
+        `/api/users/${fixture.childUser.id}`,
+        { roles: [fixture.insideRoleId, fixture.freshRoleId] },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['users', String(fixture.childUser.id)]),
+    )
+    expect(insideAssign.status).toBeLessThan(300)
+  })
+})
+
+function route(slug: string[]) {
+  return { params: Promise.resolve({ slug }) }
+}
+
+function jsonRequest(
+  path: string,
+  body: unknown,
+  cookieHeaderValue?: string,
+  origin = ORIGIN,
+  method = 'POST',
+): Request {
+  const headers = new Headers({ 'content-type': 'application/json', origin })
+  if (cookieHeaderValue ?? cookie) {
+    headers.set('cookie', cookieHeaderValue ?? cookie)
+  }
+  return new Request(`${ORIGIN}${path}`, {
+    method,
+    headers,
+    body: JSON.stringify(body),
+  })
+}
+
+function getRequest(path: string, method = 'GET'): Request {
+  const headers = new Headers({ origin: ORIGIN, cookie })
+  return new Request(`${ORIGIN}${path}`, { method, headers })
+}
+
+function cookieHeader(response: Response): string {
+  const cookies = response.headers.getSetCookie?.() ?? []
+  const parts = cookies.length > 0 ? cookies : [response.headers.get('set-cookie') ?? '']
+  return parts
+    .map((value) => value.split(';')[0]?.trim())
+    .filter((value) => value && value.includes('='))
+    .join('; ')
+}
+
+async function permissionId(key: string): Promise<number> {
+  const permission = await payload.find({
+    collection: 'permissions' as CollectionSlug,
+    depth: 0,
+    limit: 1,
+    overrideAccess: true,
+    where: { key: { equals: key } },
+  })
+  if (!permission.docs[0]) {
+    throw new Error(`Missing permission ${key}`)
+  }
+  return Number(permission.docs[0].id)
+}

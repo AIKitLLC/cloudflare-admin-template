@@ -9,9 +9,10 @@ import type { AccessGate, RowScopeContributor } from './types'
 export const beforeGrantGates: AccessGate[] = []
 
 /**
- * Issue #2 (row-level scoping) registers contributors here.
+ * Row-level scoping registers contributors here.
  * They run only after a collection permission grants access, and they do not
  * run for the full-access bypass. Return a Where clause to narrow rows.
+ * The organizational scope contributor lives in `src/scope`.
  */
 export const rowScopeContributors: RowScopeContributor[] = []
 

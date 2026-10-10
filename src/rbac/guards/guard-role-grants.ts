@@ -9,12 +9,14 @@ import { APIError } from 'payload'
 import { ROLE_PERMISSIONS_SLUG } from '../../access/constants'
 import { loadUserGrants } from '../../access/resolve/load-user-grants'
 import { relationId } from '../../access/relation-id'
+import { assertRoleHoldersWithinActorScope } from '../../scope/guards/assert-role-holders-within-actor-scope'
 import { OWN_ROLE_GRANT_ERROR, SUBSET_GRANT_ERROR } from './privilege-errors'
 import { skipsPrivilegeChecks } from './privilege-context'
 import { permissionKeysForIds } from './role-permission-keys'
 
 export async function assertMayChangeRoleGrant(args: {
   context?: unknown
+  granted?: boolean
   permissionIds?: Array<number | string>
   req: PayloadRequest
   roleId: number | string
@@ -42,6 +44,9 @@ export async function assertMayChangeRoleGrant(args: {
       throw new APIError(SUBSET_GRANT_ERROR, 403)
     }
   }
+  if (args.granted === true) {
+    await assertRoleHoldersWithinActorScope({ req: args.req, roleId: args.roleId })
+  }
 }
 
 export const guardRolePermissionWrite: CollectionBeforeChangeHook = async ({
@@ -64,10 +69,21 @@ export const guardRolePermissionWrite: CollectionBeforeChangeHook = async ({
       ),
     ),
   ]
+  const granted = grantedAfterWrite(data, originalDoc)
   for (const roleId of roleIds) {
-    await assertMayChangeRoleGrant({ context, permissionIds, req, roleId })
+    await assertMayChangeRoleGrant({ context, granted, permissionIds, req, roleId })
   }
   return data
+}
+
+function grantedAfterWrite(
+  data: { granted?: unknown } | undefined,
+  originalDoc: { granted?: unknown } | undefined,
+): boolean {
+  if (typeof data?.granted === 'boolean') {
+    return data.granted
+  }
+  return originalDoc?.granted !== false
 }
 
 export const guardRolePermissionDelete: CollectionBeforeDeleteHook = async ({
@@ -90,6 +106,7 @@ export const guardRolePermissionDelete: CollectionBeforeDeleteHook = async ({
   const permissionId = relationId(grant?.permission)
   await assertMayChangeRoleGrant({
     context,
+    granted: false,
     permissionIds: permissionId ? [permissionId] : [],
     req,
     roleId,

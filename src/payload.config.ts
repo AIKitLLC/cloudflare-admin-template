@@ -15,6 +15,11 @@ import { rbacCoveragePlugin } from './access/rbac-coverage-plugin'
 import { resolvePublicServerURL } from './config/public-server-url'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
+import { Branches } from './scope/collections/Branches'
+import { DataClasses } from './scope/collections/DataClasses'
+import { Organizations } from './scope/collections/Organizations'
+import { Records } from './scope/collections/Records'
+import { ensureRowScopeRegistered } from './scope/register-row-scope'
 import { migrations } from './migrations'
 import { Permissions } from './rbac/collections/Permissions'
 import { RolePermissions } from './rbac/collections/RolePermissions'
@@ -70,6 +75,8 @@ const cloudflare =
     ? await getCloudflareContextFromWrangler()
     : await getCloudflareContext({ async: true })
 
+ensureRowScopeRegistered()
+
 export default buildConfig({
   admin: {
     user: Users.slug,
@@ -90,7 +97,17 @@ export default buildConfig({
       },
     },
   },
-  collections: ensureRbacCoverage([Users, Media, Roles, Permissions, RolePermissions]),
+  collections: ensureRbacCoverage([
+    Users,
+    Media,
+    Roles,
+    Permissions,
+    RolePermissions,
+    Organizations,
+    Branches,
+    DataClasses,
+    Records,
+  ]),
   endpoints: [matrixEndpoint, grantEndpoint],
   serverURL,
   cors: allowedOrigins,
