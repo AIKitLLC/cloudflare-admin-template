@@ -74,8 +74,8 @@ Open [http://localhost:3000/admin](http://localhost:3000/admin) to access the ad
 │   ├── app/                 # Next.js App Router (Admin & API endpoints)
 │   ├── audit/               # Opt-in field-level audit trail (see src/audit/README.md)
 │   ├── collections/         # Payload Collection definitions
-│   │   ├── Users.ts         # User authentication collection (audited)
-│   │   └── Media.ts         # Asset upload collection (R2, audited)
+│   │   ├── Users.ts         # User authentication collection
+│   │   └── Media.ts         # Asset upload collection (R2)
 │   ├── migrations/          # D1 database migrations
 │   ├── payload.config.ts    # Main Payload CMS configuration & bindings
 │   └── payload-types.ts     # Auto-generated TypeScript types
@@ -127,37 +127,6 @@ Generate updated TypeScript types:
 pnpm generate:types
 ```
 
-### Audit trail
-
-`Users` and `Media` record an append-only audit row on create, update, and delete. Opt any other collection in with one wrapper:
-
-```typescript
-import { withAuditTrail } from '@/audit'
-
-export const Customers = withAuditTrail(
-  {
-    slug: 'customers',
-    fields: [
-      { name: 'name', type: 'text', required: true },
-      { name: 'apiKey', type: 'text' },
-    ],
-  },
-  { redactFields: ['apiKey'] },
-)
-```
-
-Passwords, tokens, hashes, salts, and session material are redacted. A failed audit write is logged and does not fail the user's change. See [src/audit/README.md](src/audit/README.md) for the design, the admin filters, and how this will plug into the RBAC work in issue #1.
-
-Apply the committed D1 migration before production deploy:
-
-```bash
-pnpm payload migrate
-```
-
-In `pnpm dev`, Payload also pushes the schema to local D1 when `NODE_ENV` is not `production`.
-
-`pnpm build` compiles the Next.js app with local Wrangler bindings. It does not call the Cloudflare API. Deploy remains `pnpm run deploy` and is unchanged.
-
 ---
 
 ## 🚢 Deployment
@@ -200,3 +169,9 @@ pnpm test:e2e
 ## 📄 License
 
 MIT © [AIKit LLC](https://github.com/AIKitLLC)
+
+## Audit trail
+
+`Users` and `Media` record an append-only, field-level audit row on create, update, and delete. Opt another collection in with `withAuditTrail` from `src/audit`. Passwords, tokens, hashes, salts, and sessions are stored as `[REDACTED]`. A failed audit write is logged and does not fail the user's change.
+
+The D1 migration `src/migrations/20261010_080422_audit_logs.ts` creates only `audit_logs` and `audit_logs_changes`. It does not create `payload_kv`. See [src/audit/README.md](src/audit/README.md) for the viewer filters and the single read check that will call `audit-logs:read` once the permission matrix from issue #1 is available.

@@ -96,11 +96,24 @@ The Audit Logs list is the viewer. Columns include timestamp, action, collection
 
 The native column filters remain available.
 
-## RBAC follow-up (issue #1)
+## RBAC follow-up (issue #1, PR #11)
 
-Do not scatter checks. When the permission matrix exists, change `authenticatedOperator` in `AuditLogAccessPolicy.ts` so `read` and `admin` call `hasCollectionPermission(user, 'audit-logs', 'read')`.
+`canReadAuditLogs` in `src/audit/access/AuditLogAccessPolicy.ts` is the only read check. `read` and `admin` both call it. Today it allows any authenticated user.
 
-Leave `create`, `update`, and `delete` returning false. Append-only is not something a role should grant by having update/delete on other collections. Keep the reject hooks so `overrideAccess` cannot mutate history. Field-level permissions from #1 should not make audit fields writable.
+PR #11 decides collection access with `evaluateCollectionAccess` and `isAccessGranted` from `src/access`. The read grant key is `audit-logs:read`. After that PR merges, change only `canReadAuditLogs` to:
+
+```ts
+const decision = await evaluateCollectionAccess({
+  req,
+  collectionSlug: 'audit-logs',
+  action: 'read',
+})
+return isAccessGranted(decision)
+```
+
+That allows a `grantsFullAccess` role and any role with `audit-logs:read`. It denies everyone else.
+
+`AuditLogs` sets `custom.rbac.enabled` so #11's catalog sync lists the collection. Do not wrap it with `withRbac`. That wrapper installs create, update, and delete from the matrix. Those three access functions stay `() => false`, so `audit-logs:update` and `audit-logs:delete` cannot edit history. The reject hooks stay so `overrideAccess` cannot either. Audit logging itself stays in collection `beforeChange` / `afterChange` hooks, which is the extension point #11 documents for this feature.
 
 ## Local test
 

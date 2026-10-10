@@ -34,6 +34,11 @@ export const AuditLogs: CollectionConfig = {
     },
   },
   access: auditLogAccess,
+  custom: {
+    rbac: {
+      enabled: true,
+    },
+  },
   defaultSort: '-occurredAt',
   disableBulkEdit: true,
   disableDuplicate: true,

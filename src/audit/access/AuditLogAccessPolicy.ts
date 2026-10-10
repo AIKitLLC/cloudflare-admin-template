@@ -1,26 +1,36 @@
 import type { Access, PayloadRequest } from 'payload'
 
 /**
- * Access policy for Audit Logs. This file is the only place that decides who
- * can see or mutate the trail.
+ * The only read check for Audit Logs. `read` and `admin` both call this.
+ * Create, update, and delete stay denied in `auditLogAccess` and are not
+ * decided here.
  *
- * Issue #1 (RBAC) adds Roles, Permissions, and RolePermissions and checks
- * action-based permissions per collection. When that lands, replace
- * `authenticatedOperator` with the permission matrix, for example:
+ * Until issue #1 lands, any authenticated operator can read. There are no roles.
  *
- *   read: ({ req }) => hasCollectionPermission(req.user, 'audit-logs', 'read')
- *   admin: ({ req }) => hasCollectionPermission(req.user, 'audit-logs', 'read')
+ * After PR #11, replace this body with the matrix read grant. Do not wrap
+ * `AuditLogs` in `withRbac`: that wrapper installs create, update, and delete
+ * from the matrix, and append-only is not a grant. `custom.rbac.enabled` is
+ * already set so the catalog sync emits `audit-logs:read` (and the other
+ * action keys) without taking over access.
  *
- * Keep `create`, `update`, and `delete` returning false. Append-only is not a
- * role grant: a role with update/delete on other collections must not gain
- * them here. Field-level RBAC should leave every audit field read-only.
- * `rejectAuditLogUpdate` / `rejectAuditLogDelete` stay in place so
- * `overrideAccess` cannot bypass the invariant.
+ *   import { evaluateCollectionAccess, isAccessGranted } from '@/access'
  *
- * Until #1 merges, every authenticated admin user can read. The template has
- * one auth collection and no roles, so "authenticated" is the whole operator set.
+ *   export async function canReadAuditLogs({ req }: { req: PayloadRequest }) {
+ *     const decision = await evaluateCollectionAccess({
+ *       req,
+ *       collectionSlug: 'audit-logs',
+ *       action: 'read',
+ *     })
+ *     return isAccessGranted(decision)
+ *   }
+ *
+ * `evaluateCollectionAccess` allows a `grantsFullAccess` role and a granted
+ * `audit-logs:read` key. It denies everyone else. Leave create, update, and
+ * delete as `() => false` so `audit-logs:update` and `audit-logs:delete` in
+ * the matrix cannot change history. Keep the reject hooks so `overrideAccess`
+ * cannot either.
  */
-export function authenticatedOperator({ req }: { req: PayloadRequest }): boolean {
+export function canReadAuditLogs({ req }: { req: PayloadRequest }): boolean {
   return Boolean(req.user)
 }
 
@@ -31,9 +41,9 @@ export const auditLogAccess: {
   update: Access
   delete: Access
 } = {
-  admin: authenticatedOperator,
+  admin: canReadAuditLogs,
   create: () => false,
-  read: authenticatedOperator,
+  read: canReadAuditLogs,
   update: () => false,
   delete: () => false,
 }
