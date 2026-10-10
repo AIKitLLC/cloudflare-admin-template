@@ -67,7 +67,7 @@ export async function applyScopeAssignmentPolicy(args: {
       }
       next[field] = toPayloadIds(merged)
     }
-    await collapseAndCapScopeFields(args.req, next)
+    await collapseAndCapScopeFields(args.req, next, args.original)
   }
 
   if (scopeExtended) {

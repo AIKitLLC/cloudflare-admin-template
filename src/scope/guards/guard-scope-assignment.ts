@@ -82,7 +82,7 @@ async function prepareScopeData(args: {
   }
   if (await userGrantsFullAccess(args.req)) {
     const next = { ...args.data }
-    await collapseAndCapScopeFields(args.req, next)
+    await collapseAndCapScopeFields(args.req, next, args.original)
     return next
   }
   return applyScopeAssignmentPolicy(args)

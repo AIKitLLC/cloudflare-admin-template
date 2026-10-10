@@ -3,7 +3,7 @@ export const SELF_SCOPE_ASSIGNMENT_ERROR = 'You cannot change your own scope ass
 export const SCOPE_ASSIGNMENT_ERROR = 'You can only assign scopes within your own scope.'
 
 export const SCOPE_ASSIGNMENT_LIMIT_ERROR =
-  'A user can have at most 80 direct organizations, branches, or data classes. Assign a parent scope instead of each descendant.'
+  'A user can have at most 20 direct organizations, branches, and data classes in total. Assign a parent scope instead of each descendant.'
 
 export const SCOPE_ROLE_TARGET_ERROR = 'You can only assign roles to users inside your scope.'
 

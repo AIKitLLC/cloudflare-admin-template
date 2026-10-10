@@ -24,13 +24,16 @@ import { loadEffectiveScope } from '@/scope/resolve/load-effective-scope'
 import {
   BRANCHES_SLUG,
   DATA_CLASSES_SLUG,
+  MAX_DIRECT_ASSIGNMENTS,
   ORGANIZATIONS_SLUG,
   RECORDS_SLUG,
+} from '@/scope/constants'
+import {
   WORK_NOTE_BRANCH_FIELD,
   WORK_NOTE_DATA_CLASS_FIELD,
   WORK_NOTE_ORGANIZATION_FIELD,
   WORK_NOTES_SLUG,
-} from '@/scope/constants'
+} from '../helpers/WorkNotes'
 import {
   cleanupRowScopeFixture,
   grantKey,
@@ -99,6 +102,13 @@ describe('row scope access', () => {
       user: asUser(fixture.branchUser),
     })
     expect(Number(organization.id)).toBe(fixture.westId)
+    const child = await payload.findByID({
+      collection: ORGANIZATIONS_SLUG as CollectionSlug,
+      id: fixture.westChildId,
+      overrideAccess: false,
+      user: asUser(fixture.branchUser),
+    })
+    expect(Number(child.id)).toBe(fixture.westChildId)
     await expect(
       payload.update({
         collection: ORGANIZATIONS_SLUG as CollectionSlug,
@@ -846,117 +856,7 @@ describe('row scope access', () => {
     }
   })
 
-  it('filters users and records for a caller with about 60 direct organizations', async () => {
-    const orgIds: number[] = []
-    const userIds: number[] = []
-    let branchId: number | undefined
-    let recordId: number | undefined
-    try {
-      for (let index = 0; index < 60; index += 1) {
-        const org = await payload.create({
-          collection: ORGANIZATIONS_SLUG,
-          data: {
-            name: `Many ${fixture.stamp} ${index}`,
-            slug: `many-${fixture.stamp}-${index}`,
-          },
-          overrideAccess: true,
-        })
-        orgIds.push(Number(org.id))
-      }
-      const reader = await payload.create({
-        collection: 'users',
-        data: {
-          email: `many-${fixture.stamp}@example.com`,
-          password: 'test-password-123',
-          roles: [fixture.actorRoleId],
-          organizations: orgIds,
-          dataClasses: [fixture.sensitiveId],
-        },
-        overrideAccess: true,
-        context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
-      })
-      userIds.push(Number(reader.id))
-      const inside = await payload.create({
-        collection: 'users',
-        data: {
-          email: `many-inside-${fixture.stamp}@example.com`,
-          password: 'test-password-123',
-          roles: [fixture.insideRoleId],
-          organizations: [orgIds[0]],
-          dataClasses: [fixture.sensitiveId],
-        },
-        overrideAccess: true,
-        context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
-      })
-      userIds.push(Number(inside.id))
-      const branch = await payload.create({
-        collection: BRANCHES_SLUG,
-        data: {
-          name: `Many branch ${fixture.stamp}`,
-          slug: `many-branch-${fixture.stamp}`,
-          organization: orgIds[0],
-        },
-        overrideAccess: true,
-      })
-      branchId = Number(branch.id)
-      const record = await payload.create({
-        collection: RECORDS_SLUG,
-        data: {
-          title: `Many record ${fixture.stamp}`,
-          organization: orgIds[0],
-          branch: branch.id,
-          dataClass: fixture.piiId,
-        },
-        overrideAccess: true,
-      })
-      recordId = Number(record.id)
-
-      expect(await visibleCount('users', reader.id, inside.id)).toBe(1)
-      expect(await visibleCount('users', reader.id, reader.id)).toBe(1)
-      expect(await visibleCount('users', reader.id, fixture.emptyUser.id)).toBe(0)
-      expect(await visibleCount('users', reader.id, fixture.eastUser.id)).toBe(0)
-      const listed = await payload.find({
-        collection: 'users',
-        depth: 0,
-        limit: 10,
-        overrideAccess: false,
-        user: asUser({ id: Number(reader.id), email: reader.email, password: '' }),
-      })
-      const counted = await payload.count({
-        collection: 'users',
-        overrideAccess: false,
-        user: asUser({ id: Number(reader.id), email: reader.email, password: '' }),
-      })
-      expect(listed.totalDocs).toBe(counted.totalDocs)
-      expect(listed.totalDocs).toBeGreaterThan(1)
-      expect(await visibleCount(RECORDS_SLUG, reader.id, record.id)).toBe(1)
-      const orgs = await payload.count({
-        collection: ORGANIZATIONS_SLUG,
-        overrideAccess: false,
-        user: asUser({ id: Number(reader.id), email: reader.email, password: '' }),
-      })
-      expect(orgs.totalDocs).toBeGreaterThanOrEqual(60)
-    } finally {
-      if (recordId !== undefined) {
-        await payload.delete({
-          collection: RECORDS_SLUG,
-          id: recordId,
-          overrideAccess: true,
-        })
-      }
-      if (branchId !== undefined) {
-        await payload.delete({
-          collection: BRANCHES_SLUG,
-          id: branchId,
-          overrideAccess: true,
-        })
-      }
-      await deleteInChunks('users', userIds, { [SKIP_RBAC_PRIVILEGE_CHECKS]: true })
-      await deleteInChunks(ORGANIZATIONS_SLUG, orgIds)
-    }
-  }, 120000)
-
-  it('keeps an ancestor assignment and refuses more than 80 direct organizations', async () => {
+  it('keeps an ancestor assignment and refuses a combined assignment list past the cap', async () => {
     const admin = await existingSuperAdmin()
     const target = await payload.create({
       collection: 'users',
@@ -986,8 +886,9 @@ describe('row scope access', () => {
     expect(relationIds(stored.organizations)).toEqual([String(fixture.westId)])
 
     const orgIds: number[] = []
+    const branchIds: number[] = []
     try {
-      for (let index = 0; index < 81; index += 1) {
+      for (let index = 0; index < MAX_DIRECT_ASSIGNMENTS + 1; index += 1) {
         const org = await payload.create({
           collection: ORGANIZATIONS_SLUG,
           data: {
@@ -1014,7 +915,63 @@ describe('row scope access', () => {
         overrideAccess: true,
       })
       expect(relationIds(unchanged.organizations)).toEqual([String(fixture.westId)])
+
+      const organizationCount = 10
+      const branchCount = MAX_DIRECT_ASSIGNMENTS - organizationCount
+      const kept = orgIds.slice(0, organizationCount)
+      await payload.update({
+        collection: 'users',
+        id: target.id,
+        data: { organizations: kept },
+        overrideAccess: false,
+        user: asUser(admin),
+      })
+      for (let index = 0; index < branchCount + 1; index += 1) {
+        const branch = await payload.create({
+          collection: BRANCHES_SLUG,
+          data: {
+            name: `Cap branch ${fixture.stamp} ${index}`,
+            slug: `cap-branch-${fixture.stamp}-${index}`,
+            organization: kept[0],
+          },
+          overrideAccess: true,
+        })
+        branchIds.push(Number(branch.id))
+      }
+      await payload.update({
+        collection: 'users',
+        id: target.id,
+        data: { branches: branchIds.slice(0, branchCount) },
+        overrideAccess: false,
+        user: asUser(admin),
+      })
+      const atCap = await payload.findByID({
+        collection: 'users',
+        id: target.id,
+        depth: 0,
+        overrideAccess: true,
+      })
+      expect(relationIds(atCap.organizations)).toEqual(kept.map(String))
+      expect(relationIds(atCap.branches)).toEqual(branchIds.slice(0, branchCount).map(String))
+      await expect(
+        payload.update({
+          collection: 'users',
+          id: target.id,
+          data: { branches: branchIds },
+          overrideAccess: false,
+          user: asUser(admin),
+        }),
+      ).rejects.toThrow(SCOPE_ASSIGNMENT_LIMIT_ERROR)
+      const still = await payload.findByID({
+        collection: 'users',
+        id: target.id,
+        depth: 0,
+        overrideAccess: true,
+      })
+      expect(relationIds(still.organizations)).toEqual(kept.map(String))
+      expect(relationIds(still.branches)).toEqual(branchIds.slice(0, branchCount).map(String))
     } finally {
+      await deleteInChunks(BRANCHES_SLUG, branchIds)
       await deleteInChunks(ORGANIZATIONS_SLUG, orgIds)
     }
   }, 120000)
@@ -1086,112 +1043,74 @@ describe('row scope access', () => {
     }
   })
 
-  it('filters records and work notes for about 10 organizations and 25 branches', async () => {
+  it('filters a second scoped collection from its own relationship fields', async () => {
     const orgIds: number[] = []
-    const branchOrgIds: number[] = []
     const branchIds: number[] = []
     const userIds: number[] = []
-    let homeBranchId: number | undefined
-    let recordId: number | undefined
-    let noteId: number | undefined
-    let outsideNoteId: number | undefined
+    const noteIds: number[] = []
     try {
       await grantKey(payload, fixture.actorRoleId, `${WORK_NOTES_SLUG}:read`)
-      for (let index = 0; index < 10; index += 1) {
+      for (let index = 0; index < 2; index += 1) {
         const org = await payload.create({
           collection: ORGANIZATIONS_SLUG,
           data: {
-            name: `Mix org ${fixture.stamp} ${index}`,
-            slug: `mix-org-${fixture.stamp}-${index}`,
+            name: `Note org ${fixture.stamp} ${index}`,
+            slug: `note-org-${fixture.stamp}-${index}`,
           },
           overrideAccess: true,
         })
         orgIds.push(Number(org.id))
-      }
-      for (let index = 0; index < 25; index += 1) {
-        const org = await payload.create({
-          collection: ORGANIZATIONS_SLUG,
-          data: {
-            name: `Mix branch org ${fixture.stamp} ${index}`,
-            slug: `mix-branch-org-${fixture.stamp}-${index}`,
-          },
-          overrideAccess: true,
-        })
-        branchOrgIds.push(Number(org.id))
         const branch = await payload.create({
           collection: BRANCHES_SLUG,
           data: {
-            name: `Mix branch ${fixture.stamp} ${index}`,
-            slug: `mix-branch-${fixture.stamp}-${index}`,
+            name: `Note branch ${fixture.stamp} ${index}`,
+            slug: `note-branch-${fixture.stamp}-${index}`,
             organization: org.id,
           },
           overrideAccess: true,
         })
         branchIds.push(Number(branch.id))
       }
-      const homeBranch = await payload.create({
-        collection: BRANCHES_SLUG,
-        data: {
-          name: `Mix home ${fixture.stamp}`,
-          slug: `mix-home-${fixture.stamp}`,
-          organization: orgIds[0],
-        },
-        overrideAccess: true,
-      })
-      homeBranchId = Number(homeBranch.id)
       const reader = await payload.create({
         collection: 'users',
         data: {
-          email: `mix-${fixture.stamp}@example.com`,
+          email: `notes-${fixture.stamp}@example.com`,
           password: 'test-password-123',
           roles: [fixture.actorRoleId],
-          organizations: orgIds,
-          branches: branchIds,
+          organizations: [orgIds[0]],
           dataClasses: [fixture.sensitiveId],
         },
         overrideAccess: true,
         context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
       })
       userIds.push(Number(reader.id))
-      const record = await payload.create({
-        collection: RECORDS_SLUG,
-        data: {
-          title: `Mix record ${fixture.stamp}`,
-          organization: orgIds[0],
-          branch: homeBranch.id,
-          dataClass: fixture.piiId,
-        },
-        overrideAccess: true,
-      })
-      recordId = Number(record.id)
       const note = await payload.create({
-        collection: WORK_NOTES_SLUG,
+        collection: WORK_NOTES_SLUG as CollectionSlug,
         data: {
-          title: `Mix note ${fixture.stamp}`,
+          title: `Inside note ${fixture.stamp}`,
           [WORK_NOTE_ORGANIZATION_FIELD]: orgIds[0],
-          [WORK_NOTE_BRANCH_FIELD]: homeBranch.id,
+          [WORK_NOTE_BRANCH_FIELD]: branchIds[0],
           [WORK_NOTE_DATA_CLASS_FIELD]: fixture.piiId,
-        },
+        } as never,
         overrideAccess: true,
       })
-      noteId = Number(note.id)
+      noteIds.push(Number(note.id))
       const outside = await payload.create({
-        collection: WORK_NOTES_SLUG,
+        collection: WORK_NOTES_SLUG as CollectionSlug,
         data: {
-          title: `Mix outside ${fixture.stamp}`,
-          [WORK_NOTE_ORGANIZATION_FIELD]: fixture.eastId,
-          [WORK_NOTE_BRANCH_FIELD]: fixture.eastBranchId,
+          title: `Outside note ${fixture.stamp}`,
+          [WORK_NOTE_ORGANIZATION_FIELD]: orgIds[1],
+          [WORK_NOTE_BRANCH_FIELD]: branchIds[1],
           [WORK_NOTE_DATA_CLASS_FIELD]: fixture.piiId,
-        },
+        } as never,
         overrideAccess: true,
       })
-      outsideNoteId = Number(outside.id)
+      noteIds.push(Number(outside.id))
 
-      expect(await visibleCount(RECORDS_SLUG, reader.id, record.id)).toBe(1)
       expect(await visibleCount(WORK_NOTES_SLUG, reader.id, note.id)).toBe(1)
       expect(await visibleCount(WORK_NOTES_SLUG, reader.id, outside.id)).toBe(0)
       const listed = await payload.find({
-        collection: WORK_NOTES_SLUG,
+        collection: WORK_NOTES_SLUG as CollectionSlug,
         depth: 0,
         limit: 10,
         overrideAccess: false,
@@ -1200,33 +1119,12 @@ describe('row scope access', () => {
       expect(listed.docs.some((doc) => doc.id === note.id)).toBe(true)
       expect(listed.docs.some((doc) => doc.id === outside.id)).toBe(false)
     } finally {
-      for (const id of [noteId, outsideNoteId]) {
-        if (id === undefined) continue
-        await payload.delete({
-          collection: WORK_NOTES_SLUG,
-          id,
-          overrideAccess: true,
-        })
-      }
-      if (recordId !== undefined) {
-        await payload.delete({
-          collection: RECORDS_SLUG,
-          id: recordId,
-          overrideAccess: true,
-        })
-      }
-      if (homeBranchId !== undefined) {
-        await payload.delete({
-          collection: BRANCHES_SLUG,
-          id: homeBranchId,
-          overrideAccess: true,
-        })
-      }
-      await deleteInChunks(BRANCHES_SLUG, branchIds)
+      await deleteInChunks(WORK_NOTES_SLUG, noteIds)
       await deleteInChunks('users', userIds, { [SKIP_RBAC_PRIVILEGE_CHECKS]: true })
-      await deleteInChunks(ORGANIZATIONS_SLUG, [...branchOrgIds, ...orgIds])
+      await deleteInChunks(BRANCHES_SLUG, branchIds)
+      await deleteInChunks(ORGANIZATIONS_SLUG, orgIds)
     }
-  }, 120000)
+  })
 })
 
 async function visibleCount(

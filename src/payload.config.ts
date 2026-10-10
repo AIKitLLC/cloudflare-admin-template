@@ -2,7 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
-import { buildConfig } from 'payload'
+import { buildConfig, type CollectionConfig } from 'payload'
 import { fileURLToPath } from 'url'
 import { CloudflareContext, getCloudflareContext } from '@opennextjs/cloudflare'
 import { GetPlatformProxyOptions } from 'wrangler'
@@ -19,7 +19,6 @@ import { Branches } from './scope/collections/Branches'
 import { DataClasses } from './scope/collections/DataClasses'
 import { Organizations } from './scope/collections/Organizations'
 import { Records } from './scope/collections/Records'
-import { WorkNotes } from './scope/collections/WorkNotes'
 import { ensureRowScopeRegistered } from './scope/register-row-scope'
 import { migrations } from './migrations'
 import { Permissions } from './rbac/collections/Permissions'
@@ -27,6 +26,18 @@ import { RolePermissions } from './rbac/collections/RolePermissions'
 import { Roles } from './rbac/collections/Roles'
 import { grantEndpoint, matrixEndpoint } from './rbac/endpoints/matrix-handlers'
 import { seedRbac } from './rbac/seed/seed-rbac'
+
+/**
+ * Vitest setup assigns this before the config module loads. Production and
+ * `payload generate:types` leave it unset, so the test collection stays out of
+ * the shipped config and `payload-types.ts`.
+ */
+function testOnlyCollections(): CollectionConfig[] {
+  const holder = globalThis as typeof globalThis & {
+    __payloadTestCollections?: CollectionConfig[]
+  }
+  return holder.__payloadTestCollections ?? []
+}
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -108,7 +119,7 @@ export default buildConfig({
     Branches,
     DataClasses,
     Records,
-    WorkNotes,
+    ...testOnlyCollections(),
   ]),
   endpoints: [matrixEndpoint, grantEndpoint],
   serverURL,

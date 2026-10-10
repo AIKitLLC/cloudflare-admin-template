@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { evaluateCollectionAccess } from '../access/evaluate-collection-access'
+import { isPermissionPayloadCall } from '../access/permission-payload-call'
 import { withRbac } from '../access/with-rbac'
 import {
   guardAuthCredentialOperation,
@@ -25,11 +26,12 @@ export const Users: CollectionConfig = withRbac(
       admin: ({ req }) => Boolean(req.user),
       // Payload writes unlock directly, so collection beforeChange never sees it.
       // Same permission as update; the credential hook still compares the target.
-      unlock: ({ req }) =>
+      unlock: (args) =>
         evaluateCollectionAccess({
-          req,
+          req: args.req,
           collectionSlug: 'users',
           action: 'update',
+          permissionProbe: isPermissionPayloadCall(args),
         }),
     },
     fields: [

@@ -4,7 +4,6 @@ import type { CollectionAction, RowScopeBinding } from '../../access/types'
 import { SCOPE_PATH_FIELD } from '../constants'
 import type { DirectScope } from './direct-scope'
 import { matchNothing } from './match-nothing'
-import { whereIdIn } from './where-id-in'
 import { whereOwnPathContains, wherePathContains } from './where-path-contains'
 
 export function whereForBinding(
@@ -14,10 +13,7 @@ export function whereForBinding(
 ): Where {
   if (binding.dimension === 'organization') {
     if (action === 'read' || action === 'export') {
-      return anyOf([
-        wherePathContains(SCOPE_PATH_FIELD, scope.organizationIds),
-        idList(scope.branchOrganizationIds),
-      ])
+      return whereOwnPathContains([...scope.organizationIds, ...scope.branchOrganizationIds])
     }
     return whereOwnPathContains(scope.organizationIds)
   }
@@ -34,13 +30,10 @@ export function whereForBinding(
   const parts: Where[] = []
   if (binding.organizationField) {
     parts.push(
-      anyOf([
-        wherePathContains(
-          `${binding.organizationField}.${SCOPE_PATH_FIELD}`,
-          scope.organizationIds,
-        ),
-        relationshipIn(binding.organizationField, scope.branchOrganizationIds),
-      ]),
+      wherePathContains(`${binding.organizationField}.${SCOPE_PATH_FIELD}`, [
+        ...scope.organizationIds,
+        ...scope.branchOrganizationIds,
+      ]) ?? matchNothing(),
     )
   }
   if (binding.branchField) {
@@ -67,60 +60,6 @@ export function whereForBinding(
     return parts[0]
   }
   return { and: parts }
-}
-
-function idList(ids: readonly string[]): Where | undefined {
-  return relationshipIn('id', ids)
-}
-
-function relationshipIn(field: string, ids: readonly string[]): Where | undefined {
-  if (ids.length === 0) {
-    return undefined
-  }
-  return whereIdIn(field, new Set(ids))
-}
-
-/**
- * Bound parameters a Payload Where for this scope would use.
- * A relationship `in` stores each id as a number and a string, about two parameters.
- * Document `id IN` is inlined, but branch-organization ids on a record are relationship ids.
- */
-export function estimatedScopeBinds(
-  binding: RowScopeBinding,
-  scope: DirectScope,
-  action: CollectionAction,
-): number {
-  const organizations = distinctCount(scope.organizationIds)
-  const branches = distinctCount(scope.branchIds)
-  const classes = distinctCount(scope.dataClassIds)
-  const branchOrganizations = distinctCount(scope.branchOrganizationIds) * 2
-  if (binding.dimension === 'organization') {
-    if (action === 'read' || action === 'export') {
-      return organizations + branchOrganizations
-    }
-    return organizations
-  }
-  if (binding.dimension === 'branch') {
-    return branches + organizations
-  }
-  if (binding.dimension === 'data-class') {
-    return classes
-  }
-  let total = 0
-  if (binding.organizationField) {
-    total += organizations + branchOrganizations
-  }
-  if (binding.branchField) {
-    total += branches + organizations
-  }
-  if (binding.dataClassField) {
-    total += classes
-  }
-  return total
-}
-
-function distinctCount(ids: readonly string[]): number {
-  return new Set(ids.filter((id) => id.length > 0)).size
 }
 
 function anyOf(parts: Array<Where | undefined>): Where {

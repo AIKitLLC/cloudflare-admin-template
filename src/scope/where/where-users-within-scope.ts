@@ -29,9 +29,16 @@ export async function whereUsersWithinScope(req: PayloadRequest): Promise<Where>
 /**
  * A limited reader sees an account when every assignment sits inside the caller's
  * scope, the account is not full access, and it has at least one assignment.
- * The caller always sees their own row. The ids come from one SELECT that joins
- * the caller's relationship rows, so the parameter count does not grow with the
- * number of assignments. The Where itself is a plain id list.
+ * The caller always sees their own row. Full-access and unscoped accounts stay hidden.
+ * The ids come from one SELECT that joins the caller's relationship rows, so the
+ * parameter count does not grow with the number of assignments. The Where itself
+ * is one plain id list. Document ids are inlined, so the ceiling is SQLite's
+ * statement length (roughly 10–15k ids), not D1's bound-parameter cap. Each
+ * limited-user list, count, or by-id read pays for this select once per request.
+ *
+ * TODO: Switch to a nested has-many `not_equals` Where once Payload can express
+ * "every assignment is inside the caller's scope" without this pre-select.
+ * Payload 3.82.1 cannot.
  */
 async function visibleUserWhere(req: PayloadRequest, actorIdRaw: string): Promise<Where> {
   const actorId = Number(actorIdRaw)

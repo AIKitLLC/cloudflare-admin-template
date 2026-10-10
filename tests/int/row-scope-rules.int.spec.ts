@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 
+import { isPermissionPayloadCall } from '@/access/permission-payload-call'
 import { SCOPE_ASSIGNMENT_ERROR, SCOPE_CYCLE_ERROR } from '@/scope/errors'
 import { assignmentsWithinScope } from '@/scope/guards/assignments-within-scope'
 import { mergeScopeField } from '@/scope/guards/merge-scope-field'
@@ -10,9 +11,22 @@ import { ScopeTree } from '@/scope/tree/scope-tree'
 import type { ScopeCatalog } from '@/scope/types'
 import type { DirectScope } from '@/scope/where/direct-scope'
 import { collapseCoveredIds } from '@/scope/where/collapse-covered-ids'
-import { estimatedScopeBinds, whereForBinding } from '@/scope/where/where-for-binding'
+import { whereForBinding } from '@/scope/where/where-for-binding'
 
 describe('row scope rules', () => {
+  it('treats only the permission-payload argument shape as a probe', () => {
+    expect(isPermissionPayloadCall({ id: undefined, data: undefined, req: {} })).toBe(true)
+    expect(
+      isPermissionPayloadCall({
+        id: undefined,
+        data: undefined,
+        isReadingStaticFile: false,
+        req: {},
+      }),
+    ).toBe(false)
+    expect(isPermissionPayloadCall({ req: {} })).toBe(false)
+  })
+
   it('closes descendants and implies branches from an organization assignment', () => {
     const scope = resolveEffectiveScope(catalog(), {
       organizationIds: ['west'],
@@ -116,7 +130,7 @@ describe('row scope rules', () => {
     expect(scoped).toEqual(nothing)
 
     const readable = whereForBinding({ dimension: 'organization' }, branchOnly, 'read')
-    expect(readable).toEqual({ id: { in: ['west'] } })
+    expect(readable).toEqual({ scopePath: { contains: '/west/' } })
 
     const inherited = whereForBinding(
       { dimension: 'organization' },
@@ -146,28 +160,39 @@ describe('row scope rules', () => {
         { 'dataClass.scopePath': { contains: '/sensitive/' } },
       ],
     })
+
+    const branchOrg = whereForBinding(
+      { organizationField: 'organization', branchField: 'branch', dataClassField: 'dataClass' },
+      direct({
+        branchIds: ['west-sub'],
+        branchOrganizationIds: ['west'],
+        dataClassIds: ['pii'],
+      }),
+      'read',
+    )
+    expect(branchOrg).toEqual({
+      and: [
+        { 'organization.scopePath': { contains: '/west/' } },
+        { 'branch.scopePath': { contains: '/west-sub/' } },
+        { 'dataClass.scopePath': { contains: '/pii/' } },
+      ],
+    })
+    expect(JSON.stringify(branchOrg)).not.toContain('"in"')
   })
 
-  it('counts about two parameters per branch organization on a record filter', () => {
-    const organizations = Array.from({ length: 10 }, (_, index) => `org-${index}`)
-    const branches = Array.from({ length: 25 }, (_, index) => `branch-${index}`)
-    const branchOrganizations = Array.from({ length: 25 }, (_, index) => `branch-org-${index}`)
-    const binds = estimatedScopeBinds(
+  it('keeps a max organization filter to one contains per path, twice', () => {
+    const organizations = Array.from({ length: 20 }, (_, index) => `org-${index}`)
+    const where = whereForBinding(
       {
         organizationField: 'ownerOrganization',
         branchField: 'ownerBranch',
         dataClassField: 'ownerClass',
       },
-      direct({
-        organizationIds: organizations,
-        branchIds: branches,
-        branchOrganizationIds: branchOrganizations,
-        dataClassIds: ['sensitive'],
-      }),
+      direct({ organizationIds: organizations }),
       'read',
     )
-    expect(binds).toBe(10 + 25 * 2 + 25 + 10 + 1)
-    expect(binds).toBeGreaterThan(80)
+    expect(countContains(where)).toBe(40)
+    expect(JSON.stringify(where)).not.toContain('"in"')
   })
 
   it('drops an assignment whose ancestor is already assigned', () => {
@@ -210,6 +235,23 @@ describe('row scope rules', () => {
     ).toBe(false)
   })
 })
+
+function countContains(where: unknown): number {
+  if (Array.isArray(where)) {
+    return where.reduce((sum, item) => sum + countContains(item), 0)
+  }
+  if (!where || typeof where !== 'object') {
+    return 0
+  }
+  let total = 0
+  for (const [key, value] of Object.entries(where)) {
+    if (key === 'contains') {
+      total += 1
+    }
+    total += countContains(value)
+  }
+  return total
+}
 
 function direct(overrides: Partial<DirectScope> = {}): DirectScope {
   return {

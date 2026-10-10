@@ -76,7 +76,6 @@ export interface Config {
     branches: Branch;
     'data-classes': DataClass;
     records: Record;
-    'work-notes': WorkNote;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -93,7 +92,6 @@ export interface Config {
     branches: BranchesSelect<false> | BranchesSelect<true>;
     'data-classes': DataClassesSelect<false> | DataClassesSelect<true>;
     records: RecordsSelect<false> | RecordsSelect<true>;
-    'work-notes': WorkNotesSelect<false> | WorkNotesSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -330,21 +328,6 @@ export interface Record {
   createdAt: string;
 }
 /**
- * A second scoped collection. Field names differ from records so the row filter cannot assume one table.
- *
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "work-notes".
- */
-export interface WorkNote {
-  id: number;
-  title: string;
-  ownerOrganization: number | Organization;
-  ownerBranch: number | Branch;
-  ownerClass: number | DataClass;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
@@ -403,10 +386,6 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'records';
         value: number | Record;
-      } | null)
-    | ({
-        relationTo: 'work-notes';
-        value: number | WorkNote;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -576,18 +555,6 @@ export interface RecordsSelect<T extends boolean = true> {
   organization?: T;
   branch?: T;
   dataClass?: T;
-  updatedAt?: T;
-  createdAt?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "work-notes_select".
- */
-export interface WorkNotesSelect<T extends boolean = true> {
-  title?: T;
-  ownerOrganization?: T;
-  ownerBranch?: T;
-  ownerClass?: T;
   updatedAt?: T;
   createdAt?: T;
 }

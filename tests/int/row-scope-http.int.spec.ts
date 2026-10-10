@@ -18,7 +18,12 @@ import {
   SCOPE_USER_ERROR,
   SELF_SCOPE_ASSIGNMENT_ERROR,
 } from '@/scope/errors'
-import { RECORDS_SLUG } from '@/scope/constants'
+import {
+  BRANCHES_SLUG,
+  MAX_DIRECT_ASSIGNMENTS,
+  ORGANIZATIONS_SLUG,
+  RECORDS_SLUG,
+} from '@/scope/constants'
 import {
   cleanupRowScopeFixture,
   grantKey,
@@ -678,16 +683,16 @@ describe('row scope HTTP and GraphQL', () => {
     const accessBody = (await access.json()) as {
       collections: {
         records: { read: { permission?: boolean; where?: unknown } }
-        users: { read: { permission?: boolean; where?: unknown } }
+        users: { read: true | { permission?: boolean; where?: unknown } }
       }
     }
     const accessJson = JSON.stringify(accessBody)
     assertNoSql(accessJson)
     expect(accessJson.toLowerCase()).not.toContain('select ')
-    expect(accessBody.collections.users.read.permission).toBe(true)
+    expect(allowsReadWithoutWhere(accessBody.collections.users.read)).toBe(true)
     expect(accessBody.collections.records.read.permission).toBe(true)
-    expect(accessBody.collections.users.read.where).toBeTruthy()
     expect(accessBody.collections.records.read.where).toBeTruthy()
+    expect(accessJson).toContain('contains')
 
     await withAdminServer(async (base) => {
       await expectAdminPage(base, '/admin/collections/users', fixture.actor.email)
@@ -704,9 +709,208 @@ describe('row scope HTTP and GraphQL', () => {
       )
     })
   }, 120000)
+
+  it('filters more than 100 records at the assignment cap with a caller where', async () => {
+    const orgIds: number[] = []
+    const title = `Capped ${fixture.stamp}`
+    let branchId: number | undefined
+    let adminId: number | undefined
+    let readerId: number | undefined
+    try {
+      for (let index = 0; index < MAX_DIRECT_ASSIGNMENTS - 1; index += 1) {
+        const org = await payload.create({
+          collection: ORGANIZATIONS_SLUG,
+          data: {
+            name: `Capped org ${fixture.stamp} ${index}`,
+            slug: `capped-org-${fixture.stamp}-${index}`,
+          },
+          overrideAccess: true,
+        })
+        orgIds.push(Number(org.id))
+      }
+      const branch = await payload.create({
+        collection: BRANCHES_SLUG,
+        data: {
+          name: `Capped branch ${fixture.stamp}`,
+          slug: `capped-branch-${fixture.stamp}`,
+          organization: orgIds[0],
+        },
+        overrideAccess: true,
+      })
+      branchId = Number(branch.id)
+      await runSql(
+        `WITH RECURSIVE nums(n) AS (
+          SELECT 1
+          UNION ALL
+          SELECT n + 1 FROM nums WHERE n < 101
+        )
+        INSERT INTO records (title, organization_id, branch_id, data_class_id)
+        SELECT ?, ?, ?, ? FROM nums`,
+        title,
+        orgIds[0],
+        branchId,
+        fixture.piiId,
+      )
+      await runSql(
+        'INSERT INTO records (title, organization_id, branch_id, data_class_id) VALUES (?, ?, ?, ?)',
+        title,
+        fixture.eastId,
+        fixture.eastBranchId,
+        fixture.piiId,
+      )
+      const stored = await payload.count({
+        collection: RECORDS_SLUG,
+        overrideAccess: true,
+        where: { title: { equals: title } },
+      })
+      expect(stored.totalDocs).toBe(102)
+
+      const admin = await createHttpSuperAdmin()
+      adminId = admin.id
+      const reader = await payload.create({
+        collection: 'users',
+        data: {
+          email: `capped-${fixture.stamp}@example.com`,
+          password: 'test-password-123',
+          roles: [fixture.actorRoleId],
+          organizations: orgIds,
+          dataClasses: [fixture.sensitiveId],
+        },
+        overrideAccess: false,
+        user: httpUser(admin),
+      })
+      readerId = Number(reader.id)
+      const login = await post(
+        jsonRequest('/api/users/login', {
+          email: `capped-${fixture.stamp}@example.com`,
+          password: 'test-password-123',
+        }),
+        route(['users', 'login']),
+      )
+      expect(login.status).toBe(200)
+      const page = await get(
+        authedGet(
+          `/api/records?limit=10&page=1&sort=title&where[title][contains]=${encodeURIComponent(title)}`,
+          cookieHeader(login),
+        ),
+        route(['records']),
+      )
+      expect(page.status).toBe(200)
+      const body = (await page.json()) as { totalDocs: number }
+      expect(body.totalDocs).toBe(101)
+    } finally {
+      await runSql('DELETE FROM records WHERE title = ?', title)
+      if (branchId !== undefined) {
+        await payload.delete({
+          collection: BRANCHES_SLUG,
+          id: branchId,
+          overrideAccess: true,
+        })
+      }
+      for (const id of [readerId, adminId]) {
+        if (id === undefined) continue
+        await payload.delete({
+          collection: 'users',
+          id,
+          overrideAccess: true,
+          context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+        })
+      }
+      if (orgIds.length > 0) {
+        await payload.delete({
+          collection: ORGANIZATIONS_SLUG,
+          where: { id: { in: orgIds } },
+          overrideAccess: true,
+        })
+      }
+    }
+  }, 180000)
+
+  it('lists and counts more than 1000 in-scope users without putting ids on access', async () => {
+    const like = `crowd-${fixture.stamp}-%@example.com`
+    try {
+      for (let offset = 0; offset < 1000; offset += 100) {
+        await runSql(
+          `WITH RECURSIVE nums(n) AS (
+            SELECT 0
+            UNION ALL
+            SELECT n + 1 FROM nums WHERE n + 1 < 100
+          )
+          INSERT INTO users (email, hash, salt)
+          SELECT printf('crowd-%s-%d@example.com', ?, nums.n + ?), src.hash, src.salt
+          FROM nums
+          JOIN users AS src ON src.id = ?`,
+          fixture.stamp,
+          offset,
+          fixture.actor.id,
+        )
+      }
+      await runSql(
+        `INSERT INTO users_rels ("order", parent_id, path, roles_id)
+         SELECT 1, id, 'roles', ? FROM users WHERE email LIKE ?`,
+        fixture.insideRoleId,
+        like,
+      )
+      await runSql(
+        `INSERT INTO users_rels ("order", parent_id, path, organizations_id)
+         SELECT 1, id, 'organizations', ? FROM users WHERE email LIKE ?`,
+        fixture.westId,
+        like,
+      )
+      await runSql(
+        `INSERT INTO users_rels ("order", parent_id, path, data_classes_id)
+         SELECT 1, id, 'dataClasses', ? FROM users WHERE email LIKE ?`,
+        fixture.sensitiveId,
+        like,
+      )
+
+      const listed = await get(getRequest('/api/users?limit=1'), route(['users']))
+      expect(listed.status).toBe(200)
+      const listedBody = (await listed.json()) as { totalDocs: number }
+      expect(listedBody.totalDocs).toBeGreaterThan(1000)
+      const counted = await get(getRequest('/api/users/count'), route(['users', 'count']))
+      expect(counted.status).toBe(200)
+      const countedBody = (await counted.json()) as { totalDocs: number }
+      expect(countedBody.totalDocs).toBe(listedBody.totalDocs)
+
+      const hidden = await get(
+        getRequest(`/api/users?where[email][equals]=${encodeURIComponent(fixture.eastUser.email)}`),
+        route(['users']),
+      )
+      expect(hidden.status).toBe(200)
+      expect(((await hidden.json()) as { totalDocs: number }).totalDocs).toBe(0)
+
+      const access = await get(getRequest('/api/access'), route(['access']))
+      expect(access.status).toBe(200)
+      const accessBody = (await access.json()) as {
+        collections: {
+          users: Record<string, true | { permission?: boolean; where?: unknown }>
+        }
+      }
+      const usersJson = JSON.stringify(accessBody.collections.users)
+      const usersRead = JSON.stringify(accessBody.collections.users.read)
+      expect(allowsReadWithoutWhere(accessBody.collections.users.read)).toBe(true)
+      expect(usersRead.length).toBeLessThan(200)
+      expect(usersJson).not.toContain(`crowd-${fixture.stamp}-`)
+      expect(usersJson).not.toContain('"in"')
+    } finally {
+      await runSql(
+        'DELETE FROM users_rels WHERE parent_id IN (SELECT id FROM users WHERE email LIKE ?)',
+        like,
+      )
+      await runSql('DELETE FROM users WHERE email LIKE ?', like)
+    }
+  }, 180000)
 })
 
 const SQL_MARKERS = ['case when', 'users_rels', 'querychunks', 'substr(']
+
+function allowsReadWithoutWhere(read: true | { permission?: boolean; where?: unknown }): boolean {
+  if (read === true) {
+    return true
+  }
+  return read.permission === true && read.where === undefined
+}
 
 function assertNoSql(value: string) {
   const text = value.toLowerCase()
@@ -738,6 +942,9 @@ async function withAdminServer(run: (base: string) => Promise<void>) {
       ...process.env,
       PATH: `${process.env.HOME}/.nvm/versions/node/v24.21.0/bin:${process.env.PATH ?? ''}`,
       PAYLOAD_SECRET: process.env.PAYLOAD_SECRET || 'test-secret-for-local-runs',
+      // This server loads the config without the Vitest-only collection. A schema
+      // push would drop that table while the test process still queries it.
+      PAYLOAD_MIGRATING: 'true',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
@@ -842,6 +1049,41 @@ async function readLock(email: string): Promise<string | null> {
     .bind(email)
     .first<{ lock_until?: string | null }>()
   return row?.lock_until ?? null
+}
+
+async function runSql(query: string, ...values: unknown[]): Promise<void> {
+  await db()
+    .prepare(query)
+    .bind(...values)
+    .run()
+}
+
+async function createHttpSuperAdmin(): Promise<{ id: number; email: string }> {
+  const role = await payload.find({
+    collection: 'roles' as CollectionSlug,
+    depth: 0,
+    limit: 1,
+    overrideAccess: true,
+    where: { slug: { equals: SUPER_ADMIN_SLUG } },
+  })
+  const email = `scope-http-super-${fixture.stamp}@example.com`
+  const user = await payload.create({
+    collection: 'users',
+    data: { email, password: 'test-password-123', roles: [role.docs[0].id] },
+    overrideAccess: true,
+    context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+  })
+  return { id: Number(user.id), email }
+}
+
+function httpUser(user: { id: number; email: string }) {
+  return {
+    id: user.id,
+    email: user.email,
+    collection: 'users' as const,
+    updatedAt: '',
+    createdAt: '',
+  }
 }
 
 function db(): {

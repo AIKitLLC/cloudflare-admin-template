@@ -46,6 +46,11 @@ export type AccessEvaluationContext = {
   action: CollectionAction
   grants: UserGrants | undefined
   options: RbacCollectionOptions
+  /**
+   * True when Payload is copying access onto `/api/access` or admin permission
+   * props. User visibility omits its id list. Queries leave this unset.
+   */
+  permissionProbe?: boolean
 }
 
 /**
