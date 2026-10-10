@@ -1,11 +1,11 @@
 import type { Payload } from 'payload'
 
 import { SCHEDULED_REAP_LIMIT, SCHEDULED_RUN_LIMIT } from '../constants'
-import { d1 } from './d1-client'
+import { d1, type D1Budget } from './d1-client'
 import { JOB_COLUMNS, JOBS_TABLE } from './job-columns'
 
-export async function selectDueJobIds(payload: Payload, now: Date): Promise<number[]> {
-  const result = await d1(payload)
+export async function selectDueJobIds(payload: Payload, now: Date, budget?: D1Budget): Promise<number[]> {
+  const result = await d1(payload, budget)
     .prepare(
       `SELECT ${JOB_COLUMNS.id} as id
        FROM ${JOBS_TABLE}
@@ -19,8 +19,8 @@ export async function selectDueJobIds(payload: Payload, now: Date): Promise<numb
   return (result.results ?? []).map((row) => Number(row.id))
 }
 
-export async function selectExpiredLeaseIds(payload: Payload, now: Date): Promise<number[]> {
-  const result = await d1(payload)
+export async function selectExpiredLeaseIds(payload: Payload, now: Date, budget?: D1Budget): Promise<number[]> {
+  const result = await d1(payload, budget)
     .prepare(
       `SELECT ${JOB_COLUMNS.id} as id
        FROM ${JOBS_TABLE}

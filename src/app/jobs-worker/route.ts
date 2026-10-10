@@ -2,11 +2,8 @@ import { getCloudflareContext } from '@opennextjs/cloudflare'
 
 import { handleQueueBatch } from '@/jobs/runtime/handle-queue-batch'
 import { handleScheduled } from '@/jobs/runtime/handle-scheduled'
-import {
-  JOBS_INTERNAL_HEADER,
-  JOBS_INTERNAL_HOST,
-  JOBS_WORKER_PATH,
-} from '@/jobs/runtime/worker-dispatch'
+import { decideInternalDispatch, logInternalSkipOnce } from '@/jobs/runtime/internal-secret'
+import { JOBS_INTERNAL_HEADER } from '@/jobs/runtime/worker-dispatch'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,12 +13,23 @@ type QueueBody = {
 
 export async function POST(request: Request): Promise<Response> {
   const url = new URL(request.url)
-  if (url.hostname !== JOBS_INTERNAL_HOST || url.pathname !== JOBS_WORKER_PATH) {
+  const decision = decideInternalDispatch({
+    header: request.headers.get(JOBS_INTERNAL_HEADER),
+    hostname: url.hostname,
+    pathname: url.pathname,
+    secret: await readInternalSecret(),
+  })
+  if (decision.action === 'not-found') {
     return new Response(null, { status: 404 })
   }
-  const secret = await readInternalSecret()
-  if (!secret || request.headers.get(JOBS_INTERNAL_HEADER) !== secret) {
-    return new Response(null, { status: 404 })
+  if (decision.action === 'skip') {
+    logInternalSkipOnce(decision.reason)
+    const body = (await request.json().catch((): null => null)) as { kind?: string; payload?: unknown } | null
+    if (body?.kind === 'queue') {
+      const messages = queueMessages(body.payload)
+      return Response.json({ results: messages.map(() => ({ action: 'ack' as const })), skipped: true })
+    }
+    return Response.json({ ok: true, skipped: true })
   }
   const body = (await request.json()) as { kind?: string; payload?: unknown }
   if (body.kind === 'queue') {

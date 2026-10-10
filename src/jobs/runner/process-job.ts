@@ -8,6 +8,7 @@ import { capLogs, errorDetails } from '../redaction/cap-stored-text'
 import { getJob } from '../registry/job-registry'
 import type { JobLogEntry } from '../types'
 import { claimJob } from '../persistence/claim-job'
+import type { D1Budget } from '../persistence/d1-client'
 import { extendLease } from '../persistence/extend-lease'
 import { finishJob } from '../persistence/finish-job'
 import { readStoredJob } from '../persistence/read-stored-job'
@@ -20,8 +21,9 @@ export async function processJob(
   payload: Payload,
   jobId: number | string,
   now = new Date(),
+  budget?: D1Budget,
 ): Promise<ProcessResult> {
-  const current = await readStoredJob(payload, jobId, { raw: true })
+  const current = await readStoredJob(payload, jobId, { budget, raw: true })
   if (!current) {
     return { outcome: 'skipped' }
   }
@@ -31,7 +33,7 @@ export async function processJob(
   if (current.runAt && current.status === 'PENDING' && current.runAt > now.toISOString()) {
     return { outcome: 'skipped' }
   }
-  const claim = await claimJob(payload, jobId, now)
+  const claim = await claimJob(payload, jobId, now, budget)
   if (!claim) {
     return { outcome: 'skipped' }
   }
@@ -39,6 +41,7 @@ export async function processJob(
   const maxAttempts = current.maxAttempts || DEFAULT_MAX_ATTEMPTS
   if (!definition) {
     await finishJob(payload, {
+      budget,
       claimToken: claim.claimToken,
       error: errorDetails(new Error(UNKNOWN_JOB_MESSAGE)),
       jobId,
@@ -49,13 +52,13 @@ export async function processJob(
     return { outcome: 'failed' }
   }
   const leaseMs = definition.leaseMs ?? DEFAULT_LEASE_MS
-  const renewal = startLeaseRenewal(payload, jobId, claim.claimToken, leaseMs)
+  const renewal = startLeaseRenewal(payload, jobId, claim.claimToken, leaseMs, budget)
   const logs: JobLogEntry[] = [...(current.logs ?? [])]
   try {
     const validated = definition.validate(current.payload ?? {})
     await definition.execute({
       attempt: claim.attempt,
-      heartbeat: () => extendLease(payload, jobId, claim.claimToken, leaseMs),
+      heartbeat: () => extendLease(payload, jobId, claim.claimToken, leaseMs, new Date(), budget),
       idempotencyKey: current.idempotencyKey,
       jobId,
       log: (message) => {
@@ -65,6 +68,7 @@ export async function processJob(
       signal: renewal.signal,
     })
     const finished = await finishJob(payload, {
+      budget,
       claimToken: claim.claimToken,
       error: null,
       jobId,
@@ -78,6 +82,7 @@ export async function processJob(
     const exhausted = claim.attempt >= maxAttempts
     const delay = backoffMs(claim.attempt, definition.backoffBaseMs ?? BACKOFF_BASE_MS)
     const finished = await finishJob(payload, {
+      budget,
       claimToken: claim.claimToken,
       error: message,
       jobId,
@@ -104,6 +109,7 @@ function startLeaseRenewal(
   jobId: number | string,
   claimToken: string,
   leaseMs: number,
+  budget?: D1Budget,
 ): { signal: AbortSignal; stop: () => void } {
   const controller = new AbortController()
   const intervalMs = Math.max(250, Math.floor(leaseMs / 3))
@@ -112,7 +118,7 @@ function startLeaseRenewal(
     if (stopped || controller.signal.aborted) {
       return
     }
-    void extendLease(payload, jobId, claimToken, leaseMs)
+    void extendLease(payload, jobId, claimToken, leaseMs, new Date(), budget)
       .then((extended) => {
         if (!extended && !stopped) {
           controller.abort()

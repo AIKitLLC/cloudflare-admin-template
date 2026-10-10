@@ -12,7 +12,7 @@ Only names in the job registry run. `defineJob` registers a name, a payload vali
 
 Delivery is at-least-once. A crash after the handler's side effect and before `SUCCESS` is written can run the handler again when the lease expires. Handlers must be idempotent.
 
-Do not put secrets in the payload. Keys are refused when a `-` or `_` segment is a secret word such as `password`, `token`, or `secret`, or when adjacent segments are `api` and `key`. `author`, `passenger`, and `tokenCount` are accepted. The handler receives the payload that was stored. Redaction applies to the monitor, API reads, stored errors and logs, and the documents passed to change hooks. Stored errors do not include stack traces. Pass a record id and load the secret at execution time.
+Do not put secrets in the payload. Keys are split on `-`, `_`, and camelCase boundaries, then refused when a segment is a secret word such as `password`, `token`, or `secret`, or when adjacent segments are `api` and `key`. `accessToken`, `clientSecret`, and `dbPassword` are refused. `author`, `passenger`, and `tokenCount` are accepted (`tokenCount` is an explicit exception). The handler receives the payload that was stored. Redaction applies to the monitor, API reads, stored errors and logs, and the documents passed to change hooks. Stored errors do not include stack traces. Pass a record id and load the secret at execution time.
 
 ## Delivery
 
@@ -23,7 +23,7 @@ Do not put secrets in the payload. Keys are refused when a `-` or `_` segment is
 
 The queue consumer and the cron both call the same claim function. A duplicate message, or a cron wake-up while a consumer is working, does not run the handler twice.
 
-The cron is `*/5 * * * *` and is active in `wrangler.jsonc`. It fires as soon as the Worker is deployed. It does not require a queue. Each invocation reaps at most two expired leases and runs at most two due jobs, and it stops before 40 D1 calls so the run stays under the Workers free-plan limit of 50 subrequests.
+The cron is `*/5 * * * *` and is active in `wrangler.jsonc`. It fires as soon as the Worker is deployed. It does not require a queue. Each invocation reaps at most two expired leases and runs at most two due jobs. A counter on that run stops it before 40 counted D1 calls so the invocation stays under the Workers free-plan limit of 50 subrequests. The counter is passed through the job code. It does not wrap the shared D1 client, so another request in the same isolate is not counted and cannot fail that budget.
 
 The `queues` block is commented out. Wrangler rejects a deploy that names a queue which does not exist. Leave the block commented until the queues exist, then replace `placeholder-jobs` and `placeholder-jobs-dlq`. Those names are not Cloudflare resources.
 
@@ -49,9 +49,9 @@ Default deny, same as the rest of the matrix.
 | --- | --- |
 | `jobs:read` | The job monitor and `GET /api/jobs` |
 | `jobs:trigger` | Queue a registered job that does not require a stronger grant (`POST /api/jobs`, `POST /api/jobs/trigger`, GraphQL `createJob`) |
-| `jobs:retry` | Re-queue a failed job (`POST /api/jobs/:id/retry`, GraphQL `retryJob`) |
+| `jobs:retry` | Re-queue a failed job, together with the same privilege required to trigger that job (`POST /api/jobs/:id/retry`, GraphQL `retryJob`) |
 
-`jobs:create`, `jobs:update`, `jobs:delete`, and `jobs:export` are not in the catalog. Job data fields carry their own read and create access, so they are not added as field permissions either. `jobs:read` sees the redacted payload, error, and logs. A trigger or retry caller also sees those fields on the document that mutation returns, and still cannot list jobs without `jobs:read`. `claimToken` stays hidden. Update and delete on the collection are closed, including for full access, so a client cannot rewrite status or delete history. Full access still bypasses the trigger and retry checks. Policy gates from the access pipeline run before that bypass, so a later IP or schedule gate can still deny the action.
+`jobs:create`, `jobs:update`, `jobs:delete`, and `jobs:export` are not in the catalog. Job data fields carry their own read and create access, so they are not added as field permissions either. `jobs:read` sees the redacted payload, error, and logs. A trigger or retry caller also sees those fields on the document that mutation returns, and still cannot list jobs without `jobs:read`. `claimToken` stays hidden. Update and delete on the collection are closed, including for full access, so a client cannot rewrite status or delete history. Retry requires `jobs:retry` and the same privilege as triggering that job. A full-access-only job such as `system.ping` cannot be retried with `jobs:retry` alone. Full access still bypasses the trigger and retry checks. Policy gates from the access pipeline run before that bypass, so a later IP or schedule gate can still deny the action.
 
 An idempotency key is stored as the caller, the job name, and the client key. Reuse by that caller returns the same row when the payload matches, and a different payload is rejected. Another caller does not see that row.
 
@@ -63,7 +63,9 @@ OpenNext's generated `.open-next/worker.js` exports `fetch` only. `wrangler.json
 
 `pnpm build:worker` runs `opennextjs-cloudflare build` and must finish before Wrangler bundles the Worker, so `.open-next/worker.js` exists. `pnpm build` is only the Next.js build and does not produce that file. `custom-worker.ts` is part of `tsc`. The generated worker import uses `@ts-ignore` because that file is created by the worker build and is absent beforehand. The same build command stubs Turbopack's hashed `drizzle-kit` require, so the migration CLI stays out of the Worker, and it inlines `.next/server/preview-props.json`, which Next 16 reads and OpenNext's manifest list does not include. Workerd omits the Host header on a Request created inside the worker. OpenNext copied that missing header into `x-forwarded-host`, and Next then rewrote the host to the string `undefined`. The build fills `x-forwarded-host` from the request URL when the header is missing, so the route still sees `jobs.internal`.
 
-`JOBS_INTERNAL_SECRET` in `wrangler.jsonc` is the placeholder `placeholder-jobs-internal-secret`. Replace it before production. The cron described above is active. The queue block stays commented until real queues exist.
+`JOBS_INTERNAL_SECRET` is not a var in `wrangler.jsonc`. A var would block `wrangler secret put` under the same name, and the value would be committed. Set it with `wrangler secret put JOBS_INTERNAL_SECRET`. `.env.example` has a placeholder for local use only. In production the route refuses a secret that is missing, equal to that placeholder, or shorter than 32 characters. It logs that once and skips the run, so the cron does not throw every five minutes. A queue batch in that state is acknowledged and left `PENDING` for a later cron, instead of being retried until it hits the dead-letter queue. The comparison is constant-time. The host check remains the primary guard: a public request is 404 even with the right secret.
+
+`pnpm build:worker` depends on the exact packages `@opennextjs/cloudflare@1.20.10` (which depends on `@opennextjs/aws@4.1.9`) and `esbuild@0.28.2`. The host-header patch looks for one assignment in the generated OpenNext middleware, and the drizzle stub wraps esbuild's `build` function. Those strings are not a public API. A bump of either package can make the build throw or ship a Worker that 404s the internal route. Re-run `tests/int/jobs-worker-build.int.spec.ts` after changing them. The cron described above is active. The queue block stays commented until real queues exist.
 
 ## Local checks
 

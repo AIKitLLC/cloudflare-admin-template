@@ -19,12 +19,15 @@ const SECRET_SEGMENTS = new Set([
   'authorization',
 ])
 
+/** `tokenCount` splits into `token` + `count`. It is a count, not a secret. */
+const ALLOWED_KEYS = new Set(['tokenCount'])
+
 export function isSecretKey(key: string): boolean {
-  const normalized = key.trim().toLowerCase()
-  if (!normalized) {
+  const trimmed = key.trim()
+  if (!trimmed || ALLOWED_KEYS.has(trimmed)) {
     return false
   }
-  const segments = normalized.split(/[^a-z0-9]+/).filter(Boolean)
+  const segments = secretSegments(trimmed)
   if (segments.some((segment) => SECRET_SEGMENTS.has(segment))) {
     return true
   }
@@ -60,4 +63,12 @@ export function findSecretKey(value: unknown, depth = 0): string | null {
     }
   }
   return null
+}
+
+function secretSegments(key: string): string[] {
+  const spaced = key
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .toLowerCase()
+  return spaced.split(/[^a-z0-9]+/).filter(Boolean)
 }

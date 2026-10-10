@@ -3,11 +3,13 @@ import type { PayloadRequest } from 'payload'
 import { JOB_RETRY_WRITE, JOBS_SLUG } from '../constants'
 import {
   JOB_NOT_FOUND_MESSAGE,
+  JOB_PRIVILEGE_MESSAGE,
   RETRY_FORBIDDEN_MESSAGE,
   RETRY_ONLY_FAILED_MESSAGE,
   jobError,
 } from '../errors'
 import { evaluateJobDispatch } from '../auth/evaluate-job-dispatch'
+import { evaluateJobTrigger } from '../auth/evaluate-job-trigger'
 import type { StoredJob } from '../types'
 
 export async function retryFailedJob(args: {
@@ -32,6 +34,9 @@ export async function retryFailedJob(args: {
   }
   if ((existing as StoredJob).status !== 'FAILED') {
     throw jobError(RETRY_ONLY_FAILED_MESSAGE)
+  }
+  if (!(await evaluateJobTrigger(args.req, (existing as StoredJob).name))) {
+    throw jobError(JOB_PRIVILEGE_MESSAGE, 403)
   }
   const updated = await args.req.payload.update({
     collection: JOBS_SLUG,

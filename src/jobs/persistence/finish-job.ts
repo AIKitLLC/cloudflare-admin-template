@@ -1,7 +1,7 @@
 import type { Payload } from 'payload'
 
 import type { JobLogEntry, JobStatus } from '../types'
-import { d1 } from './d1-client'
+import { d1, type D1Budget } from './d1-client'
 import { invokeJobChangeHooks } from './invoke-job-hooks'
 import { JOB_COLUMNS, JOBS_TABLE } from './job-columns'
 import { readStoredJob } from './read-stored-job'
@@ -11,6 +11,7 @@ export type FinishInput = {
   error?: string | null
   jobId: number | string
   logs?: JobLogEntry[]
+  budget?: D1Budget
   now?: Date
   runAt?: string | null
   status: Extract<JobStatus, 'FAILED' | 'PENDING' | 'SUCCESS'>
@@ -18,13 +19,13 @@ export type FinishInput = {
 
 export async function finishJob(payload: Payload, input: FinishInput): Promise<boolean> {
   const nowIso = (input.now ?? new Date()).toISOString()
-  const previous = await readStoredJob(payload, input.jobId)
+  const previous = await readStoredJob(payload, input.jobId, { budget: input.budget })
   if (!previous) {
     return false
   }
   const clearClaim = input.status !== 'SUCCESS'
   const finishedAt = input.status === 'PENDING' ? null : nowIso
-  const row = await d1(payload)
+  const row = await d1(payload, input.budget)
     .prepare(
       `UPDATE ${JOBS_TABLE}
        SET ${JOB_COLUMNS.status} = ?,
@@ -55,7 +56,7 @@ export async function finishJob(payload: Payload, input: FinishInput): Promise<b
   if (!row) {
     return false
   }
-  const next = await readStoredJob(payload, input.jobId)
+  const next = await readStoredJob(payload, input.jobId, { budget: input.budget })
   if (next) {
     await invokeJobChangeHooks(payload, previous, next)
   }

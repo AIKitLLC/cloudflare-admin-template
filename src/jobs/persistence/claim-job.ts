@@ -3,7 +3,7 @@ import type { Payload } from 'payload'
 
 import { DEFAULT_LEASE_MS } from '../constants'
 import { getJob } from '../registry/job-registry'
-import { d1 } from './d1-client'
+import { d1, type D1Budget } from './d1-client'
 import { invokeJobChangeHooks } from './invoke-job-hooks'
 import { JOB_COLUMNS, JOBS_TABLE } from './job-columns'
 import { readStoredJob } from './read-stored-job'
@@ -17,8 +17,9 @@ export async function claimJob(
   payload: Payload,
   jobId: number | string,
   now = new Date(),
+  budget?: D1Budget,
 ): Promise<ClaimResult | null> {
-  const existing = await readStoredJob(payload, jobId)
+  const existing = await readStoredJob(payload, jobId, { budget })
   if (!existing) {
     return null
   }
@@ -27,7 +28,7 @@ export async function claimJob(
   const nowIso = now.toISOString()
   const leaseExpiresAt = new Date(now.getTime() + leaseMs).toISOString()
   const claimToken = randomUUID()
-  const row = await d1(payload)
+  const row = await d1(payload, budget)
     .prepare(
       `UPDATE ${JOBS_TABLE}
        SET ${JOB_COLUMNS.claimToken} = ?,
@@ -53,7 +54,7 @@ export async function claimJob(
   if (!row) {
     return null
   }
-  const next = await readStoredJob(payload, jobId)
+  const next = await readStoredJob(payload, jobId, { budget })
   if (next) {
     await invokeJobChangeHooks(payload, existing, next)
   }

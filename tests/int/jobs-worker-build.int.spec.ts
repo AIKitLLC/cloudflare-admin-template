@@ -32,6 +32,7 @@ function run(command: string, args: string[], timeout: number): string {
 }
 
 const secret = process.env.PAYLOAD_SECRET || 'test-secret-for-local-runs'
+const jobsInternalSecret = 'jobs-internal-secret-for-worker-proof-01'
 
 describe('worker build', () => {
   it(
@@ -71,6 +72,7 @@ describe('worker build', () => {
         entryPath,
         `process.env.PAYLOAD_PUBLIC_SERVER_URL ||= 'https://admin.example.com'
 process.env.PAYLOAD_SECRET ||= ${JSON.stringify(secret)}
+process.env.JOBS_INTERNAL_SECRET ||= ${JSON.stringify(jobsInternalSecret)}
 import worker from './custom-worker.js'
 if (!worker?.fetch) throw new Error('worker default export missing')
 export default worker
@@ -96,7 +98,7 @@ export default worker
         d1Databases: { D1: 'jobs-proof' },
         r2Buckets: ['R2'],
         bindings: {
-          JOBS_INTERNAL_SECRET: 'placeholder-jobs-internal-secret',
+          JOBS_INTERNAL_SECRET: jobsInternalSecret,
           PAYLOAD_PUBLIC_SERVER_URL: 'https://admin.example.com',
           PAYLOAD_SECRET: secret,
         },

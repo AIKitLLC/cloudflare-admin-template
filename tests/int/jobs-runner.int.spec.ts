@@ -13,7 +13,15 @@ import { claimJob } from '@/jobs/persistence/claim-job'
 import { d1 } from '@/jobs/persistence/d1-client'
 import { reapExpiredLeases } from '@/jobs/persistence/reap-expired-leases'
 import { readStoredJob } from '@/jobs/persistence/read-stored-job'
+import { isSecretKey } from '@/jobs/redaction/secret-key'
 import { redactSensitive } from '@/jobs/redaction/redact-sensitive'
+import {
+  decideInternalDispatch,
+  logInternalSkipOnce,
+  resetInternalSecretLogForTests,
+  secretsMatch,
+} from '@/jobs/runtime/internal-secret'
+import { JOBS_INTERNAL_HOST, JOBS_WORKER_PATH } from '@/jobs/runtime/worker-dispatch'
 import { defineJob } from '@/jobs/registry/define-job'
 import { processQueueBatch } from '@/jobs/runner/process-queue-batch'
 import { processJob } from '@/jobs/runner/process-job'
@@ -154,6 +162,17 @@ describe('job runner', () => {
       passenger: 1,
       tokenCount: 2,
     })
+    expect(isSecretKey('accessToken')).toBe(true)
+    expect(isSecretKey('clientSecret')).toBe(true)
+    expect(isSecretKey('dbPassword')).toBe(true)
+    expect(isSecretKey('tokenCount')).toBe(false)
+    expect(isSecretKey('author')).toBe(false)
+    expect(redactSensitive({ accessToken: 'a', clientSecret: 'b', dbPassword: 'c', tokenCount: 2 })).toEqual({
+      accessToken: REDACTED,
+      clientSecret: REDACTED,
+      dbPassword: REDACTED,
+      tokenCount: 2,
+    })
     const error = new Error('password=hunter2')
     error.stack = 'STACK SHOULD NOT BE STORED'
     const details = errorDetails(error)
@@ -167,6 +186,9 @@ describe('job runner', () => {
 
   it('refuses secret-like payload keys and stores ordinary keys unchanged', async () => {
     await expect(makeJob('test.counter', { password: 'hunter2' })).rejects.toThrow(/secrets/i)
+    await expect(makeJob('test.counter', { accessToken: 'a' })).rejects.toThrow(/secrets/i)
+    await expect(makeJob('test.counter', { clientSecret: 'b' })).rejects.toThrow(/secrets/i)
+    await expect(makeJob('test.counter', { dbPassword: 'c' })).rejects.toThrow(/secrets/i)
     const job = await makeJob('test.counter', { author: 'ada', passenger: 1, tokenCount: 2 })
     const stored = await readStoredJob(payload, job.id, { raw: true })
     expect(stored?.payload).toEqual({ author: 'ada', passenger: 1, tokenCount: 2 })
@@ -328,6 +350,96 @@ describe('job runner', () => {
     expect(sent[0]?.options?.delaySeconds).toBe(5)
   })
 
+  it('leaves a normal request alone while a scheduled run is in progress', async () => {
+    const client = (payload.db as { client?: { prepare: (query: string) => unknown } }).client
+    const originalPrepare = client?.prepare
+    expect(originalPrepare).toBeTypeOf('function')
+    slowSignal = undefined
+    await d1(payload)
+      .prepare("UPDATE jobs SET status = 'SUCCESS' WHERE status IN ('PENDING', 'RUNNING')")
+      .run()
+    const job = await makeJob('test.slow', { note: 'budget' })
+    const first = runScheduledMaintenance(payload)
+    const second = runScheduledMaintenance(payload)
+    try {
+      await waitFor(() => slowSignal !== undefined, 5000)
+      expect(client?.prepare).toBe(originalPrepare)
+      const users = await payload.find({
+        collection: 'users',
+        depth: 0,
+        limit: 1,
+        overrideAccess: true,
+      })
+      expect(users.docs.length).toBeGreaterThan(0)
+      const ping = await d1(payload).prepare('SELECT 1 as ok').first<{ ok: number }>()
+      expect(ping?.ok).toBe(1)
+      expect(client?.prepare).toBe(originalPrepare)
+    } finally {
+      releaseSlow()
+    }
+    const [firstResult, secondResult] = await Promise.all([first, second])
+    expect(firstResult.ran + secondResult.ran).toBeGreaterThan(0)
+    expect((await readStoredJob(payload, job.id))?.status).toBe('SUCCESS')
+    expect(client?.prepare).toBe(originalPrepare)
+  })
+
+  it('skips a production jobs dispatch when the internal secret is unusable', () => {
+    const longSecret = 'x'.repeat(32)
+    const publicRequest = decideInternalDispatch({
+      header: longSecret,
+      hostname: 'admin.example.com',
+      pathname: JOBS_WORKER_PATH,
+      secret: longSecret,
+      nodeEnv: 'production',
+    })
+    expect(publicRequest.action).toBe('not-found')
+
+    const placeholder = decideInternalDispatch({
+      header: 'placeholder-jobs-internal-secret',
+      hostname: JOBS_INTERNAL_HOST,
+      pathname: JOBS_WORKER_PATH,
+      secret: 'placeholder-jobs-internal-secret',
+      nodeEnv: 'production',
+    })
+    expect(placeholder.action).toBe('skip')
+
+    const shortSecret = decideInternalDispatch({
+      header: 'short-secret',
+      hostname: JOBS_INTERNAL_HOST,
+      pathname: JOBS_WORKER_PATH,
+      secret: 'short-secret',
+      nodeEnv: 'production',
+    })
+    expect(shortSecret.action).toBe('skip')
+
+    const missing = decideInternalDispatch({
+      header: longSecret,
+      hostname: JOBS_INTERNAL_HOST,
+      pathname: JOBS_WORKER_PATH,
+      secret: undefined,
+      nodeEnv: 'production',
+    })
+    expect(missing.action).toBe('skip')
+
+    const allowed = decideInternalDispatch({
+      header: longSecret,
+      hostname: JOBS_INTERNAL_HOST,
+      pathname: JOBS_WORKER_PATH,
+      secret: longSecret,
+      nodeEnv: 'production',
+    })
+    expect(allowed.action).toBe('allow')
+    expect(secretsMatch(longSecret, longSecret)).toBe(true)
+    expect(secretsMatch(longSecret, `${longSecret}x`)).toBe(false)
+
+    resetInternalSecretLogForTests()
+    const lines: string[] = []
+    logInternalSkipOnce('missing', (message) => lines.push(message))
+    logInternalSkipOnce('missing again', (message) => lines.push(message))
+    expect(lines).toEqual(['Jobs worker skipped: missing'])
+    resetInternalSecretLogForTests()
+  })
+
   it('wakes a due job from the scheduled maintenance pass', async () => {
     cronRuns = 0
     await d1(payload)
@@ -354,6 +466,8 @@ describe('job runner', () => {
     expect(wrangler).toContain('placeholder-jobs')
     expect(wrangler).toContain('placeholder-jobs-dlq')
     expect(wrangler).toContain('"crons": ["*/5 * * * *"]')
+    expect(wrangler).toContain('wrangler secret put JOBS_INTERNAL_SECRET')
+    expect(wrangler).not.toMatch(/"JOBS_INTERNAL_SECRET"\s*:/)
     expect(wrangler).not.toMatch(/^\s*"queues":/m)
   })
 })

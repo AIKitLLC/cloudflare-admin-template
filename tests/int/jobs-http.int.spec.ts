@@ -227,7 +227,15 @@ describe('job HTTP permissions', () => {
     )
     expect(stillPendingRetry.status).toBe(403)
 
-    const retryUser = await loginWith(['jobs:retry'])
+    const retryOnly = await loginWith(['jobs:retry'])
+    const retryOnlyDenied = await post(
+      jsonRequest(`/api/jobs/${jobId}/retry`, {}, retryOnly),
+      route(['jobs', String(jobId), 'retry']),
+    )
+    expect(retryOnlyDenied.status).toBe(403)
+    expect(JSON.stringify(await retryOnlyDenied.json())).toContain(JOB_PRIVILEGE_MESSAGE)
+
+    const retryUser = await loginWith(['jobs:retry', 'jobs:trigger'])
     const retried = await post(
       jsonRequest(`/api/jobs/${jobId}/retry`, {}, retryUser),
       route(['jobs', String(jobId), 'retry']),
@@ -331,6 +339,46 @@ describe('job HTTP permissions', () => {
       ),
     )
     expect(JSON.stringify(await graphqlDelete.json())).toMatch(/not allowed|forbidden/i)
+  })
+
+  it('requires the trigger privilege as well as jobs:retry', async () => {
+    const admin = await loginSuperAdmin()
+    const queued = await post(
+      jsonRequest('/api/jobs/trigger', { name: 'system.ping', payload: { note: 'retry-me' } }, admin),
+      route(['jobs', 'trigger']),
+    )
+    expect(queued.status).toBe(201)
+    const jobId = Number(((await queued.json()) as { doc?: { id?: number } }).doc?.id)
+    createdJobIds.push(jobId)
+    await payload.update({
+      collection: 'jobs' as CollectionSlug,
+      id: jobId,
+      data: { status: 'FAILED', error: 'stopped' },
+      overrideAccess: true,
+      context: { jobSystemWrite: true, skipJobEnqueue: true },
+    })
+
+    const retryOnly = await loginWith(['jobs:retry'])
+    const deniedRetry = await post(
+      jsonRequest(`/api/jobs/${jobId}/retry`, {}, retryOnly),
+      route(['jobs', String(jobId), 'retry']),
+    )
+    expect(deniedRetry.status).toBe(403)
+
+    const retryAndTrigger = await loginWith(['jobs:retry', 'jobs:trigger'])
+    const deniedPrivilege = await post(
+      jsonRequest(`/api/jobs/${jobId}/retry`, {}, retryAndTrigger),
+      route(['jobs', String(jobId), 'retry']),
+    )
+    expect(deniedPrivilege.status).toBe(403)
+    expect(JSON.stringify(await deniedPrivilege.json())).toContain(JOB_PRIVILEGE_MESSAGE)
+
+    const retried = await post(
+      jsonRequest(`/api/jobs/${jobId}/retry`, {}, admin),
+      route(['jobs', String(jobId), 'retry']),
+    )
+    expect(retried.status).toBe(200)
+    expect(((await retried.json()) as { doc?: { status?: string } }).doc?.status).toBe('PENDING')
   })
 
   it('requires full access for system.ping and scopes idempotency keys to the caller', async () => {

@@ -3,7 +3,7 @@ import type { Payload } from 'payload'
 import { BACKOFF_BASE_MS } from '../constants'
 import { backoffMs } from '../delivery/backoff'
 import { getJob } from '../registry/job-registry'
-import { d1 } from './d1-client'
+import { d1, type D1Budget } from './d1-client'
 import { invokeJobChangeHooks } from './invoke-job-hooks'
 import { JOB_COLUMNS, JOBS_TABLE } from './job-columns'
 import { readStoredJob } from './read-stored-job'
@@ -14,12 +14,13 @@ const LEASE_EXPIRED_ERROR = 'The running job exceeded its lease and was stopped.
 export async function reapExpiredLeases(
   payload: Payload,
   now = new Date(),
+  budget?: D1Budget,
 ): Promise<{ failed: number; requeued: number }> {
-  const ids = await selectExpiredLeaseIds(payload, now)
+  const ids = await selectExpiredLeaseIds(payload, now, budget)
   let failed = 0
   let requeued = 0
   for (const id of ids) {
-    const outcome = await reapOne(payload, id, now)
+    const outcome = await reapOne(payload, id, now, budget)
     if (outcome === 'FAILED') {
       failed += 1
     }
@@ -34,8 +35,9 @@ async function reapOne(
   payload: Payload,
   jobId: number,
   now: Date,
+  budget?: D1Budget,
 ): Promise<'FAILED' | 'PENDING' | null> {
-  const previous = await readStoredJob(payload, jobId)
+  const previous = await readStoredJob(payload, jobId, { budget })
   if (!previous || previous.status !== 'RUNNING') {
     return null
   }
@@ -44,7 +46,7 @@ async function reapOne(
   const nowIso = now.toISOString()
   const runAt = new Date(now.getTime() + delay).toISOString()
   const exhausted = previous.attempt >= previous.maxAttempts
-  const row = await d1(payload)
+  const row = await d1(payload, budget)
     .prepare(
       `UPDATE ${JOBS_TABLE}
        SET ${JOB_COLUMNS.status} = ?,
@@ -74,7 +76,7 @@ async function reapOne(
   if ((row.meta?.changes ?? 0) < 1) {
     return null
   }
-  const next = await readStoredJob(payload, jobId)
+  const next = await readStoredJob(payload, jobId, { budget })
   if (next) {
     await invokeJobChangeHooks(payload, previous, next)
     return next.status === 'FAILED' ? 'FAILED' : 'PENDING'
