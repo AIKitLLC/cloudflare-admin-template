@@ -1,7 +1,7 @@
 import type { Access, CollectionConfig } from 'payload'
 
 import { evaluateCollectionAccess } from './evaluate-collection-access'
-import { isPermissionPayloadCall } from './permission-payload-call'
+import { isPermissionPayloadCall, permissionDocumentId } from './permission-payload-call'
 import type { CollectionAction } from './types'
 
 function operation(collectionSlug: string, action: CollectionAction): Access {
@@ -11,6 +11,7 @@ function operation(collectionSlug: string, action: CollectionAction): Access {
       collectionSlug,
       action,
       permissionProbe: isPermissionPayloadCall(args),
+      documentId: permissionDocumentId(args),
     })
 }
 

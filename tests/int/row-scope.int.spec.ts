@@ -10,6 +10,7 @@ import { relationIds } from '@/access/relation-id'
 import {
   SCOPE_ASSIGNMENT_ERROR,
   SCOPE_ASSIGNMENT_LIMIT_ERROR,
+  SCOPE_ASSIGNMENT_READ_ERROR,
   SCOPE_CYCLE_ERROR,
   SCOPE_GRANT_ERROR,
   SCOPE_NODE_ERROR,
@@ -972,6 +973,59 @@ describe('row scope access', () => {
       expect(relationIds(still.branches)).toEqual(branchIds.slice(0, branchCount).map(String))
     } finally {
       await deleteInChunks(BRANCHES_SLUG, branchIds)
+      await deleteInChunks(ORGANIZATIONS_SLUG, orgIds)
+    }
+  }, 120000)
+
+  it('refuses reads when stored assignments already exceed the cap', async () => {
+    const orgIds: number[] = []
+    const logged: unknown[] = []
+    const error = vi.spyOn(payload.logger, 'error').mockImplementation((...args: unknown[]) => {
+      logged.push(args)
+    })
+    try {
+      for (let index = 0; index < MAX_DIRECT_ASSIGNMENTS + 1; index += 1) {
+        const org = await payload.create({
+          collection: ORGANIZATIONS_SLUG,
+          data: {
+            name: `Over cap ${fixture.stamp} ${index}`,
+            slug: `over-cap-${fixture.stamp}-${index}`,
+          },
+          overrideAccess: true,
+        })
+        orgIds.push(Number(org.id))
+      }
+      const reader = await payload.create({
+        collection: 'users',
+        data: {
+          email: `over-cap-${fixture.stamp}@example.com`,
+          password: 'test-password-123',
+          roles: [fixture.actorRoleId],
+          organizations: orgIds,
+        },
+        overrideAccess: true,
+        context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+      })
+      extraUserIds.push(Number(reader.id))
+      const account = {
+        id: Number(reader.id),
+        email: `over-cap-${fixture.stamp}@example.com`,
+        password: 'test-password-123',
+      }
+      await expect(findRecords(account)).rejects.toThrow(SCOPE_ASSIGNMENT_READ_ERROR)
+      await expect(
+        payload.find({
+          collection: 'users',
+          depth: 0,
+          limit: 1,
+          overrideAccess: false,
+          user: asUser(account),
+        }),
+      ).rejects.toThrow(SCOPE_ASSIGNMENT_READ_ERROR)
+      expect(JSON.stringify(logged)).toContain(SCOPE_ASSIGNMENT_READ_ERROR)
+      expect(JSON.stringify(logged)).not.toContain('Expression tree is too large')
+    } finally {
+      error.mockRestore()
       await deleteInChunks(ORGANIZATIONS_SLUG, orgIds)
     }
   }, 120000)

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 
-import { isPermissionPayloadCall } from '@/access/permission-payload-call'
+import { isPermissionPayloadCall, permissionDocumentId } from '@/access/permission-payload-call'
 import { SCOPE_ASSIGNMENT_ERROR, SCOPE_CYCLE_ERROR } from '@/scope/errors'
 import { assignmentsWithinScope } from '@/scope/guards/assignments-within-scope'
 import { mergeScopeField } from '@/scope/guards/merge-scope-field'
@@ -16,6 +16,8 @@ import { whereForBinding } from '@/scope/where/where-for-binding'
 describe('row scope rules', () => {
   it('treats only the permission-payload argument shape as a probe', () => {
     expect(isPermissionPayloadCall({ id: undefined, data: undefined, req: {} })).toBe(true)
+    expect(permissionDocumentId({ id: '4', data: undefined, req: {} })).toBe('4')
+    expect(permissionDocumentId({ id: undefined, data: undefined, req: {} })).toBeUndefined()
     expect(
       isPermissionPayloadCall({
         id: undefined,
@@ -24,6 +26,14 @@ describe('row scope rules', () => {
         req: {},
       }),
     ).toBe(false)
+    expect(
+      permissionDocumentId({
+        id: 4,
+        data: undefined,
+        isReadingStaticFile: false,
+        req: {},
+      }),
+    ).toBeUndefined()
     expect(isPermissionPayloadCall({ req: {} })).toBe(false)
   })
 

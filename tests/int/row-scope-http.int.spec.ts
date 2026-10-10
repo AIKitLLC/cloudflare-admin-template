@@ -466,6 +466,69 @@ describe('row scope HTTP and GraphQL', () => {
     expect(relationIds(peerDoc.organizations)).toEqual([])
   })
 
+  it('refuses GraphQL by-id changes and document access for an out-of-scope user', async () => {
+    const graphqlById = await graphql(
+      jsonRequest('/api/graphql', {
+        query: `query One($id: Int!) {
+          User(id: $id) { id email }
+        }`,
+        variables: { id: fixture.eastUser.id },
+      }),
+    )
+    const graphqlByIdText = JSON.stringify(await graphqlById.json())
+    expect(graphqlByIdText).not.toContain(fixture.eastUser.email)
+    expect(graphqlByIdText).not.toMatch(/"User":\{/)
+
+    const graphqlUpdate = await graphql(
+      jsonRequest('/api/graphql', {
+        query: `mutation HideUpdate($id: Int!, $email: String) {
+          updateUser(id: $id, data: { email: $email }) { id }
+        }`,
+        variables: { id: fixture.eastUser.id, email: `taken-${fixture.stamp}@example.com` },
+      }),
+    )
+    expect(JSON.stringify(await graphqlUpdate.json())).not.toMatch(/"updateUser":\{/)
+
+    const graphqlDelete = await graphql(
+      jsonRequest('/api/graphql', {
+        query: `mutation HideDelete($id: Int!) {
+          deleteUser(id: $id) { id }
+        }`,
+        variables: { id: fixture.eastUser.id },
+      }),
+    )
+    expect(JSON.stringify(await graphqlDelete.json())).not.toMatch(/"deleteUser":\{/)
+    const stillThere = await payload.findByID({
+      collection: 'users',
+      id: fixture.eastUser.id,
+      depth: 0,
+      overrideAccess: true,
+    })
+    expect(stillThere.email).toBe(fixture.eastUser.email)
+
+    const docAccess = await post(
+      jsonRequest(`/api/users/access/${fixture.eastUser.id}`, {}),
+      route(['users', 'access', String(fixture.eastUser.id)]),
+    )
+    expect(docAccess.status).toBe(200)
+    const docAccessBody = (await docAccess.json()) as Record<string, unknown>
+    expect(operationDenied(docAccessBody.read)).toBe(true)
+    expect(operationDenied(docAccessBody.update)).toBe(true)
+    expect(operationDenied(docAccessBody.delete)).toBe(true)
+    expect(operationDenied(docAccessBody.unlock)).toBe(true)
+
+    const ownAccess = await post(
+      jsonRequest(`/api/users/access/${fixture.actor.id}`, {}),
+      route(['users', 'access', String(fixture.actor.id)]),
+    )
+    expect(ownAccess.status).toBe(200)
+    const ownAccessBody = (await ownAccess.json()) as Record<string, unknown>
+    expect(ownAccessBody.read).toBe(true)
+    expect(ownAccessBody.update).toBe(true)
+    expect(ownAccessBody.delete).toBe(true)
+    expect(ownAccessBody.unlock).toBe(true)
+  })
+
   it('keeps account-takeover refusals for in-scope and unscoped privileged users', async () => {
     const superAdminRole = await payload.find({
       collection: 'roles' as CollectionSlug,
@@ -689,7 +752,7 @@ describe('row scope HTTP and GraphQL', () => {
     const accessJson = JSON.stringify(accessBody)
     assertNoSql(accessJson)
     expect(accessJson.toLowerCase()).not.toContain('select ')
-    expect(allowsReadWithoutWhere(accessBody.collections.users.read)).toBe(true)
+    expect(selfOnlyRead(accessBody.collections.users.read, fixture.actor.id)).toBe(true)
     expect(accessBody.collections.records.read.permission).toBe(true)
     expect(accessBody.collections.records.read.where).toBeTruthy()
     expect(accessJson).toContain('contains')
@@ -889,7 +952,7 @@ describe('row scope HTTP and GraphQL', () => {
       }
       const usersJson = JSON.stringify(accessBody.collections.users)
       const usersRead = JSON.stringify(accessBody.collections.users.read)
-      expect(allowsReadWithoutWhere(accessBody.collections.users.read)).toBe(true)
+      expect(selfOnlyRead(accessBody.collections.users.read, fixture.actor.id)).toBe(true)
       expect(usersRead.length).toBeLessThan(200)
       expect(usersJson).not.toContain(`crowd-${fixture.stamp}-`)
       expect(usersJson).not.toContain('"in"')
@@ -905,11 +968,24 @@ describe('row scope HTTP and GraphQL', () => {
 
 const SQL_MARKERS = ['case when', 'users_rels', 'querychunks', 'substr(']
 
-function allowsReadWithoutWhere(read: true | { permission?: boolean; where?: unknown }): boolean {
-  if (read === true) {
+function selfOnlyRead(
+  read: true | { permission?: boolean; where?: { id?: { equals?: unknown } } },
+  userId: number,
+): boolean {
+  if (read === true || !read.where) {
+    return false
+  }
+  return read.permission === true && Number(read.where.id?.equals) === userId
+}
+
+function operationDenied(value: unknown): boolean {
+  if (value === false || value === undefined) {
     return true
   }
-  return read.permission === true && read.where === undefined
+  if (value && typeof value === 'object' && 'permission' in value) {
+    return (value as { permission?: boolean }).permission === false
+  }
+  return false
 }
 
 function assertNoSql(value: string) {

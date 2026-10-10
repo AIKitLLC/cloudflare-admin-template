@@ -11,7 +11,8 @@ export const beforeGrantGates: AccessGate[] = []
 /**
  * Row-level scoping registers contributors here.
  * They run only after a collection permission grants access, and they do not
- * run for the full-access bypass. Return a Where clause to narrow rows.
+ * run for the full-access bypass. Return a Where to narrow rows, false to deny,
+ * or true only after a bounded check. Undefined leaves the grant unchanged.
  * The organizational scope contributor lives in `src/scope`.
  */
 export const rowScopeContributors: RowScopeContributor[] = []

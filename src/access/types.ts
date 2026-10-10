@@ -48,9 +48,12 @@ export type AccessEvaluationContext = {
   options: RbacCollectionOptions
   /**
    * True when Payload is copying access onto `/api/access` or admin permission
-   * props. User visibility omits its id list. Queries leave this unset.
+   * props. User visibility then checks one id, or returns a self-only Where.
+   * Queries leave this unset and still receive the id list.
    */
   permissionProbe?: boolean
+  /** Set only for a permission-payload call that names one document. */
+  documentId?: number | string
 }
 
 /**
@@ -64,4 +67,4 @@ export type AccessGate = {
 
 export type RowScopeContributor = (
   context: AccessEvaluationContext,
-) => Promise<Where | undefined> | Where | undefined
+) => Promise<AccessConstraint | undefined> | AccessConstraint | undefined

@@ -5,6 +5,9 @@ export const SCOPE_ASSIGNMENT_ERROR = 'You can only assign scopes within your ow
 export const SCOPE_ASSIGNMENT_LIMIT_ERROR =
   'A user can have at most 20 direct organizations, branches, and data classes in total. Assign a parent scope instead of each descendant.'
 
+export const SCOPE_ASSIGNMENT_READ_ERROR =
+  'This account has more than 20 direct organizations, branches, and data classes, so scoped reads are refused. Assign a parent scope instead of each descendant.'
+
 export const SCOPE_ROLE_TARGET_ERROR = 'You can only assign roles to users inside your scope.'
 
 export const SCOPE_USER_ERROR = 'You can only change a user inside your scope.'

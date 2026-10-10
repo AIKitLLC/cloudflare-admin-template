@@ -40,6 +40,26 @@ export async function whereUsersWithinScope(req: PayloadRequest): Promise<Where>
  * "every assignment is inside the caller's scope" without this pre-select.
  * Payload 3.82.1 cannot.
  */
+/**
+ * One-row check used by per-document permission props. The id equality keeps the
+ * statement bounded. The same scope rule as the list query applies.
+ */
+export async function userIsVisible(
+  req: PayloadRequest,
+  targetId: number | string,
+): Promise<boolean> {
+  const actorId = Number(req.user?.id)
+  const target = typeof targetId === 'number' ? targetId : Number(targetId)
+  if (!Number.isInteger(actorId) || !Number.isInteger(target)) {
+    return false
+  }
+  const rows = await selectRows(
+    req,
+    sql`SELECT "users"."id" AS id FROM "users" WHERE "users"."id" = ${target} AND (${selfOrScoped(actorId)})`,
+  )
+  return rows.length > 0
+}
+
 async function visibleUserWhere(req: PayloadRequest, actorIdRaw: string): Promise<Where> {
   const actorId = Number(actorIdRaw)
   if (!Number.isInteger(actorId)) {

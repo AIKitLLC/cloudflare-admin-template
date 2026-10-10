@@ -1,7 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { evaluateCollectionAccess } from '../access/evaluate-collection-access'
-import { isPermissionPayloadCall } from '../access/permission-payload-call'
+import { isPermissionPayloadCall, permissionDocumentId } from '../access/permission-payload-call'
 import { withRbac } from '../access/with-rbac'
 import {
   guardAuthCredentialOperation,
@@ -32,6 +32,7 @@ export const Users: CollectionConfig = withRbac(
           collectionSlug: 'users',
           action: 'update',
           permissionProbe: isPermissionPayloadCall(args),
+          documentId: permissionDocumentId(args),
         }),
     },
     fields: [
