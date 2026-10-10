@@ -19,11 +19,18 @@ function restoreMaskedSensitiveValue(args: {
   originalDoc?: ParameterWriteData | null
   operation: 'create' | 'update'
 }): void {
-  if (args.operation !== 'update' || args.data.value !== null) {
+  if (args.operation !== 'update' || args.data.value !== null || !args.originalDoc) {
     return
   }
-  const storedAsSensitive = Boolean(args.originalDoc?.sensitive) || Boolean(args.data.sensitive)
-  if (!storedAsSensitive || !args.originalDoc) {
+  if (
+    args.data.sensitive === false ||
+    args.data.sensitive === 0 ||
+    args.data.sensitive === 'false'
+  ) {
+    return
+  }
+  const staysSensitive = Boolean(args.originalDoc.sensitive) || Boolean(args.data.sensitive)
+  if (!staysSensitive) {
     return
   }
   args.data.value = args.originalDoc.value

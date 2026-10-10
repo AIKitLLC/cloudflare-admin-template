@@ -28,4 +28,6 @@ export const SYSTEM_PARAMETERS_KV_BINDING = 'SYSTEM_PARAMETERS_KV'
 export const REVEAL_SENSITIVE_PARAMETER_VALUE = 'revealSensitiveParameterValue'
 export const SYSTEM_PARAMETER_AUDIT_CONTEXT = 'systemParameterAudit'
 
+export const AUDIT_REDACT_WHEN_SENSITIVE = 'whenSensitive' as const
+
 export const REDACTED_PARAMETER_VALUE = { redacted: true } as const

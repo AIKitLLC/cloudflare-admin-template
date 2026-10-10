@@ -41,8 +41,7 @@ export class ParameterReadCache {
   async read(key: string): Promise<ParameterSnapshot | null> {
     const now = this.deps.now()
     const memory = this.deps.memory
-    const memoryStale =
-      memory.loadedAt !== null && now - memory.loadedAt >= this.deps.maxAgeMs
+    const memoryStale = memory.loadedAt !== null && now - memory.loadedAt >= this.deps.maxAgeMs
     const withinTtl = now - memory.verifiedAt < this.deps.verifyTtlMs
     if (!memoryStale && withinTtl && memory.entries.has(key)) {
       return memory.entries.get(key) ?? null

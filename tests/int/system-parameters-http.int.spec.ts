@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { GRAPHQL_POST, REST_GET, REST_PATCH, REST_POST } from '@payloadcms/next/routes'
+import { GRAPHQL_POST, REST_DELETE, REST_GET, REST_PATCH, REST_POST } from '@payloadcms/next/routes'
 import { getPayload, type CollectionSlug, type Payload, type PayloadRequest } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
@@ -27,12 +27,16 @@ import {
   PARAMETER_KEY_FORMAT_ERROR,
   PARAMETER_NUMBER_VALUE_ERROR,
   PARAMETER_SECRET_KEY_ERROR,
+  PARAMETER_STRING_VALUE_ERROR,
+  PARAMETER_UNMASK_VALUE_ERROR,
+  PARAMETER_VALUE_QUERY_ERROR,
 } from '@/system-parameters/validation/messages'
 
 const ORIGIN = 'http://localhost:3000'
 const post = REST_POST(config)
 const patch = REST_PATCH(config)
 const get = REST_GET(config)
+const remove = REST_DELETE(config)
 const graphql = GRAPHQL_POST(config)
 
 let payload: Payload
@@ -255,7 +259,7 @@ describe('system parameters over HTTP', () => {
     expect(created.value).toBeNull()
     expect(JSON.stringify(created)).not.toContain(secret)
 
-    const audit = readSystemParameterAudit(req.context)
+    const audit = readSystemParameterAudit(req.context, created.id)
     expect(audit?.next?.value).toEqual(REDACTED_PARAMETER_VALUE)
     expect(JSON.stringify(audit)).not.toContain(secret)
     expect(await getParameter(payload, key)).toBe(secret)
@@ -299,6 +303,32 @@ describe('system parameters over HTTP', () => {
     )
     expect(exported.status).toBe(200)
     expect(await exported.text()).not.toContain(secret)
+
+    const byId = await get(
+      jsonRequest(`/api/system-parameters/${created.id}`, undefined, cookie, ORIGIN, 'GET'),
+      route(['system-parameters', String(created.id)]),
+    )
+    expect(byId.status).toBe(200)
+    const byIdBody = JSON.stringify(await byId.json())
+    expect(byIdBody).not.toContain(secret)
+    expect(byIdBody).toContain('"value":null')
+
+    const mutated = await graphql(
+      jsonRequest(
+        '/api/graphql',
+        {
+          query: `mutation Update($id: Int!, $label: String) {
+          updateSystemParameter(id: $id, data: { label: $label }) { value sensitive }
+        }`,
+          variables: { id: Number(created.id), label: 'Allow list' },
+        },
+        cookie,
+      ),
+    )
+    const mutatedBody = JSON.stringify(await mutated.json())
+    expect(mutatedBody).not.toContain(secret)
+    expect(mutatedBody).toContain('"value":null')
+    expect(mutatedBody).toContain('"sensitive":true')
 
     const rotated = await patch(
       jsonRequest(
@@ -435,19 +465,306 @@ describe('system parameters over HTTP', () => {
     clock.now += PARAMETER_CACHE_VERIFY_TTL_MS
     expect((await otherIsolate.read(key))?.value).toBe('two')
 
-    await payload.delete({
-      collection: SYSTEM_PARAMETERS_SLUG,
-      id: created.id,
-      overrideAccess: true,
-    })
+    const deleted = await remove(
+      jsonRequest(`/api/system-parameters/${created.id}`, undefined, cookie, ORIGIN, 'DELETE'),
+      route(['system-parameters', String(created.id)]),
+    )
+    expect(deleted.status).toBeLessThan(300)
     createdParameterIds.splice(createdParameterIds.indexOf(created.id), 1)
     expect(await getParameter(payload, key, { default: 'gone' })).toBe('gone')
+    clock.now += 500
+    expect((await otherIsolate.read(key))?.value).toBe('two')
+    clock.now += PARAMETER_CACHE_VERIFY_TTL_MS
+    expect(await otherIsolate.read(key)).toBeNull()
     await expect(getParameter(payload, key, { default: 1 })).resolves.toBe(1)
     await expect(
       getParameter(payload, `max-retries-${stamp}`, { default: 'nope' }),
     ).rejects.toBeInstanceOf(ParameterTypeMismatchError)
   })
+
+  it('requires full access and a new value before sensitive can be turned off', async () => {
+    const admin = await superAdminCookie()
+    const editor = await editorSession('unmask')
+    const secret = `stored-secret-${stamp}`
+    const key = `billing-window-${stamp}`
+    const created = await createOverRest(admin, {
+      key,
+      category: 'billing',
+      valueType: 'string',
+      value: secret,
+      sensitive: true,
+    })
+
+    await expectRestUnmask(editor, created.id, { sensitive: false }, secret, 403)
+    await expectRestUnmask(editor, created.id, { value: null, sensitive: false }, secret, 403)
+    await expectGraphqlUnmask(
+      editor,
+      created.id,
+      'sensitive: false',
+      secret,
+      /not allowed|forbidden/,
+    )
+    await expectGraphqlUnmask(
+      editor,
+      created.id,
+      'sensitive: false, value: null',
+      secret,
+      /not allowed|forbidden/,
+    )
+
+    await expectRestUnmask(
+      admin,
+      created.id,
+      { sensitive: false },
+      secret,
+      400,
+      PARAMETER_UNMASK_VALUE_ERROR,
+    )
+    await expectRestUnmask(
+      admin,
+      created.id,
+      { value: null, sensitive: false },
+      secret,
+      400,
+      PARAMETER_UNMASK_VALUE_ERROR,
+    )
+    await expectGraphqlUnmask(
+      admin,
+      created.id,
+      'sensitive: false',
+      secret,
+      new RegExp(PARAMETER_UNMASK_VALUE_ERROR),
+    )
+    await expectGraphqlUnmask(
+      admin,
+      created.id,
+      'sensitive: false, value: null',
+      secret,
+      new RegExp(PARAMETER_UNMASK_VALUE_ERROR),
+    )
+    expect(await getParameter(payload, key)).toBe(secret)
+
+    const replacement = `public-window-${stamp}`
+    const cleared = await patch(
+      jsonRequest(
+        `/api/system-parameters/${created.id}`,
+        { sensitive: false, value: replacement },
+        admin,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['system-parameters', String(created.id)]),
+    )
+    const clearedBody = JSON.stringify(await cleared.json())
+    expect(cleared.status, clearedBody).toBeLessThan(300)
+    expect(clearedBody).toContain(replacement)
+    expect(clearedBody).not.toContain(secret)
+    expect(await getParameter(payload, key)).toBe(replacement)
+
+    const secondSecret = `graphql-secret-${stamp}`
+    const second = await createOverRest(admin, {
+      key: `billing-graphql-${stamp}`,
+      category: 'billing',
+      valueType: 'string',
+      value: secondSecret,
+      sensitive: true,
+    })
+    const graphqlCleared = await graphql(
+      jsonRequest(
+        '/api/graphql',
+        {
+          query: `mutation Clear($id: Int!, $value: JSON!) {
+          updateSystemParameter(id: $id, data: { sensitive: false, value: $value }) { value sensitive }
+        }`,
+          variables: { id: Number(second.id), value: 'graphql-public' },
+        },
+        admin,
+      ),
+    )
+    const graphqlBody = JSON.stringify(await graphqlCleared.json())
+    expect(graphqlBody).toContain('graphql-public')
+    expect(graphqlBody).not.toContain(secondSecret)
+    expect(graphqlBody).toContain('"sensitive":false')
+    expect(await getParameter(payload, `billing-graphql-${stamp}`)).toBe('graphql-public')
+  })
+
+  it('refuses value filters and sorts for users without full access', async () => {
+    const admin = await superAdminCookie()
+    const editor = await editorSession('query')
+    const secret = `guess-me-${stamp}`
+    const key = `guess-${stamp}`
+    await createOverRest(admin, {
+      key,
+      category: 'operations',
+      valueType: 'string',
+      value: secret,
+      sensitive: true,
+    })
+
+    const filtered = await get(
+      jsonRequest(
+        `/api/system-parameters?where[value][like]=${encodeURIComponent('guess%')}`,
+        undefined,
+        editor,
+        ORIGIN,
+        'GET',
+      ),
+      route(['system-parameters']),
+    )
+    const filteredBody = JSON.stringify(await filtered.json())
+    expect(filtered.status).toBe(400)
+    expect(filteredBody).toContain(PARAMETER_VALUE_QUERY_ERROR)
+    expect(filteredBody).not.toContain(secret)
+
+    const nested = await get(
+      jsonRequest(
+        '/api/system-parameters?where[and][0][value][equals]=guess-me',
+        undefined,
+        editor,
+        ORIGIN,
+        'GET',
+      ),
+      route(['system-parameters']),
+    )
+    expect(nested.status).toBe(400)
+    expect(JSON.stringify(await nested.json())).toContain(PARAMETER_VALUE_QUERY_ERROR)
+
+    const sorted = await get(
+      jsonRequest('/api/system-parameters?sort=value', undefined, editor, ORIGIN, 'GET'),
+      route(['system-parameters']),
+    )
+    expect(sorted.status).toBe(400)
+    expect(JSON.stringify(await sorted.json())).toContain(PARAMETER_VALUE_QUERY_ERROR)
+
+    const allowed = await get(
+      jsonRequest(
+        `/api/system-parameters?where[key][equals]=${key}`,
+        undefined,
+        editor,
+        ORIGIN,
+        'GET',
+      ),
+      route(['system-parameters']),
+    )
+    const allowedBody = JSON.stringify(await allowed.json())
+    expect(allowed.status).toBe(200)
+    expect(allowedBody).not.toContain(secret)
+    expect(await getParameter(payload, key)).toBe(secret)
+  })
+
+  it('masks every row in a bulk update', async () => {
+    const admin = await superAdminCookie()
+    const firstSecret = `bulk-secret-a-${stamp}`
+    const secondSecret = `bulk-secret-b-${stamp}`
+    const first = await createOverRest(admin, {
+      key: `bulk-a-${stamp}`,
+      category: 'operations',
+      valueType: 'string',
+      value: firstSecret,
+      sensitive: true,
+    })
+    const second = await createOverRest(admin, {
+      key: `bulk-b-${stamp}`,
+      category: 'operations',
+      valueType: 'string',
+      value: secondSecret,
+      sensitive: true,
+    })
+    const response = await patch(
+      jsonRequest(
+        `/api/system-parameters?where[id][in][0]=${first.id}&where[id][in][1]=${second.id}`,
+        { label: 'batched' },
+        admin,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['system-parameters']),
+    )
+    const body = JSON.stringify(await response.json())
+    expect(response.status, body).toBe(200)
+    expect(body).not.toContain(firstSecret)
+    expect(body).not.toContain(secondSecret)
+    expect(body).toContain('"value":null')
+    expect(await getParameter(payload, `bulk-a-${stamp}`)).toBe(firstSecret)
+    expect(await getParameter(payload, `bulk-b-${stamp}`)).toBe(secondSecret)
+  })
+
+  it('rejects a number to string change that keeps the stored value', async () => {
+    const admin = await superAdminCookie()
+    const key = `threshold-${stamp}`
+    const created = await createOverRest(admin, {
+      key,
+      category: 'operations',
+      valueType: 'number',
+      value: 42,
+    })
+    const response = await patch(
+      jsonRequest(
+        `/api/system-parameters/${created.id}`,
+        { valueType: 'string' },
+        admin,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['system-parameters', String(created.id)]),
+    )
+    const body = JSON.stringify(await response.json())
+    expect(response.status).toBe(400)
+    expect(body).toContain(PARAMETER_STRING_VALUE_ERROR)
+    expect(await getParameter(payload, key)).toBe(42)
+  })
 })
+
+async function expectRestUnmask(
+  cookie: string,
+  id: number,
+  data: { sensitive: boolean; value?: unknown },
+  secret: string,
+  status: number,
+  message?: string,
+): Promise<void> {
+  const response = await patch(
+    jsonRequest(`/api/system-parameters/${id}`, data, cookie, ORIGIN, 'PATCH'),
+    route(['system-parameters', String(id)]),
+  )
+  const body = JSON.stringify(await response.json())
+  expect(response.status, body).toBe(status)
+  if (message) {
+    expect(body).toContain(message)
+  }
+  expect(body).not.toContain(secret)
+  const masked = await get(
+    jsonRequest(`/api/system-parameters/${id}`, undefined, cookie, ORIGIN, 'GET'),
+    route(['system-parameters', String(id)]),
+  )
+  const maskedBody = JSON.stringify(await masked.json())
+  expect(maskedBody).not.toContain(secret)
+  expect(maskedBody).toContain('"sensitive":true')
+}
+
+async function expectGraphqlUnmask(
+  cookie: string,
+  id: number,
+  dataFields: string,
+  secret: string,
+  message: RegExp,
+): Promise<void> {
+  const response = await graphql(
+    jsonRequest(
+      '/api/graphql',
+      {
+        query: `mutation Unmask($id: Int!) {
+          updateSystemParameter(id: $id, data: { ${dataFields} }) { id value sensitive }
+        }`,
+        variables: { id },
+      },
+      cookie,
+    ),
+  )
+  const body = JSON.stringify(await response.json())
+  expect(body).toMatch(message)
+  expect(body).not.toContain(secret)
+}
 
 function route(slug: string[]) {
   return { params: Promise.resolve({ slug }) }
@@ -530,6 +847,16 @@ async function findSuperAdminRole(): Promise<{ id: number }> {
     throw new Error('super-admin role was not seeded')
   }
   return { id: Number(result.docs[0].id) }
+}
+
+async function editorSession(label: string): Promise<string> {
+  const role = await createRole(`param-editor-${label}-${stamp}`)
+  for (const key of await permissionKeys('system-parameters:')) {
+    if (key.includes('delete')) continue
+    await grant(role.id, key)
+  }
+  const editor = await createAccount(`param-editor-${label}-${stamp}@example.com`, [role.id])
+  return loginCookie(editor.email)
 }
 
 async function createRole(slug: string): Promise<{ id: number }> {

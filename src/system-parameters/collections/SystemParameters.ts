@@ -5,9 +5,15 @@ import {
   invalidateSystemParameterCache,
   invalidateSystemParameterCacheOnDelete,
 } from '../cache/invalidate-on-change'
-import { recordSystemParameterAudit, recordSystemParameterDeletion } from '../hooks/record-audit'
-import { SYSTEM_PARAMETERS_SLUG } from '../constants'
+import {
+  previewSystemParameterAudit,
+  recordSystemParameterAudit,
+  recordSystemParameterDeletion,
+} from '../hooks/record-audit'
+import { AUDIT_REDACT_WHEN_SENSITIVE, SYSTEM_PARAMETERS_SLUG } from '../constants'
+import { refuseValueQuery } from '../query/refuse-value-query'
 import { maskSensitiveParameterOnRead } from '../sensitive/mask-on-read'
+import { guardSensitiveUnmask } from '../sensitive/guard-unmask'
 import { prepareSystemParameterWrite } from '../sensitive/prepare-write'
 import type { ParameterWriteData } from '../types'
 import {
@@ -85,6 +91,24 @@ export const SystemParameters: CollectionConfig = withRbac({
       name: 'value',
       type: 'json',
       required: true,
+      custom: {
+        audit: {
+          redact: AUDIT_REDACT_WHEN_SENSITIVE,
+        },
+      },
+      hooks: {
+        beforeValidate: [
+          async ({ operation, originalDoc, overrideAccess, req, siblingData }) => {
+            await guardSensitiveUnmask({
+              operation,
+              originalDoc: originalDoc as ParameterWriteData | undefined,
+              overrideAccess: Boolean(overrideAccess),
+              req,
+              siblingData: (siblingData ?? {}) as ParameterWriteData,
+            })
+          },
+        ],
+      },
       validate: (value, options) =>
         validateParameterValueField(value, {
           siblingData: options.siblingData as { valueType?: unknown },
@@ -106,7 +130,8 @@ export const SystemParameters: CollectionConfig = withRbac({
     },
   ],
   hooks: {
-    beforeChange: [prepareSystemParameter],
+    beforeOperation: [refuseValueQuery],
+    beforeChange: [prepareSystemParameter, previewSystemParameterAudit],
     afterRead: [maskSensitiveParameterOnRead],
     afterChange: [invalidateSystemParameterCache, recordSystemParameterAudit],
     afterDelete: [invalidateSystemParameterCacheOnDelete, recordSystemParameterDeletion],

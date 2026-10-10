@@ -23,11 +23,7 @@ export async function validateParameterKey(
   return true
 }
 
-async function keyAlreadyExists(
-  req: PayloadRequest,
-  key: string,
-  id: unknown,
-): Promise<boolean> {
+async function keyAlreadyExists(req: PayloadRequest, key: string, id: unknown): Promise<boolean> {
   const payload: Payload = req.payload
   const existing = await payload.find({
     collection: SYSTEM_PARAMETERS_SLUG as CollectionSlug,

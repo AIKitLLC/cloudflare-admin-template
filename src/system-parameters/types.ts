@@ -40,6 +40,9 @@ export type SystemParameterAuditRecord = {
   next: SystemParameterAuditView | null
 }
 
+/** Redacted audit rows keyed by document id. Bulk writes each get their own entry. */
+export type SystemParameterAuditMap = Record<string, SystemParameterAuditRecord>
+
 export type VersionStore = {
   readVersion: () => Promise<number>
   bumpVersion: () => Promise<number>

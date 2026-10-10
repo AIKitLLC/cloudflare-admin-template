@@ -29,3 +29,8 @@ export const PARAMETER_JSON_SIZE_ERROR = 'JSON value exceeds the maximum size.'
 export const PARAMETER_JSON_DEPTH_ERROR = 'JSON value exceeds the maximum nesting depth.'
 
 export const PARAMETER_VALUE_TYPE_ERROR = 'Value type must be string, number, boolean, or json.'
+
+export const PARAMETER_UNMASK_VALUE_ERROR =
+  'Turning sensitive off requires a new value in the same request. The stored value is not returned.'
+
+export const PARAMETER_VALUE_QUERY_ERROR = 'Filtering or sorting on value requires full access.'

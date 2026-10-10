@@ -1,28 +1,34 @@
-import {
-  REDACTED_PARAMETER_VALUE,
-  SYSTEM_PARAMETER_AUDIT_CONTEXT,
-  SYSTEM_PARAMETERS_SLUG,
-} from '../constants'
+import { SYSTEM_PARAMETER_AUDIT_CONTEXT, SYSTEM_PARAMETERS_SLUG } from '../constants'
 import type {
   ParameterWriteData,
+  SystemParameterAuditMap,
   SystemParameterAuditRecord,
   SystemParameterAuditView,
 } from '../types'
+import { REDACTED_PARAMETER_VALUE } from '../constants'
 import { isParameterValueType } from '../validation/typed-value'
 
 type AuditDoc = ParameterWriteData & { id?: number | string }
 
-export function toSystemParameterAuditView(
-  doc: AuditDoc,
-  redact: boolean,
-): SystemParameterAuditView {
+export function redactSystemParameterForAudit<T extends ParameterWriteData>(doc: T): T {
+  if (!doc.sensitive) {
+    return { ...doc }
+  }
   return {
-    id: doc.id ?? 0,
-    key: typeof doc.key === 'string' ? doc.key : '',
-    category: typeof doc.category === 'string' ? doc.category : '',
-    valueType: isParameterValueType(doc.valueType) ? doc.valueType : null,
-    sensitive: Boolean(doc.sensitive),
-    value: redact ? REDACTED_PARAMETER_VALUE : valueForAudit(doc.value),
+    ...doc,
+    value: REDACTED_PARAMETER_VALUE,
+  }
+}
+
+export function toSystemParameterAuditView(doc: AuditDoc): SystemParameterAuditView {
+  const redacted = redactSystemParameterForAudit(doc)
+  return {
+    id: redacted.id ?? 0,
+    key: typeof redacted.key === 'string' ? redacted.key : '',
+    category: typeof redacted.category === 'string' ? redacted.category : '',
+    valueType: isParameterValueType(redacted.valueType) ? redacted.valueType : null,
+    sensitive: Boolean(redacted.sensitive),
+    value: redacted.sensitive ? REDACTED_PARAMETER_VALUE : valueForAudit(redacted.value),
   }
 }
 
@@ -31,47 +37,47 @@ export function buildSystemParameterAudit(args: {
   previous?: AuditDoc | null
   next?: AuditDoc | null
 }): SystemParameterAuditRecord {
-  const redact = Boolean(args.previous?.sensitive) || Boolean(args.next?.sensitive)
   return {
     collection: SYSTEM_PARAMETERS_SLUG,
     operation: args.operation,
-    previous: args.previous ? toSystemParameterAuditView(args.previous, redact) : null,
-    next: args.next ? toSystemParameterAuditView(args.next, redact) : null,
+    previous: args.previous ? toSystemParameterAuditView(args.previous) : null,
+    next: args.next ? toSystemParameterAuditView(args.next) : null,
   }
 }
 
-export function redactSystemParameterHookArguments(args: {
-  data?: ParameterWriteData | null
-  doc?: ParameterWriteData | null
-  previousDoc?: ParameterWriteData | null
-}): void {
-  const redact =
-    Boolean(args.data?.sensitive) ||
-    Boolean(args.doc?.sensitive) ||
-    Boolean(args.previousDoc?.sensitive)
-  if (!redact) {
+export function rememberSystemParameterAudit(
+  context: object,
+  record: SystemParameterAuditRecord,
+): void {
+  const id = record.next?.id ?? record.previous?.id
+  if (id === undefined || id === null || id === '') {
     return
   }
-  if (args.previousDoc) {
-    args.previousDoc.value = REDACTED_PARAMETER_VALUE
+  const store = context as Record<string, unknown>
+  const current = store[SYSTEM_PARAMETER_AUDIT_CONTEXT]
+  const map = isAuditMap(current) ? current : {}
+  if (map !== current) {
+    store[SYSTEM_PARAMETER_AUDIT_CONTEXT] = map
   }
-  if (args.data) {
-    args.data.value = REDACTED_PARAMETER_VALUE
-  }
-  if (args.doc && containsPlainValue(args.doc.value)) {
-    args.doc.value = null
-  }
+  map[String(id)] = record
 }
 
-export function readSystemParameterAudit(context: unknown): SystemParameterAuditRecord | null {
+export function readSystemParameterAudits(context: unknown): SystemParameterAuditMap {
   if (!context || typeof context !== 'object') {
-    return null
+    return {}
   }
-  const record = (context as Record<string, unknown>)[SYSTEM_PARAMETER_AUDIT_CONTEXT]
-  if (!record || typeof record !== 'object') {
-    return null
+  const current = (context as Record<string, unknown>)[SYSTEM_PARAMETER_AUDIT_CONTEXT]
+  if (!isAuditMap(current)) {
+    return {}
   }
-  return record as SystemParameterAuditRecord
+  return { ...current }
+}
+
+export function readSystemParameterAudit(
+  context: unknown,
+  id: number | string,
+): SystemParameterAuditRecord | null {
+  return readSystemParameterAudits(context)[String(id)] ?? null
 }
 
 function valueForAudit(value: unknown): SystemParameterAuditView['value'] {
@@ -81,11 +87,11 @@ function valueForAudit(value: unknown): SystemParameterAuditView['value'] {
   return value as SystemParameterAuditView['value']
 }
 
-function containsPlainValue(value: unknown): boolean {
-  if (value === null || value === undefined) {
+function isAuditMap(value: unknown): value is SystemParameterAuditMap {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return false
   }
-  if (value === REDACTED_PARAMETER_VALUE) {
+  if ('operation' in value && 'collection' in value) {
     return false
   }
   return true

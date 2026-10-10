@@ -22,23 +22,31 @@ Validation runs in collection `beforeChange` and on the field `validate` functio
 
 ## Secrets
 
-Two separate rules:
+Values are stored unencrypted. D1 keeps `value` as plaintext JSON text, and the optional KV cache entry stores the same plaintext so `getParameter` can read it. This collection is not an encrypted secret store and is not meant for credentials. Put credentials in Worker secrets (`wrangler secret put`).
 
-1. **Secret-like keys are refused.** A key is rejected when a `-` segment is `secret`, `secrets`, `password`, `passwd`, `token`, `tokens`, `apikey`, `credential`, `credentials`, or `privatekey`, or when it contains `api-key`, `access-key`, or `private-key`. Examples that are rejected: `api-key`, `stripe-secret`, `session-token`. Name a lifetime `session-ttl-seconds` instead of `token-ttl`. These values belong in Worker secrets (`wrangler secret put`), not in D1.
-2. **`sensitive` hides operational values that are not credentials.** The value is still stored, because server code may need it, but it is not a plain parameter on any API surface.
+Two separate controls, and neither one makes the column safe for secrets:
 
-Chosen this way because a denylist alone misses a secret stored under an innocent key, and a mask flag alone would still let `api-key` be written into D1. The denylist blocks credential-shaped keys. The flag covers everything else an operator must keep out of list, export, and audit output.
+1. **Secret-like keys are refused.** This is only a heuristic. A key is rejected when a `-` segment is `secret`, `secrets`, `password`, `passwd`, `token`, `tokens`, `apikey`, `credential`, `credentials`, or `privatekey`, or when it contains `api-key`, `access-key`, or `private-key`. Examples that are rejected: `api-key`, `stripe-secret`, `session-token`. Name a lifetime `session-ttl-seconds` instead of `token-ttl`. An ordinary key such as `billing-allowlist` is accepted even if the operator pastes a credential into it.
+2. **`sensitive` hides operational values that are not credentials.** The value is still stored in plaintext, because server code may need it, but it is not a plain parameter on any API surface.
+
+Chosen this way because a denylist alone misses a secret stored under an innocent key, and a mask flag alone would still let `api-key` be written into D1. The denylist blocks credential-shaped names. The flag covers everything else an operator must keep out of list, export, and audit output.
 
 When `sensitive` is true:
 
-- REST, GraphQL, list, and `GET /api/system-parameters/export` return `value: null`. The row stays so it can be edited. `sensitive: true` distinguishes a mask from a missing document.
+- REST, GraphQL, list, find-by-id, mutation responses, and `GET /api/system-parameters/export` return `value: null`. The row stays so it can be edited. `sensitive: true` distinguishes a mask from a missing document.
 - `getParameter` is the only supported reader of the plaintext. It is server-side and sets `revealSensitiveParameterValue` on the local request.
 - The CSV export uses the normal read path, so the plaintext never reaches the file.
-- After a write, `req.context.systemParameterAudit` holds `{ previous, next }` with `value: { redacted: true }` whenever either side is sensitive. The hook also replaces `previousDoc.value` and `data.value` with that marker so a later audit hook on the same change does not diff plaintext.
-- Sending `value: null` on update keeps the stored value. That is how a masked admin form can save a label without wiping the value. Rotate a sensitive value by sending a new one. Delete the row to remove it.
+- Sending `value: null` on update keeps the stored value while the row stays sensitive. That is how a masked admin form can save a label without wiping the value. Rotate a sensitive value by sending a new one. Delete the row to remove it.
 - Payload versions are off, so old plaintext is not copied into a versions table.
 
-`readSystemParameterAudit(req.context)` is the view issue #12 should store. Parameter changes themselves go through normal collection hooks and are not written with a raw SQL bypass.
+Clearing `sensitive` (true to false) is not a reveal. Both of these rules apply:
+
+- Only a full-access user can make that change. A local API call with `overrideAccess: true` may also do it, because that path is server code rather than a logged-in editor. Every other caller is rejected.
+- The same request must include a new `value`. Omitting `value`, or sending `value: null`, is rejected. The stored value is left in place, stays sensitive, and is not returned in the error.
+
+A user who can update a row cannot read it back by unchecking `sensitive`.
+
+Filtering or sorting on `value` is refused for anyone who does not have full access, including nested `and` / `or` filters. That blocks guessing a sensitive value one character at a time through `totalDocs`. Full-access users may filter and sort on `value`. `getParameter` looks up by `key` and is unaffected.
 
 ## Permissions
 
@@ -50,6 +58,18 @@ When `sensitive` is true:
 A full-access role bypasses these, same as every other collection. Field writes without `writeField` are dropped by the existing field gate; collection update without `system-parameters:update` is denied. Restart after deploy so catalog sync inserts the new permission rows, then grant them in the matrix.
 
 `getParameter` uses `overrideAccess` because Workers read configuration with no logged-in user. That does not open the HTTP API.
+
+## Audit trail (#12)
+
+Parameter changes go through normal collection hooks. Nothing writes a parameter document with raw SQL, and these hooks do not mutate `data`, `doc`, or `previousDoc`. Those objects can still hold plaintext. Issue #12 must not read `value` from them.
+
+The `value` field is marked `custom.audit.redact = 'whenSensitive'`. When `sensitive` is true, redact that field. When it is false, keep the submitted value.
+
+`redactSystemParameterForAudit(doc)` returns a copy with that rule applied. It does not modify `doc`. Call it on whichever document the hook received (`doc`, `previousDoc`, or the merged write). It is safe no matter which hook runs first, including a hook registered before this collection's `afterChange`.
+
+`req.context.systemParameterAudit` is a map of those redacted records keyed by document id, so a bulk write does not overwrite a sibling row. Updates publish the map in `beforeChange`, before any `afterChange` hook. Creates and deletes publish it in `afterChange` / `afterDelete`. `readSystemParameterAudit(context, id)` returns one entry. `readSystemParameterAudits(context)` returns the map.
+
+When the two features are combined, #12 should take `value` only from `redactSystemParameterForAudit(doc)` or from `readSystemParameterAudit(req.context, id)`. Never from the raw documents.
 
 ## Reading from server code
 
@@ -80,7 +100,7 @@ After the 2 second window the isolate reads the D1 version. A mismatch drops mem
 
 The 30 second maximum age reloads from D1 even when the version still matches. It covers a process that saved the parameter and crashed before the version statement. A missed bump cannot pin a stale value for the life of the isolate.
 
-Cloudflare KV is optional. The binding name is `SYSTEM_PARAMETERS_KV`. It is commented out in `wrangler.jsonc` with placeholder id `PLACEHOLDER_KV_NAMESPACE_ID` so this repo does not create a namespace. When the binding is absent, or the KV call throws, reads use memory and D1. When it is present, an entry is trusted only if its embedded version equals the D1 version. KV is eventually consistent and is never the source of truth. A stale KV entry fails the version check and the read falls through to D1. Sensitive values may be copied into KV because `getParameter` needs them; KV is not an admin, export, or audit surface.
+Cloudflare KV is optional. The binding name is `SYSTEM_PARAMETERS_KV`. It is commented out in `wrangler.jsonc` with placeholder id `PLACEHOLDER_KV_NAMESPACE_ID` so this repo does not create a namespace. When the binding is absent, or the KV call throws, reads use memory and D1. When it is present, an entry is trusted only if its embedded version equals the D1 version. KV is eventually consistent and is never the source of truth. A stale KV entry fails the version check and the read falls through to D1. KV entries are plaintext, including sensitive values, because `getParameter` needs them. KV is not an admin, export, or audit surface, and it is not encrypted.
 
 ## Migrations
 

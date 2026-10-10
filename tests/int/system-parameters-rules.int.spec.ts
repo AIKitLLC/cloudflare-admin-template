@@ -1,10 +1,15 @@
+import { Forbidden, ValidationError, type PayloadRequest } from 'payload'
 import { describe, expect, it } from 'vitest'
 
 import { REDACTED_PARAMETER_VALUE } from '@/system-parameters/constants'
+import { recordSystemParameterAudit } from '@/system-parameters/hooks/record-audit'
+import { queryTargetsValue, sortTargetsValue } from '@/system-parameters/query/refuse-value-query'
 import {
   buildSystemParameterAudit,
-  redactSystemParameterHookArguments,
+  readSystemParameterAudits,
+  redactSystemParameterForAudit,
 } from '@/system-parameters/sensitive/audit-view'
+import { guardSensitiveUnmask } from '@/system-parameters/sensitive/guard-unmask'
 import { prepareSystemParameterWrite } from '@/system-parameters/sensitive/prepare-write'
 import type { ParameterWriteData } from '@/system-parameters/types'
 import { keyLooksLikeSecret } from '@/system-parameters/validation/secret-key'
@@ -100,6 +105,20 @@ describe('system parameter rules', () => {
       originalDoc: { ...masked, value: 'hidden-value' },
     })
     expect(masked.value).toBe('hidden-value')
+
+    const unmask: ParameterWriteData = {
+      key: 'flags',
+      category: 'features',
+      valueType: 'string',
+      value: null,
+      sensitive: false,
+    }
+    prepareSystemParameterWrite({
+      data: unmask,
+      operation: 'update',
+      originalDoc: { ...unmask, value: 'hidden-value', sensitive: true },
+    })
+    expect(unmask.value).toBeNull()
   })
 
   it('redacts sensitive values in the audit view and on hook arguments', () => {
@@ -124,12 +143,13 @@ describe('system parameter rules', () => {
     expect(audit.next?.value).toEqual(REDACTED_PARAMETER_VALUE)
     expect(JSON.stringify(audit)).not.toContain('old')
     expect(JSON.stringify(audit)).not.toContain('new')
+    expect(previous.value).toBe('old')
+    expect(next.value).toBe('new')
 
-    const data = { sensitive: true, value: 'new' }
-    const previousDoc = { sensitive: true, value: 'old' }
-    redactSystemParameterHookArguments({ data, previousDoc })
-    expect(data.value).toEqual(REDACTED_PARAMETER_VALUE)
-    expect(previousDoc.value).toEqual(REDACTED_PARAMETER_VALUE)
+    const copy = redactSystemParameterForAudit(previous)
+    expect(copy.value).toEqual(REDACTED_PARAMETER_VALUE)
+    expect(copy).not.toBe(previous)
+    expect(previous.value).toBe('old')
 
     const plain = buildSystemParameterAudit({
       operation: 'create',
@@ -143,5 +163,96 @@ describe('system parameter rules', () => {
       },
     })
     expect(plain.next?.value).toBe(false)
+  })
+
+  it('keeps a redacted audit record per document id without changing the docs', () => {
+    const req = { context: {} } as PayloadRequest
+    const firstPrevious = {
+      id: 4,
+      key: 'flags',
+      category: 'ops',
+      valueType: 'string' as const,
+      value: 'secret-b',
+      sensitive: true,
+    }
+    const second = {
+      id: 9,
+      key: 'mode',
+      category: 'ops',
+      valueType: 'string' as const,
+      value: 'other-secret',
+      sensitive: true,
+    }
+    recordSystemParameterAudit({
+      collection: null as never,
+      context: req.context,
+      data: {},
+      doc: { ...firstPrevious, value: 'secret-a' },
+      operation: 'update',
+      previousDoc: firstPrevious,
+      req,
+    })
+    recordSystemParameterAudit({
+      collection: null as never,
+      context: req.context,
+      data: {},
+      doc: second,
+      operation: 'create',
+      previousDoc: undefined,
+      req,
+    })
+    const audits = readSystemParameterAudits(req.context)
+    expect(Object.keys(audits).sort()).toEqual(['4', '9'])
+    expect(audits['4']?.previous?.value).toEqual(REDACTED_PARAMETER_VALUE)
+    expect(audits['9']?.next?.value).toEqual(REDACTED_PARAMETER_VALUE)
+    expect(JSON.stringify(audits)).not.toContain('secret')
+    expect(firstPrevious.value).toBe('secret-b')
+    expect(second.value).toBe('other-secret')
+  })
+
+  it('blocks an unmask that omits a replacement, including for overrideAccess', async () => {
+    const req = { context: {}, user: null } as PayloadRequest
+    const siblingData: ParameterWriteData = { sensitive: false }
+    await expect(
+      guardSensitiveUnmask({
+        operation: 'update',
+        originalDoc: { sensitive: true, value: 'stored-secret' },
+        overrideAccess: false,
+        req,
+        siblingData,
+      }),
+    ).rejects.toBeInstanceOf(Forbidden)
+    expect(siblingData.value).toBeUndefined()
+
+    await expect(
+      guardSensitiveUnmask({
+        operation: 'update',
+        originalDoc: { sensitive: true, value: 'stored-secret' },
+        overrideAccess: true,
+        req,
+        siblingData: { sensitive: false, value: null },
+      }),
+    ).rejects.toBeInstanceOf(ValidationError)
+
+    const replacement: ParameterWriteData = { sensitive: false, value: 'next-public' }
+    await guardSensitiveUnmask({
+      operation: 'update',
+      originalDoc: { sensitive: true, value: 'stored-secret' },
+      overrideAccess: true,
+      req,
+      siblingData: replacement,
+    })
+    expect(replacement.value).toBe('next-public')
+  })
+
+  it('detects value filters and sorts, including nested where clauses', () => {
+    expect(queryTargetsValue({ key: { equals: 'mode' } })).toBe(false)
+    expect(queryTargetsValue({ value: { like: 'abc%' } })).toBe(true)
+    expect(
+      queryTargetsValue({ and: [{ key: { equals: 'mode' } }, { value: { equals: 'x' } }] }),
+    ).toBe(true)
+    expect(sortTargetsValue('key')).toBe(false)
+    expect(sortTargetsValue('-value')).toBe(true)
+    expect(sortTargetsValue('category,-value')).toBe(true)
   })
 })
