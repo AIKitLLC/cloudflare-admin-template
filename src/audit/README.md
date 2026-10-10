@@ -88,7 +88,7 @@ Tradeoff: the audit row is not atomic with the user's row. A crash between the t
 
 The Audit Logs list is the viewer. Columns include timestamp, action, collection, record id, operator, and IP. The list is searchable on those identifiers.
 
-`AuditLogFilterBar` sits above the list and writes Payload's `where` query:
+`AuditLogFilterBar` sits above the list and updates Payload's list query through `handleWhereChange`. Writing the URL alone is not enough: the list view keeps the previous `where` and puts it back. The resulting query is:
 
 - Record ID → `where[documentId][equals]`
 - Collection → `where[collectionSlug][equals]`

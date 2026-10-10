@@ -1,3 +1,5 @@
+import type { Where } from 'payload'
+
 export type AuditLogViewerFilters = {
   recordId: string
   collection: string
@@ -18,8 +20,28 @@ export function readAuditLogViewerFilters(current: URLSearchParams): AuditLogVie
 }
 
 /**
- * Builds the admin list query for the audit viewer.
+ * Payload `where` for the audit viewer.
  * Numeric operators match the operator id. Anything else matches the operator email.
+ * An empty filter set returns undefined so the list query drops `where` entirely.
+ */
+export function toAuditLogWhere(filters: AuditLogViewerFilters): Where | undefined {
+  const recordId = filters.recordId.trim()
+  const collection = filters.collection.trim()
+  const operator = filters.operator.trim()
+  const where: Where = {}
+
+  if (recordId) where.documentId = { equals: recordId }
+  if (collection) where.collectionSlug = { equals: collection }
+  if (operator) {
+    if (/^\d+$/.test(operator)) where.operatorId = { equals: operator }
+    else where.actorEmail = { contains: operator }
+  }
+
+  return Object.keys(where).length > 0 ? where : undefined
+}
+
+/**
+ * Builds the admin list query for the audit viewer.
  * Existing `where` clauses are replaced so the bar is the source of truth.
  */
 export function applyAuditLogViewerFilters(

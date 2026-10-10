@@ -1,21 +1,19 @@
 'use client'
 
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useListQuery } from '@payloadcms/ui'
+import { useSearchParams } from 'next/navigation'
 import { type FormEvent } from 'react'
 
-import { applyAuditLogViewerFilters, readAuditLogViewerFilters } from './auditLogViewerQuery'
+import { readAuditLogViewerFilters, toAuditLogWhere } from './auditLogViewerQuery'
 import styles from './AuditLogFilterBar.module.css'
 
 export function AuditLogFilterBar() {
-  const router = useRouter()
-  const pathname = usePathname()
   const searchParams = useSearchParams()
+  const { handleWhereChange } = useListQuery()
   const applied = readAuditLogViewerFilters(searchParams)
 
   function pushFilters(filters: { recordId: string; collection: string; operator: string }) {
-    const next = applyAuditLogViewerFilters(searchParams, filters)
-    const query = next.toString()
-    router.push(query ? `${pathname}?${query}` : pathname)
+    void handleWhereChange(toAuditLogWhere(filters))
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {

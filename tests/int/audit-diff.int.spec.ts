@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import { REDACTED_VALUE } from '@/audit/constants'
-import { applyAuditLogViewerFilters, readAuditLogViewerFilters } from '@/audit/admin/auditLogViewerQuery'
+import {
+  applyAuditLogViewerFilters,
+  readAuditLogViewerFilters,
+  toAuditLogWhere,
+} from '@/audit/admin/auditLogViewerQuery'
 import { buildChangeSummary } from '@/audit/diff/buildChangeSummary'
 import { computeFieldDiff } from '@/audit/diff/computeFieldDiff'
 import { projectBeforeOntoAfter } from '@/audit/diff/projectBeforeOntoAfter'
@@ -147,6 +151,13 @@ describe('audit viewer query', () => {
     })
     expect(next.get('where[operatorId][equals]')).toBe('42')
     expect(readAuditLogViewerFilters(next).operator).toBe('42')
+    expect(
+      toAuditLogWhere({ recordId: '', collection: '', operator: '42' }),
+    ).toEqual({ operatorId: { equals: '42' } })
+  })
+
+  it('drops the where clause when every filter is blank', () => {
+    expect(toAuditLogWhere({ recordId: '  ', collection: '', operator: '' })).toBeUndefined()
   })
 })
 
