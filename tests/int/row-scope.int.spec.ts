@@ -5,8 +5,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { exportCollection } from '@/access/export/create-export-endpoint'
 import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
 import { SUPER_ADMIN_SLUG } from '@/access/constants'
+import { relationIds } from '@/access/relation-id'
 import {
   SCOPE_ASSIGNMENT_ERROR,
+  SCOPE_ASSIGNMENT_LIMIT_ERROR,
   SCOPE_CYCLE_ERROR,
   SCOPE_GRANT_ERROR,
   SCOPE_NODE_ERROR,
@@ -699,7 +701,333 @@ describe('row scope access', () => {
       await deleteInChunks(ORGANIZATIONS_SLUG, orgIds)
     }
   }, 180000)
+
+  it('moves a subtree so the old ancestor loses it and the new ancestor gains it', async () => {
+    const oldParent = await payload.create({
+      collection: ORGANIZATIONS_SLUG,
+      data: {
+        name: `Old ancestor ${fixture.stamp}`,
+        slug: `old-ancestor-${fixture.stamp}`,
+        parent: fixture.westId,
+      },
+      overrideAccess: true,
+    })
+    const node = await payload.create({
+      collection: ORGANIZATIONS_SLUG,
+      data: {
+        name: `Moved node ${fixture.stamp}`,
+        slug: `moved-node-${fixture.stamp}`,
+        parent: oldParent.id,
+      },
+      overrideAccess: true,
+    })
+    const child = await payload.create({
+      collection: ORGANIZATIONS_SLUG,
+      data: {
+        name: `Moved child ${fixture.stamp}`,
+        slug: `moved-child-${fixture.stamp}`,
+        parent: node.id,
+      },
+      overrideAccess: true,
+    })
+    const grandchild = await payload.create({
+      collection: ORGANIZATIONS_SLUG,
+      data: {
+        name: `Moved grandchild ${fixture.stamp}`,
+        slug: `moved-grandchild-${fixture.stamp}`,
+        parent: child.id,
+      },
+      overrideAccess: true,
+    })
+    const newParent = await payload.create({
+      collection: ORGANIZATIONS_SLUG,
+      data: {
+        name: `New ancestor ${fixture.stamp}`,
+        slug: `new-ancestor-${fixture.stamp}`,
+        parent: fixture.westId,
+      },
+      overrideAccess: true,
+    })
+    const branch = await payload.create({
+      collection: BRANCHES_SLUG,
+      data: {
+        name: `Moved branch ${fixture.stamp}`,
+        slug: `moved-branch-${fixture.stamp}`,
+        organization: grandchild.id,
+      },
+      overrideAccess: true,
+    })
+    const record = await payload.create({
+      collection: RECORDS_SLUG,
+      data: {
+        title: `Moved record ${fixture.stamp}`,
+        organization: grandchild.id,
+        branch: branch.id,
+        dataClass: fixture.piiId,
+      },
+      overrideAccess: true,
+    })
+    const oldUser = await payload.create({
+      collection: 'users',
+      data: {
+        email: `old-ancestor-${fixture.stamp}@example.com`,
+        password: 'test-password-123',
+        roles: [fixture.actorRoleId],
+        organizations: [oldParent.id],
+        dataClasses: [fixture.sensitiveId],
+      },
+      overrideAccess: true,
+      context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+    })
+    const newUser = await payload.create({
+      collection: 'users',
+      data: {
+        email: `new-ancestor-${fixture.stamp}@example.com`,
+        password: 'test-password-123',
+        roles: [fixture.actorRoleId],
+        organizations: [newParent.id],
+        dataClasses: [fixture.sensitiveId],
+      },
+      overrideAccess: true,
+      context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+    })
+    const orgIds = [grandchild.id, child.id, node.id, oldParent.id, newParent.id]
+    try {
+      expect(await visibleCount(ORGANIZATIONS_SLUG, oldUser.id, grandchild.id)).toBe(1)
+      expect(await visibleCount(RECORDS_SLUG, oldUser.id, record.id)).toBe(1)
+      expect(await visibleCount(ORGANIZATIONS_SLUG, newUser.id, grandchild.id)).toBe(0)
+
+      await payload.update({
+        collection: ORGANIZATIONS_SLUG,
+        id: node.id,
+        data: { parent: newParent.id },
+        overrideAccess: true,
+      })
+
+      const stored = await payload.findByID({
+        collection: ORGANIZATIONS_SLUG,
+        id: grandchild.id,
+        depth: 0,
+        overrideAccess: true,
+      })
+      expect(stored.scopePath).toContain(`/${newParent.id}/`)
+      expect(stored.scopePath).toContain(`/${node.id}/`)
+      expect(stored.scopePath).not.toContain(`/${oldParent.id}/`)
+      expect(await visibleCount(ORGANIZATIONS_SLUG, oldUser.id, grandchild.id)).toBe(0)
+      expect(await visibleCount(RECORDS_SLUG, oldUser.id, record.id)).toBe(0)
+      expect(await visibleCount(ORGANIZATIONS_SLUG, newUser.id, grandchild.id)).toBe(1)
+      expect(await visibleCount(RECORDS_SLUG, newUser.id, record.id)).toBe(1)
+    } finally {
+      await payload.delete({
+        collection: RECORDS_SLUG,
+        id: record.id,
+        overrideAccess: true,
+      })
+      await payload.delete({
+        collection: BRANCHES_SLUG,
+        id: branch.id,
+        overrideAccess: true,
+      })
+      await deleteInChunks('users', [oldUser.id, newUser.id], {
+        [SKIP_RBAC_PRIVILEGE_CHECKS]: true,
+      })
+      for (const id of orgIds) {
+        await payload.delete({
+          collection: ORGANIZATIONS_SLUG,
+          id,
+          overrideAccess: true,
+        })
+      }
+    }
+  })
+
+  it('filters users and records for a caller with about 60 direct organizations', async () => {
+    const orgIds: number[] = []
+    const userIds: number[] = []
+    let branchId: number | undefined
+    let recordId: number | undefined
+    try {
+      for (let index = 0; index < 60; index += 1) {
+        const org = await payload.create({
+          collection: ORGANIZATIONS_SLUG,
+          data: {
+            name: `Many ${fixture.stamp} ${index}`,
+            slug: `many-${fixture.stamp}-${index}`,
+          },
+          overrideAccess: true,
+        })
+        orgIds.push(Number(org.id))
+      }
+      const reader = await payload.create({
+        collection: 'users',
+        data: {
+          email: `many-${fixture.stamp}@example.com`,
+          password: 'test-password-123',
+          roles: [fixture.actorRoleId],
+          organizations: orgIds,
+          dataClasses: [fixture.sensitiveId],
+        },
+        overrideAccess: true,
+        context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+      })
+      userIds.push(Number(reader.id))
+      const inside = await payload.create({
+        collection: 'users',
+        data: {
+          email: `many-inside-${fixture.stamp}@example.com`,
+          password: 'test-password-123',
+          roles: [fixture.insideRoleId],
+          organizations: [orgIds[0]],
+          dataClasses: [fixture.sensitiveId],
+        },
+        overrideAccess: true,
+        context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+      })
+      userIds.push(Number(inside.id))
+      const branch = await payload.create({
+        collection: BRANCHES_SLUG,
+        data: {
+          name: `Many branch ${fixture.stamp}`,
+          slug: `many-branch-${fixture.stamp}`,
+          organization: orgIds[0],
+        },
+        overrideAccess: true,
+      })
+      branchId = Number(branch.id)
+      const record = await payload.create({
+        collection: RECORDS_SLUG,
+        data: {
+          title: `Many record ${fixture.stamp}`,
+          organization: orgIds[0],
+          branch: branch.id,
+          dataClass: fixture.piiId,
+        },
+        overrideAccess: true,
+      })
+      recordId = Number(record.id)
+
+      expect(await visibleCount('users', reader.id, inside.id)).toBe(1)
+      expect(await visibleCount('users', reader.id, reader.id)).toBe(1)
+      expect(await visibleCount('users', reader.id, fixture.emptyUser.id)).toBe(0)
+      expect(await visibleCount('users', reader.id, fixture.eastUser.id)).toBe(0)
+      const listed = await payload.find({
+        collection: 'users',
+        depth: 0,
+        limit: 10,
+        overrideAccess: false,
+        user: asUser({ id: Number(reader.id), email: reader.email, password: '' }),
+      })
+      const counted = await payload.count({
+        collection: 'users',
+        overrideAccess: false,
+        user: asUser({ id: Number(reader.id), email: reader.email, password: '' }),
+      })
+      expect(listed.totalDocs).toBe(counted.totalDocs)
+      expect(listed.totalDocs).toBeGreaterThan(1)
+      expect(await visibleCount(RECORDS_SLUG, reader.id, record.id)).toBe(1)
+      const orgs = await payload.count({
+        collection: ORGANIZATIONS_SLUG,
+        overrideAccess: false,
+        user: asUser({ id: Number(reader.id), email: reader.email, password: '' }),
+      })
+      expect(orgs.totalDocs).toBeGreaterThanOrEqual(60)
+    } finally {
+      if (recordId !== undefined) {
+        await payload.delete({
+          collection: RECORDS_SLUG,
+          id: recordId,
+          overrideAccess: true,
+        })
+      }
+      if (branchId !== undefined) {
+        await payload.delete({
+          collection: BRANCHES_SLUG,
+          id: branchId,
+          overrideAccess: true,
+        })
+      }
+      await deleteInChunks('users', userIds, { [SKIP_RBAC_PRIVILEGE_CHECKS]: true })
+      await deleteInChunks(ORGANIZATIONS_SLUG, orgIds)
+    }
+  }, 120000)
+
+  it('keeps an ancestor assignment and refuses more than 80 direct organizations', async () => {
+    const admin = await existingSuperAdmin()
+    const target = await payload.create({
+      collection: 'users',
+      data: {
+        email: `cap-${fixture.stamp}@example.com`,
+        password: 'test-password-123',
+        roles: [fixture.insideRoleId],
+        organizations: [fixture.westId],
+      },
+      overrideAccess: true,
+      context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+    })
+    extraUserIds.push(Number(target.id))
+    await payload.update({
+      collection: 'users',
+      id: target.id,
+      data: { organizations: [fixture.westChildId, fixture.westId] },
+      overrideAccess: false,
+      user: asUser(admin),
+    })
+    const stored = await payload.findByID({
+      collection: 'users',
+      id: target.id,
+      depth: 0,
+      overrideAccess: true,
+    })
+    expect(relationIds(stored.organizations)).toEqual([String(fixture.westId)])
+
+    const orgIds: number[] = []
+    try {
+      for (let index = 0; index < 81; index += 1) {
+        const org = await payload.create({
+          collection: ORGANIZATIONS_SLUG,
+          data: {
+            name: `Cap ${fixture.stamp} ${index}`,
+            slug: `cap-${fixture.stamp}-${index}`,
+          },
+          overrideAccess: true,
+        })
+        orgIds.push(Number(org.id))
+      }
+      await expect(
+        payload.update({
+          collection: 'users',
+          id: target.id,
+          data: { organizations: orgIds },
+          overrideAccess: false,
+          user: asUser(admin),
+        }),
+      ).rejects.toThrow(SCOPE_ASSIGNMENT_LIMIT_ERROR)
+      const unchanged = await payload.findByID({
+        collection: 'users',
+        id: target.id,
+        depth: 0,
+        overrideAccess: true,
+      })
+      expect(relationIds(unchanged.organizations)).toEqual([String(fixture.westId)])
+    } finally {
+      await deleteInChunks(ORGANIZATIONS_SLUG, orgIds)
+    }
+  }, 120000)
 })
+
+async function visibleCount(
+  collection: string,
+  userId: number | string,
+  docId: number | string,
+): Promise<number> {
+  const result = await payload.count({
+    collection: collection as CollectionSlug,
+    overrideAccess: false,
+    user: asUser({ id: Number(userId), email: '', password: '' }),
+    where: { id: { equals: docId } },
+  })
+  return result.totalDocs
+}
 
 /**
  * Auth deletes also bind each id in the preferences user relationship, so a chunk of 80
@@ -755,6 +1083,21 @@ function relationList(value: unknown): string[] {
   return value.map((item) =>
     typeof item === 'object' && item && 'id' in item ? String(item.id) : String(item),
   )
+}
+
+async function existingSuperAdmin(): Promise<ScopeUser> {
+  const email = `scope-super-${fixture.stamp}@example.com`
+  const existing = await payload.find({
+    collection: 'users',
+    depth: 0,
+    limit: 1,
+    overrideAccess: true,
+    where: { email: { equals: email } },
+  })
+  if (existing.docs[0]) {
+    return { id: Number(existing.docs[0].id), email, password: 'test-password-123' }
+  }
+  return createSuperAdmin()
 }
 
 async function createSuperAdmin(): Promise<ScopeUser> {

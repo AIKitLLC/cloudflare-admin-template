@@ -4,7 +4,9 @@ import type { AccessEvaluationContext } from '../access/types'
 import { bindingFiltersRows } from './bindings/read-row-scope-binding'
 import { loadScopeAssignments } from './resolve/load-scope-assignments'
 import { loadScopeCatalog } from './resolve/load-scope-catalog'
+import { parentMap } from './tree/scope-tree'
 import type { DirectScope } from './where/direct-scope'
+import { collapseCoveredIds } from './where/collapse-covered-ids'
 import { whereForBinding } from './where/where-for-binding'
 import { whereUsersWithinScope } from './where/where-users-within-scope'
 
@@ -25,7 +27,7 @@ export async function contributeRowScope(
     return undefined
   }
   const scope = await loadDirectScope(context.req)
-  return whereForBinding(binding, scope, context.action)
+  return whereForBinding(binding, scope, context.action, context.req.user?.id)
 }
 
 async function loadDirectScope(req: AccessEvaluationContext['req']): Promise<DirectScope> {
@@ -33,17 +35,23 @@ async function loadDirectScope(req: AccessEvaluationContext['req']): Promise<Dir
     loadScopeAssignments(req),
     loadScopeCatalog(req),
   ])
+  const organizationIds = collapseCoveredIds(
+    assignments.organizationIds,
+    parentMap(catalog.organizations),
+  )
+  const branchIds = collapseCoveredIds(assignments.branchIds, parentMap(catalog.branches))
+  const dataClassIds = collapseCoveredIds(assignments.dataClassIds, parentMap(catalog.dataClasses))
   const branchOrganizationIds: string[] = []
-  for (const branchId of assignments.branchIds) {
+  for (const branchId of branchIds) {
     const organizationId = catalog.branches.get(branchId)?.organizationId
     if (organizationId) {
       branchOrganizationIds.push(organizationId)
     }
   }
   return {
-    organizationIds: assignments.organizationIds,
-    branchIds: assignments.branchIds,
+    organizationIds,
+    branchIds,
     branchOrganizationIds,
-    dataClassIds: assignments.dataClassIds,
+    dataClassIds,
   }
 }

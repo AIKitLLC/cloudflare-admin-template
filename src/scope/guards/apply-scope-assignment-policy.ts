@@ -17,6 +17,7 @@ import { loadScopeCatalog } from '../resolve/load-scope-catalog'
 import { resolveEffectiveScope } from '../resolve/resolve-effective-scope'
 import type { EffectiveScope, ScopeAssignments } from '../types'
 import { isScopeWithin } from './is-scope-within'
+import { collapseAndCapScopeFields } from './normalize-scope-fields'
 import { mergeScopeField } from './merge-scope-field'
 
 const GRANTABLE_FIELD: Record<UserScopeField, (scope: EffectiveScope) => ReadonlySet<string>> = {
@@ -66,6 +67,7 @@ export async function applyScopeAssignmentPolicy(args: {
       }
       next[field] = toPayloadIds(merged)
     }
+    await collapseAndCapScopeFields(args.req, next)
   }
 
   if (scopeExtended) {

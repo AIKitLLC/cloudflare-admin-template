@@ -19,6 +19,13 @@ export const RECORD_DATA_CLASS_FIELD = 'dataClass'
  */
 export const D1_SAFE_PAGE_SIZE = 80
 
+/**
+ * Collapsed direct assignments kept on one relationship.
+ * Reads bind nothing per assignment, but a larger set is rejected at save time
+ * so a caller cannot attach an unbounded list.
+ */
+export const MAX_DIRECT_ASSIGNMENTS = 80
+
 export const SKIP_SCOPE_PATH_CONTEXT = 'skipScopePath'
 
 export const MAX_SCOPE_DEPTH = 32

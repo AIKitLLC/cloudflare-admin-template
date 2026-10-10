@@ -9,6 +9,7 @@ import { resolveEffectiveScope } from '@/scope/resolve/resolve-effective-scope'
 import { ScopeTree } from '@/scope/tree/scope-tree'
 import type { ScopeCatalog } from '@/scope/types'
 import type { DirectScope } from '@/scope/where/direct-scope'
+import { collapseCoveredIds } from '@/scope/where/collapse-covered-ids'
 import { whereForBinding } from '@/scope/where/where-for-binding'
 
 describe('row scope rules', () => {
@@ -145,6 +146,19 @@ describe('row scope rules', () => {
         { 'dataClass.scopePath': { contains: '/sensitive/' } },
       ],
     })
+  })
+
+  it('drops an assignment whose ancestor is already assigned', () => {
+    const parents = new Map<string, string | undefined>([
+      ['west', undefined],
+      ['west-child', 'west'],
+      ['east', undefined],
+    ])
+    expect(collapseCoveredIds(['west', 'west-child', 'east'], parents).sort()).toEqual([
+      'east',
+      'west',
+    ])
+    expect(collapseCoveredIds(['west-child'], parents)).toEqual(['west-child'])
   })
 
   it('hides a user who holds any assignment outside the actor scope', () => {

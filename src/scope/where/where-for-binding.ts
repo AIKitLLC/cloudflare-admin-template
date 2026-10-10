@@ -1,9 +1,10 @@
 import type { Where } from 'payload'
 
 import type { CollectionAction, RowScopeBinding } from '../../access/types'
-import { SCOPE_PATH_FIELD } from '../constants'
+import { D1_SAFE_PAGE_SIZE, SCOPE_PATH_FIELD } from '../constants'
 import type { DirectScope } from './direct-scope'
 import { matchNothing } from './match-nothing'
+import { whereBindingSql } from './where-binding-sql'
 import { whereIdIn } from './where-id-in'
 import { whereOwnPathContains, wherePathContains } from './where-path-contains'
 
@@ -11,7 +12,12 @@ export function whereForBinding(
   binding: RowScopeBinding,
   scope: DirectScope,
   action: CollectionAction,
+  actorId?: number | string,
 ): Where {
+  const numericActorId = Number(actorId)
+  if (Number.isInteger(numericActorId) && estimatedBinds(binding, scope) > D1_SAFE_PAGE_SIZE) {
+    return whereBindingSql(binding, action, numericActorId)
+  }
   if (binding.dimension === 'organization') {
     if (action === 'read' || action === 'export') {
       return anyOf([
@@ -78,6 +84,36 @@ function relationshipIn(field: string, ids: readonly string[]): Where | undefine
     return undefined
   }
   return whereIdIn(field, new Set(ids))
+}
+
+function estimatedBinds(binding: RowScopeBinding, scope: DirectScope): number {
+  const organizations = distinctCount(scope.organizationIds)
+  const branches = distinctCount(scope.branchIds)
+  const classes = distinctCount(scope.dataClassIds)
+  if (binding.dimension === 'organization') {
+    return organizations
+  }
+  if (binding.dimension === 'branch') {
+    return branches + organizations
+  }
+  if (binding.dimension === 'data-class') {
+    return classes
+  }
+  let total = 0
+  if (binding.organizationField) {
+    total += organizations
+  }
+  if (binding.branchField) {
+    total += branches + organizations
+  }
+  if (binding.dataClassField) {
+    total += classes
+  }
+  return total
+}
+
+function distinctCount(ids: readonly string[]): number {
+  return new Set(ids.filter((id) => id.length > 0)).size
 }
 
 function anyOf(parts: Array<Where | undefined>): Where {
