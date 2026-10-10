@@ -2,6 +2,7 @@ import type { CollectionConfig } from 'payload'
 
 import { withRbac } from '../../access/with-rbac'
 import { BRANCHES_SLUG, BRANCH_ORGANIZATION_FIELD, ORGANIZATIONS_SLUG } from '../constants'
+import { scopePathField } from '../path/scope-path-field'
 
 export const Branches: CollectionConfig = withRbac(
   {
@@ -48,6 +49,7 @@ export const Branches: CollectionConfig = withRbac(
             'Parent branch in the same organization. Assignment includes every descendant branch.',
         },
       },
+      scopePathField(),
     ],
     graphQL: {
       singularName: 'Branch',

@@ -9,6 +9,9 @@ export const SCOPE_USER_ERROR = 'You can only change a user inside your scope.'
 export const SCOPE_TARGET_KEYS_ERROR =
   'You can only assign scope to a user whose permissions are within your own.'
 
+export const SCOPE_REPARENT_KEYS_ERROR =
+  'You can only move a scope when every user who would gain it is within your permissions.'
+
 export const SCOPE_NODE_IN_USE_ERROR =
   'Remove nested scope nodes, records, and user assignments that still use this scope before deleting it.'
 

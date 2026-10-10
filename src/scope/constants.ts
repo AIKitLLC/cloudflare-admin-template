@@ -8,9 +8,18 @@ export const USER_BRANCHES_FIELD = 'branches'
 export const USER_DATA_CLASSES_FIELD = 'dataClasses'
 
 export const SCOPE_PARENT_FIELD = 'parent'
+export const SCOPE_PATH_FIELD = 'scopePath'
 export const BRANCH_ORGANIZATION_FIELD = 'organization'
 export const RECORD_BRANCH_FIELD = 'branch'
 export const RECORD_DATA_CLASS_FIELD = 'dataClass'
+
+/**
+ * D1 rejects a statement with more than 100 bound parameters.
+ * Page reads stay under that cap, including the id list Payload binds when it hydrates a page.
+ */
+export const D1_SAFE_PAGE_SIZE = 80
+
+export const SKIP_SCOPE_PATH_CONTEXT = 'skipScopePath'
 
 export const MAX_SCOPE_DEPTH = 32
 

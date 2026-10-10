@@ -2,6 +2,7 @@ import type { CollectionConfig } from 'payload'
 
 import { withRbac } from '../../access/with-rbac'
 import { DATA_CLASSES_SLUG } from '../constants'
+import { scopePathField } from '../path/scope-path-field'
 
 export const DataClasses: CollectionConfig = withRbac(
   {
@@ -41,6 +42,7 @@ export const DataClasses: CollectionConfig = withRbac(
             'Group that contains this class. Nested groups are included in the assignment.',
         },
       },
+      scopePathField(),
     ],
     graphQL: {
       singularName: 'DataClass',

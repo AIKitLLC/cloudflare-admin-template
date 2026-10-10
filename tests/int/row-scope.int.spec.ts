@@ -12,6 +12,7 @@ import {
   SCOPE_NODE_ERROR,
   SCOPE_NODE_IN_USE_ERROR,
   SCOPE_RECORD_ERROR,
+  SCOPE_REPARENT_KEYS_ERROR,
   SCOPE_ROLE_TARGET_ERROR,
   SCOPE_TARGET_KEYS_ERROR,
   SELF_SCOPE_ASSIGNMENT_ERROR,
@@ -298,7 +299,7 @@ describe('row scope access', () => {
     const visibleIds = visible.docs.map((doc) => Number(doc.id))
     expect(visibleIds).toContain(fixture.actor.id)
     expect(visibleIds).toContain(fixture.childUser.id)
-    expect(visibleIds).toContain(fixture.emptyUser.id)
+    expect(visibleIds).not.toContain(fixture.emptyUser.id)
     expect(visibleIds).toContain(fixture.branchUser.id)
     expect(visibleIds).not.toContain(fixture.eastUser.id)
     await expect(
@@ -446,7 +447,280 @@ describe('row scope access', () => {
       }),
     ).rejects.toThrow(SCOPE_TARGET_KEYS_ERROR)
   })
+
+  it('refuses to re-parent a node onto a user the actor cannot cover', async () => {
+    const parent = await payload.create({
+      collection: ORGANIZATIONS_SLUG as CollectionSlug,
+      data: {
+        name: `Reparent parent ${fixture.stamp}`,
+        slug: `reparent-parent-${fixture.stamp}`,
+        parent: fixture.westId,
+      },
+      overrideAccess: true,
+    })
+    const node = await payload.create({
+      collection: ORGANIZATIONS_SLUG as CollectionSlug,
+      data: {
+        name: `Reparent node ${fixture.stamp}`,
+        slug: `reparent-node-${fixture.stamp}`,
+        parent: fixture.westId,
+      },
+      overrideAccess: true,
+    })
+    const role = await payload.create({
+      collection: 'roles' as CollectionSlug,
+      data: {
+        name: `Reparent ${fixture.stamp}`,
+        slug: `reparent-${fixture.stamp}`,
+        grantsFullAccess: false,
+      },
+      overrideAccess: true,
+    })
+    await grantKey(payload, Number(role.id), 'media:read')
+    const holder = await payload.create({
+      collection: 'users',
+      data: {
+        email: `reparent-holder-${fixture.stamp}@example.com`,
+        password: 'test-password-123',
+        roles: [role.id],
+        organizations: [parent.id],
+      },
+      overrideAccess: true,
+      context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+    })
+    try {
+      await expect(
+        payload.update({
+          collection: ORGANIZATIONS_SLUG as CollectionSlug,
+          id: node.id,
+          data: { parent: parent.id },
+          overrideAccess: false,
+          user: asUser(fixture.actor),
+        }),
+      ).rejects.toThrow(SCOPE_REPARENT_KEYS_ERROR)
+
+      const covered = await payload.create({
+        collection: 'roles' as CollectionSlug,
+        data: {
+          name: `Reparent covered ${fixture.stamp}`,
+          slug: `reparent-covered-${fixture.stamp}`,
+          grantsFullAccess: false,
+        },
+        overrideAccess: true,
+      })
+      await grantKey(payload, Number(covered.id), 'records:read')
+      await payload.update({
+        collection: 'users',
+        id: holder.id,
+        data: { roles: [covered.id] },
+        overrideAccess: true,
+        context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+      })
+      await payload.update({
+        collection: ORGANIZATIONS_SLUG as CollectionSlug,
+        id: node.id,
+        data: { parent: parent.id },
+        overrideAccess: false,
+        user: asUser(fixture.actor),
+      })
+      const moved = await payload.findByID({
+        collection: ORGANIZATIONS_SLUG,
+        id: node.id,
+        depth: 0,
+        overrideAccess: true,
+      })
+      expect(Number(moved.parent)).toBe(Number(parent.id))
+      await payload.delete({
+        collection: 'role-permissions' as CollectionSlug,
+        where: { role: { equals: covered.id } },
+        overrideAccess: true,
+      })
+      await payload.delete({
+        collection: 'roles' as CollectionSlug,
+        id: covered.id,
+        overrideAccess: true,
+      })
+    } finally {
+      await payload.delete({
+        collection: 'users',
+        id: holder.id,
+        overrideAccess: true,
+        context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+      })
+      await payload.delete({
+        collection: ORGANIZATIONS_SLUG as CollectionSlug,
+        id: node.id,
+        overrideAccess: true,
+      })
+      await payload.delete({
+        collection: ORGANIZATIONS_SLUG as CollectionSlug,
+        id: parent.id,
+        overrideAccess: true,
+      })
+      await payload.delete({
+        collection: 'role-permissions' as CollectionSlug,
+        where: { role: { equals: role.id } },
+        overrideAccess: true,
+      })
+      await payload.delete({
+        collection: 'roles' as CollectionSlug,
+        id: role.id,
+        overrideAccess: true,
+      })
+    }
+  })
+
+  it('lists, counts, reads, and exports more than 100 in-scope nodes and users', async () => {
+    const orgIds: number[] = []
+    const userIds: number[] = []
+    const recordIds: number[] = []
+    let deepBranchId: number | undefined
+    try {
+      for (let index = 0; index < 101; index += 1) {
+        const org = await payload.create({
+          collection: ORGANIZATIONS_SLUG as CollectionSlug,
+          data: {
+            name: `Wide ${fixture.stamp} ${index}`,
+            slug: `wide-${fixture.stamp}-${index}`,
+            parent: fixture.westId,
+          },
+          overrideAccess: true,
+        })
+        orgIds.push(Number(org.id))
+        const record = await payload.create({
+          collection: RECORDS_SLUG as CollectionSlug,
+          data: {
+            title: `Wide record ${fixture.stamp} ${index}`,
+            organization: fixture.westId,
+            branch: fixture.westMainBranchId,
+            dataClass: fixture.piiId,
+          },
+          overrideAccess: true,
+        })
+        recordIds.push(Number(record.id))
+        const user = await payload.create({
+          collection: 'users',
+          data: {
+            email: `wide-${fixture.stamp}-${index}@example.com`,
+            password: 'test-password-123',
+            roles: [fixture.insideRoleId],
+            organizations: [fixture.westId],
+            dataClasses: [fixture.sensitiveId],
+          },
+          overrideAccess: true,
+          context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+        })
+        userIds.push(Number(user.id))
+      }
+      const deepBranch = await payload.create({
+        collection: BRANCHES_SLUG as CollectionSlug,
+        data: {
+          name: `Deep ${fixture.stamp}`,
+          slug: `deep-${fixture.stamp}`,
+          organization: orgIds[100],
+        },
+        overrideAccess: true,
+      })
+      deepBranchId = Number(deepBranch.id)
+      const deepRecord = await payload.create({
+        collection: RECORDS_SLUG as CollectionSlug,
+        data: {
+          title: `Deep record ${fixture.stamp}`,
+          organization: orgIds[100],
+          branch: deepBranch.id,
+          dataClass: fixture.piiId,
+        },
+        overrideAccess: true,
+      })
+      recordIds.push(Number(deepRecord.id))
+
+      const actor = asUser(fixture.actor)
+      const orgs = await payload.find({
+        collection: ORGANIZATIONS_SLUG as CollectionSlug,
+        depth: 0,
+        limit: 10,
+        overrideAccess: false,
+        user: actor,
+      })
+      expect(orgs.totalDocs).toBeGreaterThan(100)
+      const orgCount = await payload.count({
+        collection: ORGANIZATIONS_SLUG as CollectionSlug,
+        overrideAccess: false,
+        user: actor,
+      })
+      expect(orgCount.totalDocs).toBe(orgs.totalDocs)
+
+      const records = await payload.count({
+        collection: RECORDS_SLUG as CollectionSlug,
+        overrideAccess: false,
+        user: actor,
+      })
+      expect(records.totalDocs).toBeGreaterThan(100)
+      const deep = await payload.findByID({
+        collection: RECORDS_SLUG,
+        id: deepRecord.id,
+        overrideAccess: false,
+        user: actor,
+      })
+      expect(deep.title).toContain('Deep record')
+
+      const users = await payload.find({
+        collection: 'users',
+        depth: 0,
+        limit: 10,
+        overrideAccess: false,
+        user: actor,
+      })
+      expect(users.totalDocs).toBeGreaterThan(100)
+      expect(users.docs.some((doc) => doc.id === fixture.emptyUser.id)).toBe(false)
+
+      const exported = await exportCollection(
+        await createLocalReq({ user: actor }, payload),
+        ORGANIZATIONS_SLUG,
+      )
+      expect(exported.status).toBe(200)
+      expect(await exported.text()).toContain(`wide-${fixture.stamp}-100`)
+      const userExport = await exportCollection(
+        await createLocalReq({ user: actor }, payload),
+        'users',
+      )
+      expect(userExport.status).toBe(200)
+      expect(await userExport.text()).toContain(`wide-${fixture.stamp}-0@example.com`)
+    } finally {
+      await deleteInChunks(RECORDS_SLUG, recordIds)
+      await deleteInChunks('users', userIds, { [SKIP_RBAC_PRIVILEGE_CHECKS]: true })
+      if (deepBranchId !== undefined) {
+        await payload.delete({
+          collection: BRANCHES_SLUG as CollectionSlug,
+          id: deepBranchId,
+          overrideAccess: true,
+        })
+      }
+      await deleteInChunks(ORGANIZATIONS_SLUG, orgIds)
+    }
+  }, 180000)
 })
+
+/**
+ * Auth deletes also bind each id in the preferences user relationship, so a chunk of 80
+ * plus the matching preference keys exceeds D1's 100 bound parameters.
+ */
+const DELETE_CHUNK = 40
+
+async function deleteInChunks(
+  collection: string,
+  ids: Array<number | string>,
+  context?: Record<string, unknown>,
+) {
+  for (let index = 0; index < ids.length; index += DELETE_CHUNK) {
+    await payload.delete({
+      collection: collection as CollectionSlug,
+      where: { id: { in: ids.slice(index, index + DELETE_CHUNK) } },
+      overrideAccess: true,
+      context,
+    })
+  }
+}
 
 function asUser(user: ScopeUser) {
   return {

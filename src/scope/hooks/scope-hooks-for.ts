@@ -13,6 +13,7 @@ import {
 } from '../guards/guard-scope-assignment'
 import { guardScopeNodeDelete } from '../guards/guard-scope-node-delete'
 import { guardScopeNode } from '../guards/guard-scope-node'
+import { syncScopePath } from '../path/sync-scope-path'
 import { clearScopeCacheAfterChange, clearScopeCacheAfterDelete } from './clear-scope-cache'
 
 export function scopeHooksFor(
@@ -36,11 +37,16 @@ export function scopeHooksFor(
   }
   const beforeDelete: CollectionBeforeDeleteHook[] = binding.dimension ? [guardScopeNodeDelete] : []
   const clearsCache = Boolean(binding.dimension || binding.assignments)
+  const afterChange = binding.dimension
+    ? [syncScopePath, ...(clearsCache ? [clearScopeCacheAfterChange] : [])]
+    : clearsCache
+      ? [clearScopeCacheAfterChange]
+      : []
   return {
     beforeOperation,
     beforeChange,
     beforeDelete,
-    afterChange: clearsCache ? [clearScopeCacheAfterChange] : [],
+    afterChange,
     afterDelete: clearsCache ? [clearScopeCacheAfterDelete] : [],
   }
 }

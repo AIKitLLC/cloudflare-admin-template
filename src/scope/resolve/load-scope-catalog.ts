@@ -1,4 +1,4 @@
-import type { CollectionSlug, PayloadRequest } from 'payload'
+import type { PayloadRequest } from 'payload'
 
 import { BRANCHES_SLUG, DATA_CLASSES_SLUG, ORGANIZATIONS_SLUG } from '../constants'
 import type { BranchNode, ScopeCatalog, ScopeNode } from '../types'
@@ -7,6 +7,7 @@ import {
   storeCatalogPromise,
   clearCatalogPromise,
 } from '../cache/scope-request-cache'
+import { findEveryPage } from '../find/find-every-page'
 import { relationId } from '../../access/relation-id'
 
 type CatalogDoc = {
@@ -44,14 +45,7 @@ async function queryScopeCatalog(req: PayloadRequest): Promise<ScopeCatalog> {
 }
 
 async function findNodes(req: PayloadRequest, slug: string): Promise<CatalogDoc[]> {
-  const result = await req.payload.find({
-    collection: slug as CollectionSlug,
-    depth: 0,
-    overrideAccess: true,
-    pagination: false,
-    req,
-  })
-  return result.docs as CatalogDoc[]
+  return findEveryPage<CatalogDoc>(req, slug)
 }
 
 function toNodes(docs: CatalogDoc[]): Map<string, ScopeNode> {

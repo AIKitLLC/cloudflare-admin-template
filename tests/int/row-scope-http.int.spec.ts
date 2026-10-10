@@ -450,7 +450,14 @@ describe('row scope HTTP and GraphQL', () => {
       ),
       route(['users', String(fixture.emptyUser.id)]),
     )
-    expect(peer.status).toBeLessThan(300)
+    expect(peer.status).toBeGreaterThanOrEqual(400)
+    const peerDoc = await payload.findByID({
+      collection: 'users',
+      id: fixture.emptyUser.id,
+      depth: 0,
+      overrideAccess: true,
+    })
+    expect(relationIds(peerDoc.organizations)).toEqual([])
   })
 
   it('keeps account-takeover refusals for in-scope and unscoped privileged users', async () => {
@@ -485,8 +492,7 @@ describe('row scope HTTP and GraphQL', () => {
       ),
       route(['users', String(admin.id)]),
     )
-    expect(passwordPatch.status).toBe(403)
-    expect(JSON.stringify(await passwordPatch.json())).toContain(PRIVILEGED_USER_ERROR)
+    expect(passwordPatch.status).toBeGreaterThanOrEqual(400)
     const adminLogin = await post(
       jsonRequest('/api/users/login', { email: adminEmail, password: adminPassword }, ''),
       route(['users', 'login']),
@@ -506,7 +512,13 @@ describe('row scope HTTP and GraphQL', () => {
         variables: { id: Number(admin.id), password: 'stolen-password-456' },
       }),
     )
-    expect(JSON.stringify(await graphqlPassword.json())).toContain(PRIVILEGED_USER_ERROR)
+    const graphqlPasswordText = JSON.stringify(await graphqlPassword.json())
+    expect(graphqlPasswordText).not.toMatch(/"updateUser":\{/)
+    const stillOriginal = await post(
+      jsonRequest('/api/users/login', { email: adminEmail, password: adminPassword }, ''),
+      route(['users', 'login']),
+    )
+    expect(stillOriginal.status).toBe(200)
 
     const forgot = await post(
       jsonRequest('/api/users/forgot-password', { email: adminEmail }, cookie),
@@ -544,24 +556,99 @@ describe('row scope HTTP and GraphQL', () => {
     expect(childDelete.status).toBe(403)
     expect(JSON.stringify(await childDelete.json())).toContain(PRIVILEGED_USER_ERROR)
 
-    const lesserEmail = `scope-lesser-${fixture.stamp}@example.com`
     const edited = await patch(
       jsonRequest(
         `/api/users/${fixture.emptyUser.id}`,
-        { email: lesserEmail },
+        { email: `unused-${fixture.stamp}@example.com` },
         cookie,
         ORIGIN,
         'PATCH',
       ),
       route(['users', String(fixture.emptyUser.id)]),
     )
-    expect(edited.status).toBeLessThan(300)
+    expect(edited.status).toBeGreaterThanOrEqual(400)
     const stored = await payload.findByID({
       collection: 'users',
       id: fixture.emptyUser.id,
       overrideAccess: true,
     })
-    expect(stored.email).toBe(lesserEmail)
+    expect(stored.email).toBe(fixture.emptyUser.email)
+  })
+
+  it('hides unscoped users and full-access users from a limited reader', async () => {
+    const hidden = await get(
+      getRequest(`/api/users/${fixture.emptyUser.id}`),
+      route(['users', String(fixture.emptyUser.id)]),
+    )
+    expect(hidden.status).toBe(404)
+    const listed = await get(
+      getRequest(`/api/users?where[email][equals]=${encodeURIComponent(fixture.emptyUser.email)}`),
+      route(['users']),
+    )
+    expect(JSON.stringify(await listed.json())).toContain('"totalDocs":0')
+
+    const selfLogin = await post(
+      jsonRequest(
+        '/api/users/login',
+        { email: fixture.emptyUser.email, password: fixture.emptyUser.password },
+        '',
+      ),
+      route(['users', 'login']),
+    )
+    expect(selfLogin.status).toBe(200)
+    const selfCookie = cookieHeader(selfLogin)
+    const self = await get(
+      authedGet(`/api/users/${fixture.emptyUser.id}`, selfCookie),
+      route(['users', String(fixture.emptyUser.id)]),
+    )
+    expect(self.status).toBe(200)
+
+    const superAdminRole = await payload.find({
+      collection: 'roles' as CollectionSlug,
+      depth: 0,
+      limit: 1,
+      overrideAccess: true,
+      where: { slug: { equals: SUPER_ADMIN_SLUG } },
+    })
+    const admin = await payload.create({
+      collection: 'users',
+      data: {
+        email: `scope-full-${fixture.stamp}@example.com`,
+        password: 'test-password-123',
+        roles: [superAdminRole.docs[0].id],
+        organizations: [fixture.westId],
+        dataClasses: [fixture.sensitiveId],
+      },
+      overrideAccess: true,
+      context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+    })
+    fixture.userIds.push(Number(admin.id))
+    const adminHidden = await get(
+      getRequest(`/api/users/${admin.id}`),
+      route(['users', String(admin.id)]),
+    )
+    expect(adminHidden.status).toBe(404)
+
+    const adminLogin = await post(
+      jsonRequest(
+        '/api/users/login',
+        { email: `scope-full-${fixture.stamp}@example.com`, password: 'test-password-123' },
+        '',
+      ),
+      route(['users', 'login']),
+    )
+    expect(adminLogin.status).toBe(200)
+    const adminCookie = cookieHeader(adminLogin)
+    const seenByAdmin = await get(
+      authedGet(`/api/users/${fixture.emptyUser.id}`, adminCookie),
+      route(['users', String(fixture.emptyUser.id)]),
+    )
+    expect(seenByAdmin.status).toBe(200)
+    const seenSelf = await get(
+      authedGet(`/api/users/${admin.id}`, adminCookie),
+      route(['users', String(admin.id)]),
+    )
+    expect(seenSelf.status).toBe(200)
   })
 
   it('refuses to unlock a user outside the actor scope', async () => {
@@ -610,6 +697,12 @@ function jsonRequest(
 function getRequest(path: string, method = 'GET'): Request {
   const headers = new Headers({ origin: ORIGIN, cookie })
   return new Request(`${ORIGIN}${path}`, { method, headers })
+}
+
+function authedGet(path: string, token: string): Request {
+  return new Request(`${ORIGIN}${path}`, {
+    headers: { origin: ORIGIN, cookie: token },
+  })
 }
 
 function cookieHeader(response: Response): string {

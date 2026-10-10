@@ -1,4 +1,4 @@
-import type { CollectionBeforeChangeHook } from 'payload'
+import type { CollectionBeforeChangeHook, PayloadRequest } from 'payload'
 import { APIError } from 'payload'
 
 import type { ScopeDimension } from '../../access/types'
@@ -7,6 +7,8 @@ import { relationId } from '../../access/relation-id'
 import { skipsPrivilegeChecks } from '../../rbac/guards/privilege-context'
 import { readRowScopeBinding } from '../bindings/read-row-scope-binding'
 import { SCOPE_BRANCH_ORG_ERROR, SCOPE_NODE_ERROR } from '../errors'
+import { SKIP_SCOPE_PATH_CONTEXT } from '../constants'
+import { assertReparentKeys } from './assert-reparent-keys'
 import { loadEffectiveScope } from '../resolve/load-effective-scope'
 import { loadScopeCatalog } from '../resolve/load-scope-catalog'
 import type { EffectiveScope, ScopeCatalog } from '../types'
@@ -14,11 +16,18 @@ import { parentMap, ScopeTree } from '../tree/scope-tree'
 
 export const guardScopeNode: CollectionBeforeChangeHook = async ({
   collection,
+  context,
   data,
   operation,
   originalDoc,
   req,
 }) => {
+  if (
+    context?.[SKIP_SCOPE_PATH_CONTEXT] === true ||
+    req.context?.[SKIP_SCOPE_PATH_CONTEXT] === true
+  ) {
+    return data
+  }
   if (!data) {
     return data
   }
@@ -44,7 +53,7 @@ export const guardScopeNode: CollectionBeforeChangeHook = async ({
 
   const [scope, catalog] = await Promise.all([loadEffectiveScope(req), loadScopeCatalog(req)])
   if (binding.dimension === 'branch') {
-    assertBranchWrite({
+    await assertBranchWrite({
       catalog,
       nextParentId,
       nodeId,
@@ -52,6 +61,7 @@ export const guardScopeNode: CollectionBeforeChangeHook = async ({
       original,
       parentProvided,
       record,
+      req,
       scope,
     })
     return data
@@ -64,6 +74,17 @@ export const guardScopeNode: CollectionBeforeChangeHook = async ({
     operation,
     parentProvided,
   })
+  if (operation === 'update') {
+    await assertReparentKeys({
+      catalog,
+      dimension: binding.dimension,
+      nextParentId,
+      nodeId,
+      oldParentId: relationId(original?.parent),
+      parentProvided,
+      req,
+    })
+  }
   return data
 }
 
@@ -88,7 +109,7 @@ function assertTreeWrite(args: {
   }
 }
 
-function assertBranchWrite(args: {
+async function assertBranchWrite(args: {
   catalog: ScopeCatalog
   nextParentId: string | undefined
   nodeId: string | undefined
@@ -96,8 +117,9 @@ function assertBranchWrite(args: {
   original: Record<string, unknown> | undefined
   parentProvided: boolean
   record: Record<string, unknown>
+  req: PayloadRequest
   scope: EffectiveScope
-}): void {
+}): Promise<void> {
   assertTreeWrite({
     allowed: args.scope.branchIds,
     nextParentId: args.nextParentId,
@@ -120,6 +142,17 @@ function assertBranchWrite(args: {
     organizationId !== originalOrganizationId
   ) {
     throw new APIError(SCOPE_BRANCH_ORG_ERROR, 403)
+  }
+  if (args.operation === 'update') {
+    await assertReparentKeys({
+      catalog: args.catalog,
+      dimension: 'branch',
+      nextParentId: args.nextParentId,
+      nodeId: args.nodeId,
+      oldParentId: relationId(args.original?.parent),
+      parentProvided: args.parentProvided,
+      req: args.req,
+    })
   }
   if (!args.nextParentId) {
     return

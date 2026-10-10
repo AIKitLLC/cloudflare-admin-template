@@ -207,6 +207,10 @@ export interface Organization {
    * Parent organization. Assignment to an organization includes every descendant. A parent cannot be this organization or one of its descendants.
    */
   parent?: (number | null) | Organization;
+  /**
+   * Ancestor path, including this node. Reads match this column instead of a list of descendant ids.
+   */
+  scopePath?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -225,6 +229,10 @@ export interface Branch {
    * Parent branch in the same organization. Assignment includes every descendant branch.
    */
   parent?: (number | null) | Branch;
+  /**
+   * Ancestor path, including this node. Reads match this column instead of a list of descendant ids.
+   */
+  scopePath?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -242,6 +250,10 @@ export interface DataClass {
    * Group that contains this class. Nested groups are included in the assignment.
    */
   parent?: (number | null) | DataClass;
+  /**
+   * Ancestor path, including this node. Reads match this column instead of a list of descendant ids.
+   */
+  scopePath?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -505,6 +517,7 @@ export interface OrganizationsSelect<T extends boolean = true> {
   name?: T;
   slug?: T;
   parent?: T;
+  scopePath?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -517,6 +530,7 @@ export interface BranchesSelect<T extends boolean = true> {
   slug?: T;
   organization?: T;
   parent?: T;
+  scopePath?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -528,6 +542,7 @@ export interface DataClassesSelect<T extends boolean = true> {
   name?: T;
   slug?: T;
   parent?: T;
+  scopePath?: T;
   updatedAt?: T;
   createdAt?: T;
 }

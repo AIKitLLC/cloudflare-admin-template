@@ -8,6 +8,7 @@ import { isScopeWithin } from '@/scope/guards/is-scope-within'
 import { resolveEffectiveScope } from '@/scope/resolve/resolve-effective-scope'
 import { ScopeTree } from '@/scope/tree/scope-tree'
 import type { ScopeCatalog } from '@/scope/types'
+import type { DirectScope } from '@/scope/where/direct-scope'
 import { whereForBinding } from '@/scope/where/where-for-binding'
 
 describe('row scope rules', () => {
@@ -95,34 +96,55 @@ describe('row scope rules', () => {
     )
   })
 
-  it('builds a match-nothing constraint when a dimension is empty and combines the others', () => {
+  it('builds a match-nothing constraint when a dimension is empty and matches descendants by path', () => {
+    const nothing = { and: [{ id: { exists: true } }, { id: { exists: false } }] }
     const empty = whereForBinding(
       { organizationField: 'organization', branchField: 'branch', dataClassField: 'dataClass' },
-      resolveEffectiveScope(catalog(), {
-        organizationIds: [],
-        branchIds: [],
-        dataClassIds: [],
-      }),
+      direct(),
       'read',
     )
     expect(empty).toEqual({
-      and: [
-        { and: [{ id: { exists: true } }, { id: { exists: false } }] },
-        { and: [{ id: { exists: true } }, { id: { exists: false } }] },
-        { and: [{ id: { exists: true } }, { id: { exists: false } }] },
-      ],
+      and: [nothing, nothing, nothing],
     })
 
-    const branchOnly = resolveEffectiveScope(catalog(), {
-      organizationIds: [],
+    const branchOnly = direct({
       branchIds: ['west-sub'],
-      dataClassIds: [],
+      branchOrganizationIds: ['west'],
     })
     const scoped = whereForBinding({ dimension: 'organization' }, branchOnly, 'update')
-    expect(scoped).toEqual({ and: [{ id: { exists: true } }, { id: { exists: false } }] })
+    expect(scoped).toEqual(nothing)
 
     const readable = whereForBinding({ dimension: 'organization' }, branchOnly, 'read')
     expect(readable).toEqual({ id: { in: ['west'] } })
+
+    const inherited = whereForBinding(
+      { dimension: 'organization' },
+      direct({ organizationIds: ['west'] }),
+      'read',
+    )
+    expect(inherited).toEqual({ scopePath: { contains: '/west/' } })
+
+    const record = whereForBinding(
+      { organizationField: 'organization', branchField: 'branch', dataClassField: 'dataClass' },
+      direct({
+        organizationIds: ['west'],
+        branchIds: ['west-main'],
+        dataClassIds: ['sensitive'],
+      }),
+      'read',
+    )
+    expect(record).toEqual({
+      and: [
+        { 'organization.scopePath': { contains: '/west/' } },
+        {
+          or: [
+            { 'branch.scopePath': { contains: '/west-main/' } },
+            { 'branch.organization.scopePath': { contains: '/west/' } },
+          ],
+        },
+        { 'dataClass.scopePath': { contains: '/sensitive/' } },
+      ],
+    })
   })
 
   it('hides a user who holds any assignment outside the actor scope', () => {
@@ -137,7 +159,7 @@ describe('row scope rules', () => {
         actor,
       ),
     ).toBe(true)
-    expect(assignmentsWithinScope({}, actor)).toBe(true)
+    expect(assignmentsWithinScope({}, actor)).toBe(false)
     expect(
       assignmentsWithinScope(
         { organizations: ['east'], branches: [], dataClasses: ['sensitive'] },
@@ -152,6 +174,16 @@ describe('row scope rules', () => {
     ).toBe(false)
   })
 })
+
+function direct(overrides: Partial<DirectScope> = {}): DirectScope {
+  return {
+    organizationIds: [],
+    branchIds: [],
+    branchOrganizationIds: [],
+    dataClassIds: [],
+    ...overrides,
+  }
+}
 
 function catalog(): ScopeCatalog {
   return {

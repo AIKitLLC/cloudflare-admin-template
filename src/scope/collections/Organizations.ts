@@ -2,6 +2,7 @@ import type { CollectionConfig } from 'payload'
 
 import { withRbac } from '../../access/with-rbac'
 import { ORGANIZATIONS_SLUG, SCOPE_PARENT_FIELD } from '../constants'
+import { scopePathField } from '../path/scope-path-field'
 
 const parentDescription =
   'Parent organization. Assignment to an organization includes every descendant. A parent cannot be this organization or one of its descendants.'
@@ -42,6 +43,7 @@ export const Organizations: CollectionConfig = withRbac(
           description: parentDescription,
         },
       },
+      scopePathField(),
     ],
     graphQL: {
       singularName: 'Organization',
