@@ -2,16 +2,22 @@ import type {
   CollectionBeforeChangeHook,
   CollectionBeforeDeleteHook,
   CollectionSlug,
+  PayloadRequest,
 } from 'payload'
 import { APIError } from 'payload'
 
 import { USERS_SLUG } from '../../access/constants'
-import { userGrantsFullAccess } from '../../access/resolve/load-user-grants'
+import { loadUserGrants, userGrantsFullAccess } from '../../access/resolve/load-user-grants'
 import { relationIds } from '../../access/relation-id'
 import { fullAccessRoleIds } from './full-access-role-ids'
-import { changedRoleIds, roleIdList, sameRoleIds } from './role-id-set'
-import { FULL_ACCESS_ASSIGNMENT_ERROR, LAST_FULL_ACCESS_ERROR } from './privilege-errors'
+import { addedRoleIds, changedRoleIds, roleIdList, sameRoleIds } from './role-id-set'
+import {
+  FULL_ACCESS_ASSIGNMENT_ERROR,
+  LAST_FULL_ACCESS_ERROR,
+  SUBSET_ASSIGNMENT_ERROR,
+} from './privilege-errors'
 import { skipsPrivilegeChecks } from './privilege-context'
+import { grantedKeysByRole } from './role-permission-keys'
 
 export const guardUserRoleAssignment: CollectionBeforeChangeHook = async ({
   context,
@@ -39,6 +45,9 @@ export const guardUserRoleAssignment: CollectionBeforeChangeHook = async ({
   const hadPrivilegedRole = previous.some((id) => privilegedRoles.has(id))
   if (hadPrivilegedRole && !keptPrivilegedRole) {
     await assertAnotherFullAccessUser(req, originalDoc?.id, privilegedRoles)
+  }
+  if (!(await userGrantsFullAccess(req))) {
+    await assertAddedRolesAreSubset(req, addedRoleIds(previous, next))
   }
   return data
 }
@@ -68,6 +77,47 @@ export const guardLastFullAccessDeletion: CollectionBeforeDeleteHook = async ({
     throw new APIError(FULL_ACCESS_ASSIGNMENT_ERROR, 403)
   }
   await assertAnotherFullAccessUser(req, id, privilegedRoles)
+}
+
+export async function assertRemainingFullAccessHolder(
+  req: PayloadRequest,
+  excludedRoleId: string,
+): Promise<void> {
+  const privilegedRoles = await fullAccessRoleIds(req)
+  privilegedRoles.delete(excludedRoleId)
+  if (privilegedRoles.size === 0) {
+    throw new APIError(LAST_FULL_ACCESS_ERROR, 403)
+  }
+  const holders = await req.payload.count({
+    collection: USERS_SLUG as CollectionSlug,
+    overrideAccess: true,
+    req,
+    where: {
+      roles: {
+        in: [...privilegedRoles],
+      },
+    },
+  })
+  if (holders.totalDocs === 0) {
+    throw new APIError(LAST_FULL_ACCESS_ERROR, 403)
+  }
+}
+
+async function assertAddedRolesAreSubset(req: PayloadRequest, roleIds: string[]): Promise<void> {
+  if (roleIds.length === 0) {
+    return
+  }
+  const [grants, keysByRole] = await Promise.all([
+    loadUserGrants(req),
+    grantedKeysByRole(req, roleIds),
+  ])
+  for (const roleId of roleIds) {
+    for (const key of keysByRole.get(roleId) ?? []) {
+      if (!grants?.permissionKeys.has(key)) {
+        throw new APIError(SUBSET_ASSIGNMENT_ERROR, 403)
+      }
+    }
+  }
 }
 
 async function assertAnotherFullAccessUser(

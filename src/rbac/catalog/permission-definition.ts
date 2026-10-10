@@ -5,6 +5,7 @@ import {
   walkPermissionedFields,
   type WalkableField,
 } from '../../access/fields/permissioned-field'
+import { globalAccessSlug } from '../../access/global-slug'
 import { collectionEnablesRbac } from '../../access/options'
 import { COLLECTION_ACTIONS } from '../../access/constants'
 
@@ -34,8 +35,14 @@ type CatalogCollection = {
   fields?: unknown[]
 }
 
+type CatalogGlobal = {
+  slug: string
+  label?: unknown
+}
+
 export function collectPermissionDefinitions(
   collections: CatalogCollection[],
+  globals: CatalogGlobal[] = [],
 ): PermissionDefinition[] {
   const definitions: PermissionDefinition[] = []
   for (const collection of collections) {
@@ -60,7 +67,27 @@ export function collectPermissionDefinitions(
       )
     })
   }
+  for (const globalConfig of globals) {
+    const groupLabel = globalGroupLabel(globalConfig)
+    const slug = globalAccessSlug(globalConfig.slug)
+    for (const action of ['read', 'update'] as const) {
+      definitions.push({
+        key: permissionKey(slug, action),
+        label: `${groupLabel} · ${ACTION_LABELS[action]}`,
+        groupLabel,
+        collectionSlug: slug,
+        action,
+      })
+    }
+  }
   return definitions
+}
+
+function globalGroupLabel(globalConfig: CatalogGlobal): string {
+  if (typeof globalConfig.label === 'string' && globalConfig.label.trim()) {
+    return globalConfig.label
+  }
+  return globalConfig.slug
 }
 
 function fieldDefinition(

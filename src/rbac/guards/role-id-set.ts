@@ -12,6 +12,11 @@ export function sameRoleIds(left: string[], right: string[]): boolean {
   return left.every((id) => rightIds.has(id))
 }
 
+export function addedRoleIds(previous: string[], next: string[]): string[] {
+  const previousIds = new Set(previous)
+  return next.filter((id) => !previousIds.has(id))
+}
+
 export function changedRoleIds(previous: string[], next: string[]): string[] {
   const previousIds = new Set(previous)
   const nextIds = new Set(next)

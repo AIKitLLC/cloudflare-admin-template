@@ -1,7 +1,8 @@
-import type { CollectionAfterChangeHook, CollectionSlug } from 'payload'
+import type { CollectionAfterChangeHook } from 'payload'
 
-import { ROLES_SLUG, SUPER_ADMIN_SLUG, USERS_SLUG } from '../../access/constants'
+import { USERS_SLUG } from '../../access/constants'
 import { SKIP_RBAC_PRIVILEGE_CHECKS } from '../guards/privilege-context'
+import { ensureSuperAdminRole } from '../seed/ensure-super-admin-role'
 import { hasAssignedRoles, shouldAssignSuperAdminOnCreate } from '../seed/promotion-policy'
 
 export const assignSuperAdminToFirstUser: CollectionAfterChangeHook = async ({
@@ -31,26 +32,11 @@ export const assignSuperAdminToFirstUser: CollectionAfterChangeHook = async ({
   ) {
     return doc
   }
-  const roles = await req.payload.find({
-    collection: ROLES_SLUG as CollectionSlug,
-    depth: 0,
-    limit: 1,
-    overrideAccess: true,
-    req,
-    where: {
-      slug: {
-        equals: SUPER_ADMIN_SLUG,
-      },
-    },
-  })
-  const superAdmin = roles.docs[0]
-  if (!superAdmin) {
-    return doc
-  }
+  const superAdmin = await ensureSuperAdminRole(req.payload)
   return req.payload.update({
     collection: USERS_SLUG,
     id: doc.id,
-    data: { roles: [superAdmin.id] },
+    data: { roles: [Number(superAdmin.id)] },
     overrideAccess: true,
     req,
     context: {

@@ -20,7 +20,7 @@ type PermissionDoc = {
 export async function syncPermissionCatalog(
   payload: Payload,
 ): Promise<{ created: number; updated: number; deactivated: number }> {
-  const desired = collectPermissionDefinitions(payload.config.collections)
+  const desired = collectPermissionDefinitions(payload.config.collections, payload.config.globals)
   const existing = await payload.find({
     collection: PERMISSIONS_SLUG as CollectionSlug,
     depth: 0,
@@ -103,9 +103,7 @@ function permissionData(definition: PermissionDefinition) {
     action: definition.action,
     fieldPath: definition.fieldPath,
     active: true,
-    description: definition.fieldPath
-      ? `Field ${definition.action} on ${definition.collectionSlug}.${definition.fieldPath}`
-      : `Collection ${definition.action} on ${definition.collectionSlug}`,
+    description: permissionDescription(definition),
   }
 }
 
@@ -140,6 +138,16 @@ async function findPermissionByKey(
     where: { key: { equals: key } },
   })
   return found.docs[0] as PermissionDoc | undefined
+}
+
+function permissionDescription(definition: PermissionDefinition): string {
+  if (definition.fieldPath) {
+    return `Field ${definition.action} on ${definition.collectionSlug}.${definition.fieldPath}`
+  }
+  if (definition.collectionSlug.startsWith('global:')) {
+    return `Global ${definition.action} on ${definition.collectionSlug.slice('global:'.length)}`
+  }
+  return `Collection ${definition.action} on ${definition.collectionSlug}`
 }
 
 function needsCatalogUpdate(current: PermissionDoc, definition: PermissionDefinition): boolean {

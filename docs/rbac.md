@@ -20,7 +20,7 @@ Internal `payload-*` collections are not part of the catalog. Fields Payload alr
 
 ## How a request is decided
 
-`withRbac(collection, options)` installs collection `access` for create, read, update, and delete, adds `GET /api/{slug}/export`, and marks the collection so field access and the catalog include it. `onInit` then calls `applyFieldAccess` and `seedRbac`.
+`withRbac(collection, options)` installs collection `access` for create, read, update, and delete, adds `GET /api/{slug}/export`, and marks the collection so field access and the catalog include it. A trailing plugin and `onInit` wrap any collection a plugin added later, replace global access, then call `applyFieldAccess` and `seedRbac`.
 
 `evaluateCollectionAccess` loads the caller's grants once per request (`req.context.rbacUserGrants`) and runs this chain:
 
@@ -40,12 +40,15 @@ Export requires the `export` action, then reads through normal access so read an
 - The `super-admin` role is created on startup if it is missing, and `grantsFullAccess` cannot be turned off or the role deleted.
 - Every active permission is granted to that role so the matrix shows a complete column. Unchecking it is rejected; the bypass does not depend on those rows.
 - Upgrade promotion runs once. The first seed writes `rbac:upgrade_promotion` in Payload's `payload-kv` collection. Later startups do not scan users or assign roles, even if every full-access assignment was removed outside the API.
-- The last user who holds a full-access role cannot have that role removed or be deleted. This is enforced for full-access actors too.
+- The last user who holds a full-access role cannot have that role removed or be deleted. This is enforced for full-access actors too. Deleting a custom `grantsFullAccess` role is refused when no user would still hold a different full-access role. The `super-admin` slug cannot be deleted.
+- That last-assignment check counts holders and then Payload writes. Two overlapping demotions, or a bulk delete, can both observe a remaining holder and both succeed. A D1 transaction started in `beforeChange` does not wrap Payload's later write, so the check stays check-then-write.
 - Only a full-access user can set `grantsFullAccess`, or assign or remove a full-access role. Collection hooks enforce that for REST and GraphQL.
-- A user who is not full-access cannot create, update, or delete grants on a role they hold, including through `POST /api/rbac/grants`.
-- The first user created with no roles also receives `super-admin`, which covers the create-first-user screen after a fresh boot.
+- A user who is not full-access can grant only permission keys they already hold, and only on a role they do not hold. They can assign a role, including to themselves, only when every granted key on that role is one they already hold. Removing a role that is not full-access is allowed. The same hooks cover REST, GraphQL, and `POST /api/rbac/grants`.
+- Privilege hooks return without checking when `req.user` is missing, and when `context.skipRbacPrivilegeChecks` is set (seed and the first-user bootstrap). Local API and other server code that acts for a person must pass that user and `overrideAccess: false`. `overrideAccess: true` still runs the hooks when a user is present. Omitting the user skips them.
+- The first user created with no roles receives `super-admin`. If startup seeding did not create that role, the same hook creates it before the assignment.
 - Later users created without roles get no access until an administrator assigns one.
-- Collections registered without `withRbac` are wrapped at config build. Startup throws if a non-internal collection is still uncovered. An uncovered collection does not fall back to Payload's logged-in allow.
+- Collections registered without `withRbac`, including collections added by plugins, are wrapped before startup seed. Wrapping overwrites create, read, update, and delete. Startup still throws if a non-internal collection is uncovered after that pass.
+- Globals use the same pipeline. Keys are `global:{slug}:read` and `global:{slug}:update`. Full access bypasses them. There is no logged-in default.
 
 `access.admin` on users stays "any logged-in user", so a limited role can open the admin panel. Nav items still follow collection read permission.
 
@@ -92,4 +95,4 @@ Startup seeding is idempotent. A matching fingerprint skips the catalog and gran
 
 `src/app/(payload)/layout.tsx` keeps a local `viewport` export because `@payloadcms/next/layouts` in Payload 3.82 does not export `generatePayloadViewport`.
 
-`cors` and `csrf` allow `PAYLOAD_PUBLIC_SERVER_URL` (default `http://localhost:3000`) plus any comma-separated `PAYLOAD_ALLOWED_ORIGINS`.
+`cors` and `csrf` allow `PAYLOAD_PUBLIC_SERVER_URL` plus any comma-separated `PAYLOAD_ALLOWED_ORIGINS`. Local development and `next build` fall back to `http://localhost:3000` when the public URL is unset. A production Worker throws at startup if `PAYLOAD_PUBLIC_SERVER_URL` is missing, so admin sessions and media URLs cannot silently point at localhost. The Payload CLI, including `pnpm payload migrate`, does not throw, so a migration can run before the public URL is set.

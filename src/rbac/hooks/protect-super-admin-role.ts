@@ -6,7 +6,9 @@ import type {
 import { APIError } from 'payload'
 
 import { ROLES_SLUG, SUPER_ADMIN_SLUG } from '../../access/constants'
+import { assertRemainingFullAccessHolder } from '../guards/guard-full-access-assignment'
 import { assertCanChangeFullAccessFlag } from '../guards/guard-full-access-flag'
+import { skipsPrivilegeChecks } from '../guards/privilege-context'
 
 export const protectSuperAdminRole: CollectionBeforeChangeHook = async ({
   context,
@@ -38,7 +40,11 @@ export const protectSuperAdminRole: CollectionBeforeChangeHook = async ({
   return data
 }
 
-export const preventSuperAdminDeletion: CollectionBeforeDeleteHook = async ({ id, req }) => {
+export const preventSuperAdminDeletion: CollectionBeforeDeleteHook = async ({
+  context,
+  id,
+  req,
+}) => {
   const role = (await req.payload.findByID({
     collection: ROLES_SLUG as CollectionSlug,
     id,
@@ -46,8 +52,12 @@ export const preventSuperAdminDeletion: CollectionBeforeDeleteHook = async ({ id
     disableErrors: true,
     overrideAccess: true,
     req,
-  })) as { slug?: string | null } | null
+  })) as { grantsFullAccess?: boolean | null; slug?: string | null } | null
   if (role?.slug === SUPER_ADMIN_SLUG) {
     throw new APIError('The super-admin role cannot be deleted.', 400)
   }
+  if (!role?.grantsFullAccess || skipsPrivilegeChecks(context) || !req.user) {
+    return
+  }
+  await assertRemainingFullAccessHolder(req, String(id))
 }

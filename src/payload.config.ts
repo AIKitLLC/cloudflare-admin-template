@@ -8,8 +8,11 @@ import { CloudflareContext, getCloudflareContext } from '@opennextjs/cloudflare'
 import { GetPlatformProxyOptions } from 'wrangler'
 import { r2Storage } from '@payloadcms/storage-r2'
 
+import { coverLiveConfig } from './access/cover-unwrapped'
 import { assertRbacCoverage, ensureRbacCoverage } from './access/ensure-rbac-coverage'
 import { applyFieldAccess } from './access/fields/apply-field-access'
+import { rbacCoveragePlugin } from './access/rbac-coverage-plugin'
+import { resolvePublicServerURL } from './config/public-server-url'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
 import { migrations } from './migrations'
@@ -28,7 +31,12 @@ const isCLI = process.argv.some((value) =>
 )
 const isProduction = process.env.NODE_ENV === 'production'
 const isNextProductionBuild = process.env.NEXT_PHASE === 'phase-production-build'
-const serverURL = process.env.PAYLOAD_PUBLIC_SERVER_URL || 'http://localhost:3000'
+const serverURL = resolvePublicServerURL({
+  configuredURL: process.env.PAYLOAD_PUBLIC_SERVER_URL,
+  isCLI,
+  nextPhase: process.env.NEXT_PHASE,
+  nodeEnv: process.env.NODE_ENV,
+})
 const allowedOrigins = [
   serverURL,
   ...(process.env.PAYLOAD_ALLOWED_ORIGINS || '')
@@ -88,6 +96,7 @@ export default buildConfig({
   cors: allowedOrigins,
   csrf: allowedOrigins,
   onInit: async (payload) => {
+    coverLiveConfig(payload)
     applyFieldAccess(payload)
     assertRbacCoverage(payload)
     try {
@@ -114,6 +123,7 @@ export default buildConfig({
       bucket: cloudflare.env.R2,
       collections: { media: true },
     }),
+    rbacCoveragePlugin,
   ],
 })
 

@@ -11,6 +11,13 @@
     // see https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public
     "global_fetch_strictly_public",
   ],
+  // Production requires PAYLOAD_PUBLIC_SERVER_URL. Admin sessions, CSRF, and media
+  // URLs use it. PAYLOAD_ALLOWED_ORIGINS is an optional comma-separated extra list.
+  // Keep PAYLOAD_SECRET as a secret, not a var.
+  // "vars": {
+  //   "PAYLOAD_PUBLIC_SERVER_URL": "https://admin.example.com",
+  //   "PAYLOAD_ALLOWED_ORIGINS": "https://admin.example.com"
+  // },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS",

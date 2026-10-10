@@ -17,6 +17,8 @@ import {
   FULL_ACCESS_FLAG_ERROR,
   LAST_FULL_ACCESS_ERROR,
   OWN_ROLE_GRANT_ERROR,
+  SUBSET_ASSIGNMENT_ERROR,
+  SUBSET_GRANT_ERROR,
   UNCONDITIONAL_GRANT_ERROR,
 } from '@/rbac/guards/privilege-errors'
 import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
@@ -116,6 +118,7 @@ describe('RBAC privilege boundaries', () => {
     await grant(ownRole.id, 'role-permissions:writeField:role')
     await grant(ownRole.id, 'role-permissions:writeField:permission')
     await grant(ownRole.id, 'role-permissions:writeField:granted')
+    await grant(ownRole.id, 'media:read')
     const user = await createUser(`rbac-own-grant-${stamp}@example.com`, [ownRole.id])
     const permissionId = await permissionIdFor('media:read')
 
@@ -142,6 +145,13 @@ describe('RBAC privilege boundaries', () => {
       await localReq(user, { roleId: otherRole.id, permissionId, granted: true }),
     )
     expect(otherResponse.status).toBe(200)
+
+    const broader = await permissionIdFor('users:delete')
+    const subsetResponse = await grantEndpoint.handler(
+      await localReq(user, { roleId: otherRole.id, permissionId: broader, granted: true }),
+    )
+    expect(subsetResponse.status).toBe(403)
+    expect(await subsetResponse.json()).toMatchObject({ error: SUBSET_GRANT_ERROR })
 
     const missing = await grantEndpoint.handler(
       await localReq(user, { roleId: otherRole.id, permissionId: 999999999, granted: true }),
@@ -263,6 +273,120 @@ describe('RBAC privilege boundaries', () => {
       req: await localReq(stranger),
     })
     expect(decision).toBe(false)
+  })
+
+  it('refuses granting or assigning permissions the actor does not hold', async () => {
+    const role = await createRole(`subset-${stamp}`)
+    await grant(role.id, 'roles:create')
+    await grant(role.id, 'roles:writeField:name')
+    await grant(role.id, 'roles:writeField:slug')
+    await grant(role.id, 'role-permissions:create')
+    await grant(role.id, 'role-permissions:writeField:role')
+    await grant(role.id, 'role-permissions:writeField:permission')
+    await grant(role.id, 'role-permissions:writeField:granted')
+    await grant(role.id, 'users:update')
+    await grant(role.id, 'users:writeField:roles')
+    await grant(role.id, 'media:read')
+    const user = await createUser(`rbac-subset-${stamp}@example.com`, [role.id])
+    const broader = await createRole(`broader-${stamp}`)
+    await grant(broader.id, 'users:delete')
+    const empty = await createRole(`empty-${stamp}`)
+    const usersDelete = await permissionIdFor('users:delete')
+
+    await expect(
+      payload.create({
+        collection: 'role-permissions' as CollectionSlug,
+        data: { role: empty.id, permission: usersDelete, granted: true },
+        overrideAccess: false,
+        user,
+      }),
+    ).rejects.toThrow(SUBSET_GRANT_ERROR)
+
+    await expect(
+      payload.update({
+        collection: 'users',
+        id: user.id,
+        data: { roles: [role.id, broader.id] },
+        overrideAccess: false,
+        user,
+      }),
+    ).rejects.toThrow(SUBSET_ASSIGNMENT_ERROR)
+
+    await payload.update({
+      collection: 'users',
+      id: user.id,
+      data: { roles: [role.id, empty.id] },
+      overrideAccess: false,
+      user,
+    })
+    const fresh = await payload.findByID({
+      collection: 'users',
+      id: user.id,
+      overrideAccess: true,
+    })
+    expect(roleIds(fresh.roles).sort()).toEqual([String(role.id), String(empty.id)].sort())
+  })
+
+  it('refuses deleting the full-access role that still holds the last assignment', async () => {
+    const superAdmin = await findSuperAdminRole()
+    const custom = await payload.create({
+      collection: 'roles' as CollectionSlug,
+      data: {
+        name: `Full ${stamp}`,
+        slug: `full-${stamp}`,
+        grantsFullAccess: true,
+      },
+      overrideAccess: true,
+      context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+    })
+    createdRoleIds.push(custom.id)
+    const holders = await payload.find({
+      collection: 'users',
+      depth: 0,
+      overrideAccess: true,
+      pagination: false,
+      where: { roles: { in: [superAdmin.id] } },
+    })
+    const previous = holders.docs.map((doc) => ({
+      id: doc.id,
+      roles: (doc as { roles?: unknown }).roles,
+    }))
+    const keeper = await createUser(`rbac-full-role-${stamp}@example.com`, [Number(custom.id)])
+    try {
+      for (const holder of previous) {
+        await payload.update({
+          collection: 'users',
+          id: holder.id,
+          data: { roles: [] },
+          overrideAccess: true,
+          context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+        })
+      }
+      await expect(
+        payload.delete({
+          collection: 'roles' as CollectionSlug,
+          id: custom.id,
+          overrideAccess: false,
+          user: keeper,
+        }),
+      ).rejects.toThrow(LAST_FULL_ACCESS_ERROR)
+      const stillThere = await payload.findByID({
+        collection: 'roles' as CollectionSlug,
+        id: custom.id,
+        overrideAccess: true,
+      })
+      expect(stillThere.id).toBe(custom.id)
+    } finally {
+      for (const holder of previous) {
+        await payload.update({
+          collection: 'users',
+          id: holder.id,
+          data: { roles: holder.roles as number[] },
+          overrideAccess: true,
+          context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+        })
+      }
+    }
   })
 
   it('does not leak auth secrets from the export route', async () => {

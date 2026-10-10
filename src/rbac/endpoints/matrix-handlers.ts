@@ -96,7 +96,7 @@ export const grantEndpoint: Endpoint = {
       )
     }
     try {
-      await assertMayChangeRoleGrant({ req, roleId })
+      await assertMayChangeRoleGrant({ permissionIds: [permissionId], req, roleId })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'You cannot change this grant.'
       return Response.json({ error: message }, { status: 403 })

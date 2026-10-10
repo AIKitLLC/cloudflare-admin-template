@@ -15,7 +15,10 @@ import {
 import { syncPermissionCatalog } from './sync-permission-catalog'
 
 export async function seedRbac(payload: Payload): Promise<void> {
-  const definitions = collectPermissionDefinitions(payload.config.collections)
+  const definitions = collectPermissionDefinitions(
+    payload.config.collections,
+    payload.config.globals,
+  )
   const fingerprint = catalogFingerprint(definitions)
   const [savedFingerprint, promotionDone, superAdmin] = await Promise.all([
     readCatalogFingerprint(payload),

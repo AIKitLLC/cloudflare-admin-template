@@ -134,8 +134,8 @@ Restart the app once so the permission catalog picks up the new collection. Gran
 Roles, permissions, and role-permission grants live in D1.
 
 - **Super Admin** (`grantsFullAccess`) bypasses the matrix. The first user receives this role. Existing users with no roles receive it once, on the first seed after upgrade, and that promotion does not run again.
-- Only a full-access user can turn on `grantsFullAccess`, assign or remove a full-access role, or edit grants on a role they hold. The last full-access assignment cannot be removed.
-- Other roles start with no grants. Assign actions per collection and read/write per field in `/admin/permission-matrix`. Collections added without `withRbac` are still denied until a grant exists.
+- Only a full-access user can turn on `grantsFullAccess` or assign or remove a full-access role. Anyone else can grant only permissions they already hold, and can assign only roles whose grants are a subset of their own. The last full-access assignment cannot be removed.
+- Other roles start with no grants. Assign actions per collection and read/write per field in `/admin/permission-matrix`. Plugin collections and globals are covered by the same rules. A global's keys are `global:{slug}:read` and `global:{slug}:update`.
 - `GET /api/{collection}/export` returns CSV. It requires the `export` action and still applies read and field permissions.
 - Media keeps anonymous read for public file URLs. Signed-in users still need `media:read`.
 
@@ -166,6 +166,8 @@ pnpm wrangler r2 bucket create <YOUR_BUCKET_NAME>
 ```
 
 Update `wrangler.jsonc` with your D1 `database_id` and R2 bucket name.
+
+Set the public origin before the Worker serves traffic. `PAYLOAD_PUBLIC_SERVER_URL` is required in production. Admin login cookies, CSRF, and media URLs all use it. `PAYLOAD_ALLOWED_ORIGINS` is an optional comma-separated list of extra browser origins. Put both in the Worker environment, for example the commented `vars` block in `wrangler.jsonc`. Keep `PAYLOAD_SECRET` as a secret, not a var.
 
 ### 2. Run Database Migrations & Deploy
 
