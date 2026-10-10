@@ -72,6 +72,7 @@ export interface Config {
     roles: Role;
     permissions: Permission;
     'role-permissions': RolePermission;
+    'system-parameters': SystemParameter;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -84,6 +85,7 @@ export interface Config {
     roles: RolesSelect<false> | RolesSelect<true>;
     permissions: PermissionsSelect<false> | PermissionsSelect<true>;
     'role-permissions': RolePermissionsSelect<false> | RolePermissionsSelect<true>;
+    'system-parameters': SystemParametersSelect<false> | SystemParametersSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -229,6 +231,44 @@ export interface RolePermission {
   createdAt: string;
 }
 /**
+ * Runtime configuration. Credentials belong in Worker secrets. Mark a value sensitive to hide it from the API, export, and audit diffs.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "system-parameters".
+ */
+export interface SystemParameter {
+  id: number;
+  /**
+   * Stable lowercase kebab-case id, for example maintenance-mode. Secret-like keys are rejected.
+   */
+  key: string;
+  /**
+   * Group slug, for example billing, features, or operations.
+   */
+  category: string;
+  label?: string | null;
+  description?: string | null;
+  valueType: 'string' | 'number' | 'boolean' | 'json';
+  /**
+   * Must match the declared type. JSON values must be an object or array. 0, false, and empty strings are valid for their types.
+   */
+  value:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Hides the value on read, list, export, and audit diffs. getParameter still returns it on the server. Do not use this for credentials.
+   */
+  sensitive?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
@@ -271,6 +311,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'role-permissions';
         value: number | RolePermission;
+      } | null)
+    | ({
+        relationTo: 'system-parameters';
+        value: number | SystemParameter;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -388,6 +432,21 @@ export interface RolePermissionsSelect<T extends boolean = true> {
   role?: T;
   permission?: T;
   granted?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "system-parameters_select".
+ */
+export interface SystemParametersSelect<T extends boolean = true> {
+  key?: T;
+  category?: T;
+  label?: T;
+  description?: T;
+  valueType?: T;
+  value?: T;
+  sensitive?: T;
   updatedAt?: T;
   createdAt?: T;
 }

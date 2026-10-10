@@ -15,6 +15,7 @@ import { rbacCoveragePlugin } from './access/rbac-coverage-plugin'
 import { resolvePublicServerURL } from './config/public-server-url'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
+import { SystemParameters } from './system-parameters/collections/SystemParameters'
 import { migrations } from './migrations'
 import { Permissions } from './rbac/collections/Permissions'
 import { RolePermissions } from './rbac/collections/RolePermissions'
@@ -90,7 +91,14 @@ export default buildConfig({
       },
     },
   },
-  collections: ensureRbacCoverage([Users, Media, Roles, Permissions, RolePermissions]),
+  collections: ensureRbacCoverage([
+    Users,
+    Media,
+    Roles,
+    Permissions,
+    RolePermissions,
+    SystemParameters,
+  ]),
   endpoints: [matrixEndpoint, grantEndpoint],
   serverURL,
   cors: allowedOrigins,

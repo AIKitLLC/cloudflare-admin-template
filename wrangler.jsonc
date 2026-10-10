@@ -37,6 +37,16 @@
     //   "service": "my-app"
     // },
   ],
+  // Optional cache for system parameters. Leave this commented until a KV namespace
+  // exists. Binding name: SYSTEM_PARAMETERS_KV. Do not replace the placeholder with a
+  // real id in this template, and do not deploy a change that would create the namespace.
+  // When the binding is missing, parameter reads use the per-isolate memory cache and D1.
+  // "kv_namespaces": [
+  //   {
+  //     "binding": "SYSTEM_PARAMETERS_KV",
+  //     "id": "PLACEHOLDER_KV_NAMESPACE_ID"
+  //   }
+  // ],
   "r2_buckets": [
     {
       "binding": "R2",
