@@ -15,7 +15,7 @@ export type ScopeDimension = 'organization' | 'branch' | 'data-class'
 /**
  * Opt a collection into row scope. Field names narrow records.
  * `dimension` scopes the scope-node collection itself.
- * `assignments` enforces who may edit user scope fields.
+ * `assignments` limits user reads, updates, and deletes to accounts inside the actor's scope, and enforces who may edit those assignments.
  */
 export type RowScopeBinding = {
   organizationField?: string

@@ -4,6 +4,12 @@ export const SCOPE_ASSIGNMENT_ERROR = 'You can only assign scopes within your ow
 
 export const SCOPE_ROLE_TARGET_ERROR = 'You can only assign roles to users inside your scope.'
 
+export const SCOPE_TARGET_KEYS_ERROR =
+  'You can only assign scope to a user whose permissions are within your own.'
+
+export const SCOPE_NODE_IN_USE_ERROR =
+  'Remove nested scope nodes, records, and user assignments that still use this scope before deleting it.'
+
 export const SCOPE_GRANT_ERROR = 'You can only grant permissions to roles held inside your scope.'
 
 export const SCOPE_RECORD_ERROR = 'You cannot set a scope outside your own.'

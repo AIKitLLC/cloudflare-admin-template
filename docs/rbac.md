@@ -45,7 +45,7 @@ Export requires the `export` action, then reads through normal access so read an
 - Only a full-access user can set `grantsFullAccess`, or assign or remove a full-access role. Collection hooks enforce that for REST and GraphQL.
 - A user who is not full-access can grant only permission keys they already hold, and only on a role they do not hold. They can assign a role, including to themselves, only when every granted key on that role is one they already hold. Removing a role that is not full-access is allowed. The same hooks cover REST, GraphQL, and `POST /api/rbac/grants`.
 - Privilege hooks return without checking when `req.user` is missing, and when `context.skipRbacPrivilegeChecks` is set (seed and the first-user bootstrap). Local API and other server code that acts for a person must pass that user and `overrideAccess: false`. `overrideAccess: true` still runs the hooks when a user is present. Omitting the user skips them.
-- The first user created with no roles receives `super-admin`. If startup seeding did not create that role, the same hook creates it before the assignment.
+- The first user created with no roles receives `super-admin`. If startup seeding did not create that role, the same hook creates it before the assignment. The nested update sets `skipRbacPrivilegeChecks` and `skipRbacBootstrap` on the request, and the hook removes those flags afterward unless the caller had already set them, so a later operation in the same request is checked again.
 - Later users created without roles get no access until an administrator assigns one.
 - Collections registered without `withRbac`, including collections added by plugins, are wrapped before startup seed. Wrapping overwrites create, read, update, and delete. Startup still throws if a non-internal collection is uncovered after that pass.
 - Globals use the same pipeline. Keys are `global:{slug}:read` and `global:{slug}:update`. Full access bypasses them. There is no logged-in default.
@@ -54,7 +54,7 @@ Export requires the `export` action, then reads through normal access so read an
 
 ## Admin UI
 
-`/admin/permission-matrix` is a root admin view. It is linked after the nav items for users who can read `role-permissions`. Edits call `POST /api/rbac/grants`. That route requires the permission id to exist and requires unconditional (`true`, not a Where) create and update on `role-permissions`, or full access. `GET /api/rbac/matrix` returns the same grid plus `canEdit`.
+`/admin/permission-matrix` is a root admin view. It is linked after the nav items for users who can read `role-permissions`. Edits call `POST /api/rbac/grants`. That route requires the permission id to exist and requires unconditional (`true`, not a Where) create and update on `role-permissions`, or full access. `GET /api/rbac/matrix` returns the same grid plus `canEdit`. The grid lists every role. Roles are not organizational records; row scope does not hide them. Grant writes are still refused when the role is held outside the caller's scope.
 
 ## Adding a collection
 

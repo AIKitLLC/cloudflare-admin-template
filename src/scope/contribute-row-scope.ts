@@ -4,6 +4,7 @@ import type { AccessEvaluationContext } from '../access/types'
 import { bindingFiltersRows } from './bindings/read-row-scope-binding'
 import { loadEffectiveScope } from './resolve/load-effective-scope'
 import { whereForBinding } from './where/where-for-binding'
+import { whereUsersWithinScope } from './where/where-users-within-scope'
 
 export async function contributeRowScope(
   context: AccessEvaluationContext,
@@ -12,7 +13,13 @@ export async function contributeRowScope(
     return undefined
   }
   const binding = context.options.rowScope
-  if (!bindingFiltersRows(binding) || !binding) {
+  if (!binding) {
+    return undefined
+  }
+  if (binding.assignments) {
+    return whereUsersWithinScope(context.req)
+  }
+  if (!bindingFiltersRows(binding)) {
     return undefined
   }
   const scope = await loadEffectiveScope(context.req)

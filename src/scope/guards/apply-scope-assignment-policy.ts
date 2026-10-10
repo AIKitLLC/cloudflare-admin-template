@@ -1,6 +1,9 @@
 import type { PayloadRequest } from 'payload'
 import { APIError } from 'payload'
 
+import { loadUserGrants } from '../../access/resolve/load-user-grants'
+import { fullAccessRoleIds } from '../../rbac/guards/full-access-role-ids'
+import { grantedKeysByRole } from '../../rbac/guards/role-permission-keys'
 import { addedRoleIds, roleIdList } from '../../rbac/guards/role-id-set'
 import {
   USER_BRANCHES_FIELD,
@@ -9,7 +12,11 @@ import {
   USER_SCOPE_FIELDS,
   type UserScopeField,
 } from '../constants'
-import { SCOPE_ROLE_TARGET_ERROR, SELF_SCOPE_ASSIGNMENT_ERROR } from '../errors'
+import {
+  SCOPE_ROLE_TARGET_ERROR,
+  SCOPE_TARGET_KEYS_ERROR,
+  SELF_SCOPE_ASSIGNMENT_ERROR,
+} from '../errors'
 import { idSet, sameIdSet, toPayloadIds } from '../ids/id-set'
 import { loadEffectiveScope } from '../resolve/load-effective-scope'
 import { loadScopeCatalog } from '../resolve/load-scope-catalog'
@@ -51,6 +58,7 @@ export async function applyScopeAssignmentPolicy(args: {
     throw new APIError(SELF_SCOPE_ASSIGNMENT_ERROR, 403)
   }
 
+  let scopeExtended = false
   if (scopeTouched && targetId !== actorId) {
     for (const field of USER_SCOPE_FIELDS) {
       if (args.data[field] === undefined) {
@@ -59,8 +67,16 @@ export async function applyScopeAssignmentPolicy(args: {
       const previous = idSet(args.original?.[field])
       const submitted = idSet(args.data[field])
       const merged = mergeScopeField(previous, submitted, GRANTABLE_FIELD[field](actorScope))
+      if (setGrew(previous, merged)) {
+        scopeExtended = true
+      }
       next[field] = toPayloadIds(merged)
     }
+  }
+
+  if (scopeExtended) {
+    const roleSource = next.roles !== undefined ? next.roles : args.original?.roles
+    await assertTargetKeysAllowScopeExtension(args.req, roleIdList(roleSource))
   }
 
   if (rolesTouched) {
@@ -76,6 +92,36 @@ export async function applyScopeAssignmentPolicy(args: {
   }
 
   return next
+}
+
+function setGrew(previous: ReadonlySet<string>, next: ReadonlySet<string>): boolean {
+  for (const id of next) {
+    if (!previous.has(id)) {
+      return true
+    }
+  }
+  return false
+}
+
+async function assertTargetKeysAllowScopeExtension(
+  req: PayloadRequest,
+  roleIds: string[],
+): Promise<void> {
+  const privilegedRoles = await fullAccessRoleIds(req)
+  if (roleIds.some((roleId) => privilegedRoles.has(roleId))) {
+    throw new APIError(SCOPE_TARGET_KEYS_ERROR, 403)
+  }
+  const [grants, keysByRole] = await Promise.all([
+    loadUserGrants(req),
+    grantedKeysByRole(req, roleIds),
+  ])
+  for (const keys of keysByRole.values()) {
+    for (const key of keys) {
+      if (!grants?.permissionKeys.has(key)) {
+        throw new APIError(SCOPE_TARGET_KEYS_ERROR, 403)
+      }
+    }
+  }
 }
 
 function scopeFieldsChanged(

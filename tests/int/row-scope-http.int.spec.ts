@@ -3,17 +3,19 @@ import { GRAPHQL_POST, REST_DELETE, REST_GET, REST_PATCH, REST_POST } from '@pay
 import { getPayload, type CollectionSlug, type Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
+import { relationIds } from '@/access/relation-id'
 import config from '@/payload.config'
 import {
   SCOPE_ASSIGNMENT_ERROR,
   SCOPE_GRANT_ERROR,
   SCOPE_RECORD_ERROR,
-  SCOPE_ROLE_TARGET_ERROR,
+  SCOPE_TARGET_KEYS_ERROR,
   SELF_SCOPE_ASSIGNMENT_ERROR,
 } from '@/scope/errors'
 import { RECORDS_SLUG } from '@/scope/constants'
 import {
   cleanupRowScopeFixture,
+  grantKey,
   seedRowScopeFixture,
   type RowScopeFixture,
 } from '../helpers/row-scope-fixture'
@@ -296,8 +298,8 @@ describe('row scope HTTP and GraphQL', () => {
       ),
       route(['users', String(fixture.eastUser.id)]),
     )
-    expect(roleTarget.status).toBe(403)
-    expect(JSON.stringify(await roleTarget.json())).toContain(SCOPE_ROLE_TARGET_ERROR)
+    expect(roleTarget.status).toBeGreaterThanOrEqual(400)
+    expect(JSON.stringify(await roleTarget.json())).toMatch(/not found|forbidden|not allowed/i)
 
     const graphqlRole = await graphql(
       jsonRequest('/api/graphql', {
@@ -310,7 +312,7 @@ describe('row scope HTTP and GraphQL', () => {
         },
       }),
     )
-    expect(JSON.stringify(await graphqlRole.json())).toContain(SCOPE_ROLE_TARGET_ERROR)
+    expect(JSON.stringify(await graphqlRole.json())).toMatch(/not found|forbidden|not allowed/i)
 
     const insideAssign = await patch(
       jsonRequest(
@@ -323,6 +325,127 @@ describe('row scope HTTP and GraphQL', () => {
       route(['users', String(fixture.childUser.id)]),
     )
     expect(insideAssign.status).toBeLessThan(300)
+  })
+
+  it('hides cross-org users and refuses scope grants to a more privileged user', async () => {
+    const listed = await get(
+      getRequest(`/api/users?where[email][equals]=${encodeURIComponent(fixture.eastUser.email)}`),
+      route(['users']),
+    )
+    expect(listed.status).toBe(200)
+    const listedText = JSON.stringify(await listed.json())
+    expect(listedText).toContain('"totalDocs":0')
+    expect(listedText).not.toContain(fixture.eastUser.email)
+    const visible = await get(
+      getRequest(`/api/users?where[email][equals]=${encodeURIComponent(fixture.childUser.email)}`),
+      route(['users']),
+    )
+    const visibleText = JSON.stringify(await visible.json())
+    expect(visibleText).toContain('"totalDocs":1')
+    expect(visibleText).toContain(fixture.childUser.email)
+
+    const hidden = await get(
+      getRequest(`/api/users/${fixture.eastUser.id}`),
+      route(['users', String(fixture.eastUser.id)]),
+    )
+    expect(hidden.status).toBe(404)
+
+    const takeover = await patch(
+      jsonRequest(
+        `/api/users/${fixture.eastUser.id}`,
+        { password: 'taken-over-password' },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['users', String(fixture.eastUser.id)]),
+    )
+    expect(takeover.status).toBeGreaterThanOrEqual(400)
+    const stillHidden = await payload.findByID({
+      collection: 'users',
+      id: fixture.eastUser.id,
+      overrideAccess: true,
+    })
+    expect(stillHidden.email).toBe(fixture.eastUser.email)
+    const oldLogin = await post(
+      jsonRequest(
+        '/api/users/login',
+        { email: fixture.eastUser.email, password: fixture.eastUser.password },
+        '',
+      ),
+      route(['users', 'login']),
+    )
+    expect(oldLogin.status).toBe(200)
+    const newLogin = await post(
+      jsonRequest(
+        '/api/users/login',
+        { email: fixture.eastUser.email, password: 'taken-over-password' },
+        '',
+      ),
+      route(['users', 'login']),
+    )
+    expect(newLogin.status).toBeGreaterThanOrEqual(400)
+
+    const removed = await remove(
+      getRequest(`/api/users/${fixture.eastUser.id}`, 'DELETE'),
+      route(['users', String(fixture.eastUser.id)]),
+    )
+    expect(removed.status).toBeGreaterThanOrEqual(400)
+
+    const graphqlHidden = await graphql(
+      jsonRequest('/api/graphql', {
+        query: `query Hidden($id: Int!) {
+          Users(where: { id: { equals: $id } }) { totalDocs docs { email } }
+        }`,
+        variables: { id: fixture.eastUser.id },
+      }),
+    )
+    const graphqlHiddenText = JSON.stringify(await graphqlHidden.json())
+    expect(graphqlHiddenText).toContain('"totalDocs":0')
+    expect(graphqlHiddenText).not.toContain(fixture.eastUser.email)
+
+    const graphqlVisible = await graphql(
+      jsonRequest('/api/graphql', {
+        query: `query Visible($id: Int!) {
+          Users(where: { id: { equals: $id } }) { totalDocs docs { email } }
+        }`,
+        variables: { id: fixture.childUser.id },
+      }),
+    )
+    expect(JSON.stringify(await graphqlVisible.json())).toContain(fixture.childUser.email)
+
+    await grantKey(payload, fixture.insideRoleId, 'media:read')
+    const extend = await patch(
+      jsonRequest(
+        `/api/users/${fixture.childUser.id}`,
+        { organizations: [fixture.westChildId, fixture.westId] },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['users', String(fixture.childUser.id)]),
+    )
+    expect(extend.status).toBe(403)
+    expect(JSON.stringify(await extend.json())).toContain(SCOPE_TARGET_KEYS_ERROR)
+    const child = await payload.findByID({
+      collection: 'users',
+      id: fixture.childUser.id,
+      depth: 0,
+      overrideAccess: true,
+    })
+    expect(relationIds(child.organizations)).toEqual([String(fixture.westChildId)])
+
+    const peer = await patch(
+      jsonRequest(
+        `/api/users/${fixture.emptyUser.id}`,
+        { organizations: [fixture.westId], dataClasses: [fixture.sensitiveId] },
+        cookie,
+        ORIGIN,
+        'PATCH',
+      ),
+      route(['users', String(fixture.emptyUser.id)]),
+    )
+    expect(peer.status).toBeLessThan(300)
   })
 })
 

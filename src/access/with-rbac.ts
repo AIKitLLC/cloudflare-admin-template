@@ -42,6 +42,7 @@ function appendScopeHooks(
     ...hooks,
     beforeOperation: [...(hooks?.beforeOperation ?? []), ...(extra.beforeOperation ?? [])],
     beforeChange: [...(hooks?.beforeChange ?? []), ...(extra.beforeChange ?? [])],
+    beforeDelete: [...(hooks?.beforeDelete ?? []), ...(extra.beforeDelete ?? [])],
     afterChange: [...(hooks?.afterChange ?? []), ...(extra.afterChange ?? [])],
     afterDelete: [...(hooks?.afterDelete ?? []), ...(extra.afterDelete ?? [])],
   }

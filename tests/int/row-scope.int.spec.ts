@@ -10,8 +10,10 @@ import {
   SCOPE_CYCLE_ERROR,
   SCOPE_GRANT_ERROR,
   SCOPE_NODE_ERROR,
+  SCOPE_NODE_IN_USE_ERROR,
   SCOPE_RECORD_ERROR,
   SCOPE_ROLE_TARGET_ERROR,
+  SCOPE_TARGET_KEYS_ERROR,
   SELF_SCOPE_ASSIGNMENT_ERROR,
 } from '@/scope/errors'
 import { loadEffectiveScope } from '@/scope/resolve/load-effective-scope'
@@ -23,6 +25,7 @@ import {
 } from '@/scope/constants'
 import {
   cleanupRowScopeFixture,
+  grantKey,
   seedRowScopeFixture,
   type RowScopeFixture,
   type ScopeUser,
@@ -252,6 +255,13 @@ describe('row scope access', () => {
       overrideAccess: true,
       context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
     })
+    await expect(
+      payload.delete({
+        collection: ORGANIZATIONS_SLUG as CollectionSlug,
+        id: fixture.westId,
+        overrideAccess: true,
+      }),
+    ).rejects.toThrow(SCOPE_NODE_IN_USE_ERROR)
   })
 
   it('reads the scope catalog once per request', async () => {
@@ -275,6 +285,55 @@ describe('row scope access', () => {
     } finally {
       spy.mockRestore()
     }
+  })
+
+  it('hides and refuses writes to users outside the actor scope', async () => {
+    const visible = await payload.find({
+      collection: 'users',
+      depth: 0,
+      overrideAccess: false,
+      pagination: false,
+      user: asUser(fixture.actor),
+    })
+    const visibleIds = visible.docs.map((doc) => Number(doc.id))
+    expect(visibleIds).toContain(fixture.actor.id)
+    expect(visibleIds).toContain(fixture.childUser.id)
+    expect(visibleIds).toContain(fixture.emptyUser.id)
+    expect(visibleIds).toContain(fixture.branchUser.id)
+    expect(visibleIds).not.toContain(fixture.eastUser.id)
+    await expect(
+      payload.findByID({
+        collection: 'users',
+        id: fixture.eastUser.id,
+        overrideAccess: false,
+        user: asUser(fixture.actor),
+      }),
+    ).rejects.toThrow()
+    await expect(
+      payload.update({
+        collection: 'users',
+        id: fixture.eastUser.id,
+        data: { password: 'taken-over-password' },
+        overrideAccess: false,
+        user: asUser(fixture.actor),
+      }),
+    ).rejects.toThrow()
+    await expect(
+      payload.delete({
+        collection: 'users',
+        id: fixture.eastUser.id,
+        overrideAccess: false,
+        user: asUser(fixture.actor),
+      }),
+    ).rejects.toThrow()
+    const exported = await exportCollection(
+      await createLocalReq({ user: asUser(fixture.actor) }, payload),
+      'users',
+    )
+    expect(exported.status).toBe(200)
+    const csv = await exported.text()
+    expect(csv).toContain(fixture.childUser.email)
+    expect(csv).not.toContain(fixture.eastUser.email)
   })
 
   it('refuses self scope edits, wider assignments, wider role targets, and wider grant holders', async () => {
@@ -310,11 +369,19 @@ describe('row scope access', () => {
       context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
     })
     extraUserIds.push(Number(both.id))
+    await expect(
+      payload.findByID({
+        collection: 'users',
+        id: both.id,
+        overrideAccess: false,
+        user: asUser(fixture.actor),
+      }),
+    ).rejects.toThrow()
     await payload.update({
       collection: 'users',
       id: both.id,
       data: { organizations: [fixture.westId] },
-      overrideAccess: false,
+      overrideAccess: true,
       user: asUser(fixture.actor),
     })
     const preserved = await payload.findByID({
@@ -351,7 +418,26 @@ describe('row scope access', () => {
         overrideAccess: false,
         user: asUser(fixture.actor),
       }),
+    ).rejects.toThrow()
+    await expect(
+      payload.update({
+        collection: 'users',
+        id: fixture.eastUser.id,
+        data: { roles: [fixture.outsideRoleId, fixture.freshRoleId] },
+        overrideAccess: true,
+        user: asUser(fixture.actor),
+      }),
     ).rejects.toThrow(SCOPE_ROLE_TARGET_ERROR)
+    await grantKey(payload, fixture.insideRoleId, 'media:read')
+    await expect(
+      payload.update({
+        collection: 'users',
+        id: fixture.childUser.id,
+        data: { organizations: [fixture.westChildId, fixture.westId] },
+        overrideAccess: false,
+        user: asUser(fixture.actor),
+      }),
+    ).rejects.toThrow(SCOPE_TARGET_KEYS_ERROR)
     await payload.update({
       collection: 'users',
       id: fixture.childUser.id,

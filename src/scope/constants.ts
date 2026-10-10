@@ -16,6 +16,7 @@ export const MAX_SCOPE_DEPTH = 32
 
 export const SCOPE_CATALOG_CACHE_KEY = 'rowScopeCatalog'
 export const EFFECTIVE_SCOPE_CACHE_KEY = 'rowScopeEffective'
+export const VISIBLE_USERS_CACHE_KEY = 'rowScopeVisibleUsers'
 
 export const USER_SCOPE_FIELDS = [
   USER_ORGANIZATIONS_FIELD,

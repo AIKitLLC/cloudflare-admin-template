@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { SCOPE_ASSIGNMENT_ERROR, SCOPE_CYCLE_ERROR } from '@/scope/errors'
+import { assignmentsWithinScope } from '@/scope/guards/assignments-within-scope'
 import { mergeScopeField } from '@/scope/guards/merge-scope-field'
 import { isScopeWithin } from '@/scope/guards/is-scope-within'
 import { resolveEffectiveScope } from '@/scope/resolve/resolve-effective-scope'
@@ -122,6 +123,33 @@ describe('row scope rules', () => {
 
     const readable = whereForBinding({ dimension: 'organization' }, branchOnly, 'read')
     expect(readable).toEqual({ id: { in: ['west'] } })
+  })
+
+  it('hides a user who holds any assignment outside the actor scope', () => {
+    const actor = resolveEffectiveScope(catalog(), {
+      organizationIds: ['west'],
+      branchIds: [],
+      dataClassIds: ['sensitive'],
+    })
+    expect(
+      assignmentsWithinScope(
+        { organizations: ['west-child'], branches: [], dataClasses: ['pii'] },
+        actor,
+      ),
+    ).toBe(true)
+    expect(assignmentsWithinScope({}, actor)).toBe(true)
+    expect(
+      assignmentsWithinScope(
+        { organizations: ['east'], branches: [], dataClasses: ['sensitive'] },
+        actor,
+      ),
+    ).toBe(false)
+    expect(
+      assignmentsWithinScope(
+        { organizations: ['west'], branches: [], dataClasses: ['public'] },
+        actor,
+      ),
+    ).toBe(false)
   })
 })
 

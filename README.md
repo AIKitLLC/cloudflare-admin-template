@@ -152,7 +152,7 @@ pnpm payload migrate
 
 Users can be assigned organizations, branches, and data classes. Organizations and branches form trees. A data class parent is a group: assignment includes every nested class. Non-full-access reads, updates, deletes, and `GET /api/{collection}/export` on a scoped collection are limited to that effective scope. Creating or retagging a row outside it is refused.
 
-A limited user can assign only scope values they already hold, including inherited ones, and cannot edit their own assignments. Granting a permission is also refused when a holder of that role can already see rows outside the granter's scope. See [docs/row-scope.md](docs/row-scope.md).
+A limited user can assign only scope values they already hold, including inherited ones, and cannot edit their own assignments or see user accounts outside that scope. Adding scope to someone else also requires that their permission keys are already within the actor's. Granting a permission is refused when a holder of that role can see rows outside the granter's scope. See [docs/row-scope.md](docs/row-scope.md).
 
 Opt in from `withRbac`:
 

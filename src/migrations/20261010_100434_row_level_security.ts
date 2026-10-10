@@ -117,11 +117,6 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
 }
 
 export async function down({ db }: MigrateDownArgs): Promise<void> {
-  await db.run(sql`PRAGMA foreign_keys=OFF;`)
-  await db.run(sql`DROP TABLE \`records\`;`)
-  await db.run(sql`DROP TABLE \`branches\`;`)
-  await db.run(sql`DROP TABLE \`data_classes\`;`)
-  await db.run(sql`DROP TABLE \`organizations\`;`)
   await db.run(sql`CREATE TABLE \`__new_users_rels\` (
   	\`id\` integer PRIMARY KEY NOT NULL,
   	\`order\` integer,
@@ -133,7 +128,7 @@ export async function down({ db }: MigrateDownArgs): Promise<void> {
   );
   `)
   await db.run(
-    sql`INSERT INTO \`__new_users_rels\`("id", "order", "parent_id", "path", "roles_id") SELECT "id", "order", "parent_id", "path", "roles_id" FROM \`users_rels\`;`,
+    sql`INSERT INTO \`__new_users_rels\`("id", "order", "parent_id", "path", "roles_id") SELECT "id", "order", "parent_id", "path", "roles_id" FROM \`users_rels\` WHERE \`roles_id\` IS NOT NULL;`,
   )
   await db.run(sql`DROP TABLE \`users_rels\`;`)
   await db.run(sql`ALTER TABLE \`__new_users_rels\` RENAME TO \`users_rels\`;`)
@@ -160,7 +155,7 @@ export async function down({ db }: MigrateDownArgs): Promise<void> {
   );
   `)
   await db.run(
-    sql`INSERT INTO \`__new_payload_locked_documents_rels\`("id", "order", "parent_id", "path", "users_id", "media_id", "roles_id", "permissions_id", "role_permissions_id") SELECT "id", "order", "parent_id", "path", "users_id", "media_id", "roles_id", "permissions_id", "role_permissions_id" FROM \`payload_locked_documents_rels\`;`,
+    sql`INSERT INTO \`__new_payload_locked_documents_rels\`("id", "order", "parent_id", "path", "users_id", "media_id", "roles_id", "permissions_id", "role_permissions_id") SELECT "id", "order", "parent_id", "path", "users_id", "media_id", "roles_id", "permissions_id", "role_permissions_id" FROM \`payload_locked_documents_rels\` WHERE \`users_id\` IS NOT NULL OR \`media_id\` IS NOT NULL OR \`roles_id\` IS NOT NULL OR \`permissions_id\` IS NOT NULL OR \`role_permissions_id\` IS NOT NULL;`,
   )
   await db.run(sql`DROP TABLE \`payload_locked_documents_rels\`;`)
   await db.run(
@@ -190,5 +185,8 @@ export async function down({ db }: MigrateDownArgs): Promise<void> {
   await db.run(
     sql`CREATE INDEX \`payload_locked_documents_rels_role_permissions_id_idx\` ON \`payload_locked_documents_rels\` (\`role_permissions_id\`);`,
   )
-  await db.run(sql`PRAGMA foreign_keys=ON;`)
+  await db.run(sql`DROP TABLE \`records\`;`)
+  await db.run(sql`DROP TABLE \`branches\`;`)
+  await db.run(sql`DROP TABLE \`data_classes\`;`)
+  await db.run(sql`DROP TABLE \`organizations\`;`)
 }

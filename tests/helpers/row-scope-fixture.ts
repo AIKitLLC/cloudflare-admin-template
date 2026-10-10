@@ -228,14 +228,34 @@ export async function cleanupRowScopeFixture(
     context,
   })
   await payload.delete({
+    collection: 'users',
+    where: { id: { in: fixture.userIds } },
+    overrideAccess: true,
+    context,
+  })
+  await payload.delete({
     collection: BRANCHES_SLUG as CollectionSlug,
-    where: { id: { in: fixture.branchIds } },
+    where: { id: { in: [fixture.westSubBranchId] } },
+    overrideAccess: true,
+    context,
+  })
+  await payload.delete({
+    collection: BRANCHES_SLUG as CollectionSlug,
+    where: {
+      id: { in: [fixture.westMainBranchId, fixture.westChildBranchId, fixture.eastBranchId] },
+    },
     overrideAccess: true,
     context,
   })
   await payload.delete({
     collection: DATA_CLASSES_SLUG as CollectionSlug,
-    where: { id: { in: fixture.dataClassIds } },
+    where: { id: { in: [fixture.piiId, fixture.publicId] } },
+    overrideAccess: true,
+    context,
+  })
+  await payload.delete({
+    collection: DATA_CLASSES_SLUG as CollectionSlug,
+    where: { id: { in: [fixture.sensitiveId] } },
     overrideAccess: true,
     context,
   })
@@ -248,12 +268,6 @@ export async function cleanupRowScopeFixture(
   await payload.delete({
     collection: ORGANIZATIONS_SLUG as CollectionSlug,
     where: { id: { in: [fixture.westId, fixture.eastId] } },
-    overrideAccess: true,
-    context,
-  })
-  await payload.delete({
-    collection: 'users',
-    where: { id: { in: fixture.userIds } },
     overrideAccess: true,
     context,
   })
