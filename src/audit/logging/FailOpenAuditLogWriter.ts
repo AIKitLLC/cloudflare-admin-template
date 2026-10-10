@@ -1,4 +1,5 @@
 import type { AuditLogEntry } from '../types'
+import { noteDroppedAuditWrite } from './droppedAuditWrites'
 import type { AuditFailureHandler, AuditLogWriter } from './AuditLogWriter'
 
 /**
@@ -15,6 +16,7 @@ export class FailOpenAuditLogWriter implements AuditLogWriter {
     try {
       await this.inner.write(entry)
     } catch (error) {
+      noteDroppedAuditWrite()
       this.onFailure(
         error,
         `Audit log write failed for ${entry.action} ${entry.collectionSlug} #${entry.documentId}; the original change was kept.`,

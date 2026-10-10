@@ -7,7 +7,7 @@ export interface FieldSensitivityRule {
 }
 
 const SENSITIVE_LEAF_PATTERN =
-  /(password|secret|token|api[-_]?key|credential|private[-_]?key|session|hash$|salt$)/i
+  /(password|secret|token|api[-_]?key|credential|private[-_]?key|session|otp|one[-_]?time|pin|ssn|social[-_]?security|cvv|cvc|tax[-_]?id|national[-_]?id|passport|hash$|salt$)/i
 
 /** Leaf names matched exactly, in addition to the pattern above. */
 const SENSITIVE_LEAVES = new Set([
@@ -27,6 +27,17 @@ const SENSITIVE_LEAVES = new Set([
   'privateKey',
   'credential',
   'credentials',
+  'otp',
+  'pin',
+  'ssn',
+  'cvv',
+  'cvc',
+  'taxId',
+  'tax_id',
+  'nationalId',
+  'national_id',
+  'socialSecurityNumber',
+  'passport',
 ])
 
 export class PatternSensitivityRule implements FieldSensitivityRule {

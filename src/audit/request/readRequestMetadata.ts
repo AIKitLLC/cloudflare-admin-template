@@ -10,19 +10,23 @@ type ActorLike = {
 }
 
 /**
- * Cloudflare sets `cf-connecting-ip` to the real client. Prefer it over
- * `x-forwarded-for`, which a caller can spoof before the edge overwrites it.
+ * Trusted client IP. Only `CF-Connecting-IP`, which Cloudflare sets at the edge.
+ * `X-Forwarded-For` and `X-Real-IP` are caller-controlled and are never returned here.
  */
-export function readClientIp(headers: HeaderSource | null | undefined): string | null {
-  const cloudflareIp = header(headers, 'cf-connecting-ip')
-  if (cloudflareIp) return cloudflareIp
+export function readTrustedClientIp(headers: HeaderSource | null | undefined): string | null {
+  return header(headers, 'cf-connecting-ip')
+}
 
+/**
+ * Untrusted hint from `X-Forwarded-For` (first hop) or `X-Real-IP`.
+ * Stored separately so it cannot be mistaken for the trusted client IP.
+ */
+export function readUntrustedClientIp(headers: HeaderSource | null | undefined): string | null {
   const forwarded = header(headers, 'x-forwarded-for')
   if (forwarded) {
     const firstHop = forwarded.split(',')[0]?.trim()
     if (firstHop) return firstHop
   }
-
   return header(headers, 'x-real-ip')
 }
 
@@ -42,7 +46,8 @@ export function readRequestMetadata(req: {
     actorId: hasId ? String(id) : null,
     actorRelationshipId: typeof id === 'number' || typeof id === 'string' ? id : null,
     actorEmail: email,
-    ipAddress: readClientIp(req.headers),
+    ipAddress: readTrustedClientIp(req.headers),
+    untrustedClientIp: readUntrustedClientIp(req.headers),
     userAgent: readUserAgent(req.headers),
   }
 }

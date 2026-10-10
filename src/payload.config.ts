@@ -11,6 +11,7 @@ import { r2Storage } from '@payloadcms/storage-r2'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
 import { AuditLogs } from './audit'
+import { AuditSubjects } from './audit/collections/AuditSubjects'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -52,7 +53,9 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
   },
-  collections: [Users, Media, AuditLogs],
+  collections: process.env.VITEST
+    ? [Users, Media, AuditLogs, AuditSubjects]
+    : [Users, Media, AuditLogs],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {

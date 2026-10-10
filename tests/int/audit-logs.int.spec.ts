@@ -146,19 +146,18 @@ describe('audit logs', () => {
     const mediaDelete = mediaLogs.find((log) => log.action === 'DELETE')
     expect(changeByPath(mediaDelete, 'alt')?.oldValue).toBe(nextAlt)
 
-    const filtered = await payload.find({
-      collection: 'audit-logs',
-      overrideAccess: false,
-      user: operator,
-      where: {
-        and: [
-          { documentId: { equals: String(media.id) } },
-          { collectionSlug: { equals: 'media' } },
-          { operatorId: { equals: String(operator.id) } },
-        ],
-      },
+    const outsider = await payload.create({
+      collection: 'users',
+      data: { email: `outsider-${randomUUID()}@example.com`, password: `pw-${randomUUID()}` },
+      overrideAccess: true,
     })
-    expect(filtered.docs.filter((log) => log.id > beforeMedia)).toHaveLength(mediaLogs.length)
+    await expect(
+      payload.find({
+        collection: 'audit-logs',
+        overrideAccess: false,
+        user: outsider,
+      }),
+    ).rejects.toThrow()
 
     await expect(
       payload.find({

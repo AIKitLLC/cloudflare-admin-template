@@ -172,6 +172,6 @@ MIT © [AIKit LLC](https://github.com/AIKitLLC)
 
 ## Audit trail
 
-`Users` and `Media` record an append-only, field-level audit row on create, update, and delete. Opt another collection in with `withAuditTrail` from `src/audit`. Passwords, tokens, hashes, salts, and sessions are stored as `[REDACTED]`. A failed audit write is logged and does not fail the user's change.
+`Users` and `Media` record an append-only, field-level audit row on create, update, and delete. Opt another collection in with `withAuditTrail` from `src/audit`. Passwords, tokens, hashes, salts, sessions, and similar secrets are stored as `[REDACTED]`. A failed audit write is counted, logged, and does not fail the user's change.
 
-The D1 migration `src/migrations/20261010_080422_audit_logs.ts` creates only `audit_logs` and `audit_logs_changes`. It does not create `payload_kv`. See [src/audit/README.md](src/audit/README.md) for the viewer filters and the single read check that will call `audit-logs:read` once the permission matrix from issue #1 is available.
+Reads are denied unless the caller is the earliest user or listed in `AUDIT_LOG_READER_EMAILS`. The D1 migration `src/migrations/20261010_080422_audit_logs.ts` creates only `audit_logs` and `audit_logs_changes`. It does not create `payload_kv`. See [src/audit/README.md](src/audit/README.md) for the viewer filters and how `canReadAuditLogs` will return the `audit-logs:read` decision once the permission matrix from issue #1 is available.

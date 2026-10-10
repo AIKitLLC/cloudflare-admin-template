@@ -70,6 +70,7 @@ export interface Config {
     users: User;
     media: Media;
     'audit-logs': AuditLog;
+    'audit-subjects': AuditSubject;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -80,6 +81,7 @@ export interface Config {
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
     'audit-logs': AuditLogsSelect<false> | AuditLogsSelect<true>;
+    'audit-subjects': AuditSubjectsSelect<false> | AuditSubjectsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -194,7 +196,14 @@ export interface AuditLog {
    * Snapshot of the operator email at the time of the change.
    */
   actorEmail?: string | null;
+  /**
+   * CF-Connecting-IP only. Forwarded headers are not stored here.
+   */
   ipAddress?: string | null;
+  /**
+   * First X-Forwarded-For hop, or X-Real-IP. Not authenticated. Do not treat this as the client.
+   */
+  untrustedClientIp?: string | null;
   userAgent?: string | null;
   occurredAt: string;
   /**
@@ -229,6 +238,49 @@ export interface AuditLog {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-subjects".
+ */
+export interface AuditSubject {
+  id: number;
+  title: string;
+  note?: string | null;
+  failNext?: boolean | null;
+  owner?: (number | null) | User;
+  watchers?: (number | User)[] | null;
+  pointer?:
+    | ({
+        relationTo: 'users';
+        value: number | User;
+      } | null)
+    | ({
+        relationTo: 'media';
+        value: number | Media;
+      } | null);
+  field01?: string | null;
+  field02?: string | null;
+  field03?: string | null;
+  field04?: string | null;
+  field05?: string | null;
+  field06?: string | null;
+  field07?: string | null;
+  field08?: string | null;
+  field09?: string | null;
+  field10?: string | null;
+  field11?: string | null;
+  field12?: string | null;
+  field13?: string | null;
+  field14?: string | null;
+  field15?: string | null;
+  field16?: string | null;
+  field17?: string | null;
+  field18?: string | null;
+  field19?: string | null;
+  field20?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -258,6 +310,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'media';
         value: number | Media;
+      } | null)
+    | ({
+        relationTo: 'audit-subjects';
+        value: number | AuditSubject;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -352,6 +408,7 @@ export interface AuditLogsSelect<T extends boolean = true> {
   operatorId?: T;
   actorEmail?: T;
   ipAddress?: T;
+  untrustedClientIp?: T;
   userAgent?: T;
   occurredAt?: T;
   changes?:
@@ -362,6 +419,40 @@ export interface AuditLogsSelect<T extends boolean = true> {
         newValue?: T;
         id?: T;
       };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-subjects_select".
+ */
+export interface AuditSubjectsSelect<T extends boolean = true> {
+  title?: T;
+  note?: T;
+  failNext?: T;
+  owner?: T;
+  watchers?: T;
+  pointer?: T;
+  field01?: T;
+  field02?: T;
+  field03?: T;
+  field04?: T;
+  field05?: T;
+  field06?: T;
+  field07?: T;
+  field08?: T;
+  field09?: T;
+  field10?: T;
+  field11?: T;
+  field12?: T;
+  field13?: T;
+  field14?: T;
+  field15?: T;
+  field16?: T;
+  field17?: T;
+  field18?: T;
+  field19?: T;
+  field20?: T;
   updatedAt?: T;
   createdAt?: T;
 }

@@ -34,11 +34,6 @@ export const AuditLogs: CollectionConfig = {
     },
   },
   access: auditLogAccess,
-  custom: {
-    rbac: {
-      enabled: true,
-    },
-  },
   defaultSort: '-occurredAt',
   disableBulkEdit: true,
   disableDuplicate: true,
@@ -54,7 +49,6 @@ export const AuditLogs: CollectionConfig = {
       name: 'summary',
       type: 'text',
       required: true,
-      index: true,
       admin: {
         readOnly: true,
         description: 'Short description of the action and the fields that changed.',
@@ -131,8 +125,20 @@ export const AuditLogs: CollectionConfig = {
       name: 'ipAddress',
       label: 'Client IP',
       type: 'text',
-      index: true,
-      admin: { readOnly: true },
+      admin: {
+        readOnly: true,
+        description: 'CF-Connecting-IP only. Forwarded headers are not stored here.',
+      },
+    },
+    {
+      name: 'untrustedClientIp',
+      label: 'Untrusted client IP',
+      type: 'text',
+      admin: {
+        readOnly: true,
+        description:
+          'First X-Forwarded-For hop, or X-Real-IP. Not authenticated. Do not treat this as the client.',
+      },
     },
     {
       name: 'userAgent',

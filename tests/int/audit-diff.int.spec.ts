@@ -1,3 +1,4 @@
+import type { PayloadRequest } from 'payload'
 import { describe, expect, it } from 'vitest'
 
 import { REDACTED_VALUE } from '@/audit/constants'
@@ -12,7 +13,17 @@ import { projectBeforeOntoAfter } from '@/audit/diff/projectBeforeOntoAfter'
 import { SensitiveFieldPolicy } from '@/audit/diff/SensitiveFieldPolicy'
 import { FailOpenAuditLogWriter } from '@/audit/logging/FailOpenAuditLogWriter'
 import { runAuditChange } from '@/audit/logging/runAuditRecord'
-import { readClientIp, readRequestMetadata } from '@/audit/request/readRequestMetadata'
+import { normalizeRelations } from '@/audit/diff/normalizeRelations'
+import { droppedAuditWriteCount } from '@/audit/logging/droppedAuditWrites'
+import {
+  rememberAuditCapture,
+  takeAuditCapture,
+} from '@/audit/request/AuditContextStore'
+import {
+  readRequestMetadata,
+  readTrustedClientIp,
+  readUntrustedClientIp,
+} from '@/audit/request/readRequestMetadata'
 import type { AuditLogEntry } from '@/audit/types'
 
 const policy = SensitiveFieldPolicy.fromExtraFields(['pin'])
@@ -100,7 +111,8 @@ describe('request metadata', () => {
       'user-agent': 'AuditTest/1.0',
     })
 
-    expect(readClientIp(headers)).toBe('203.0.113.10')
+    expect(readTrustedClientIp(headers)).toBe('203.0.113.10')
+    expect(readUntrustedClientIp(headers)).toBe('198.51.100.4')
     expect(
       readRequestMetadata({
         headers,
@@ -111,13 +123,25 @@ describe('request metadata', () => {
       actorRelationshipId: 7,
       actorEmail: 'ops@example.com',
       ipAddress: '203.0.113.10',
+      untrustedClientIp: '198.51.100.4',
       userAgent: 'AuditTest/1.0',
     })
   })
 
-  it('uses the first forwarded hop when Cloudflare does not set a client IP', () => {
-    const headers = new Headers({ 'x-forwarded-for': ' 198.51.100.4 , 10.0.0.1 ' })
-    expect(readClientIp(headers)).toBe('198.51.100.4')
+  it('does not treat a forwarded hop as the trusted client IP', () => {
+    const headers = new Headers({
+      'x-forwarded-for': ' 198.51.100.4 , 10.0.0.1 ',
+      'x-real-ip': '203.0.113.9',
+    })
+    expect(readTrustedClientIp(headers)).toBeNull()
+    expect(readUntrustedClientIp(headers)).toBe('198.51.100.4')
+    expect(readRequestMetadata({ headers, user: null }).ipAddress).toBeNull()
+  })
+
+  it('keeps x-real-ip untrusted when it is the only hint', () => {
+    const headers = new Headers({ 'x-real-ip': '203.0.113.9' })
+    expect(readTrustedClientIp(headers)).toBeNull()
+    expect(readUntrustedClientIp(headers)).toBe('203.0.113.9')
   })
 })
 
@@ -187,15 +211,18 @@ describe('fail-open audit write', () => {
         actorRelationshipId: 1,
         actorEmail: 'ops@example.com',
         ipAddress: null,
+        untrustedClientIp: null,
         userAgent: null,
       },
     }
 
+    const before = droppedAuditWriteCount()
     return expect(writer.write(entry)).resolves.toBeUndefined().then(() => {
       expect(reported).toEqual([
         'Audit log write failed for UPDATE users #4; the original change was kept.',
       ])
       expect(reported.join('')).not.toContain('ops@example.com')
+      expect(droppedAuditWriteCount()).toBe(before + 1)
     })
   })
 
@@ -216,11 +243,13 @@ describe('fail-open audit write', () => {
         collectionSlug: 'media',
         data: { alt: 'x' },
         doc: { id: 1, alt: 'x' },
+        fields: [],
         metadata: {
           actorId: null,
           actorRelationshipId: null,
           actorEmail: null,
           ipAddress: null,
+          untrustedClientIp: null,
           userAgent: null,
         },
         onFailure: (_error, message) => {
@@ -251,5 +280,115 @@ describe('summary', () => {
         changes: [{ path: 'alt' }, { path: 'filename' }],
       }),
     ).toBe('UPDATE media #9 (alt, filename)')
+  })
+})
+
+describe('relationship normalization', () => {
+  const fields = [
+    { name: 'owner', type: 'relationship', relationTo: 'users' },
+    { name: 'watchers', type: 'relationship', relationTo: 'users', hasMany: true },
+    { name: 'pointer', type: 'relationship', relationTo: ['users', 'media'] },
+    { name: 'file', type: 'upload', relationTo: 'media' },
+    { name: 'title', type: 'text' },
+  ]
+
+  it('collapses populated relationships and uploads to ids', () => {
+    const before = normalizeRelations(
+      {
+        owner: 4,
+        watchers: [4, 5],
+        pointer: { relationTo: 'users', value: 4 },
+        file: 9,
+        title: 'old',
+      },
+      fields,
+    )
+    const after = normalizeRelations(
+      {
+        owner: { id: 4, email: 'hidden@example.com' },
+        watchers: [{ id: 4, email: 'hidden@example.com' }, { id: 5 }],
+        pointer: { relationTo: 'users', value: { id: 4, email: 'hidden@example.com' } },
+        file: { id: 9, filename: 'dot.png', url: 'https://example.test/dot.png' },
+        title: 'old',
+      },
+      fields,
+    )
+
+    expect(after).toEqual(before)
+    expect(JSON.stringify(after)).not.toContain('hidden@example.com')
+    expect(JSON.stringify(after)).not.toContain('dot.png')
+    expect(computeFieldDiff(before, after, policy)).toEqual([])
+  })
+})
+
+describe('audit capture pairing', () => {
+  it('does not reuse a leftover capture from a different document', () => {
+    const req = { context: {} } as PayloadRequest
+    const failedData = { title: 'from-a' }
+    const nextData = { title: 'from-b' }
+    rememberAuditCapture(req, {
+      collectionSlug: 'audit-subjects',
+      data: failedData,
+      documentId: '1',
+      captured: { submittedSecretPaths: ['password'] },
+    })
+    rememberAuditCapture(req, {
+      collectionSlug: 'audit-subjects',
+      data: nextData,
+      documentId: '2',
+      captured: { submittedSecretPaths: [] },
+    })
+
+    expect(
+      takeAuditCapture(req, { collectionSlug: 'audit-subjects', data: nextData, documentId: '2' })
+        ?.submittedSecretPaths,
+    ).toEqual([])
+    expect(
+      takeAuditCapture(req, { collectionSlug: 'audit-subjects', data: failedData, documentId: '1' })
+        ?.submittedSecretPaths,
+    ).toEqual(['password'])
+    expect(
+      takeAuditCapture(req, { collectionSlug: 'audit-subjects', data: failedData, documentId: '1' }),
+    ).toBeUndefined()
+  })
+
+  it('replaces a failed write so the next write of the same id does not inherit it', () => {
+    const req = { context: {} } as PayloadRequest
+    const first = { title: 'failed' }
+    const second = { title: 'ok' }
+    rememberAuditCapture(req, {
+      collectionSlug: 'audit-subjects',
+      data: first,
+      documentId: '8',
+      captured: { submittedSecretPaths: ['password'] },
+    })
+    rememberAuditCapture(req, {
+      collectionSlug: 'audit-subjects',
+      data: second,
+      documentId: '8',
+      captured: { submittedSecretPaths: [] },
+    })
+
+    expect(
+      takeAuditCapture(req, { collectionSlug: 'audit-subjects', data: second, documentId: '8' })
+        ?.submittedSecretPaths,
+    ).toEqual([])
+  })
+})
+
+describe('sensitive names', () => {
+  it('redacts otp, pin, and ssn without an extra field list', () => {
+    const bare = SensitiveFieldPolicy.fromExtraFields()
+    const changes = computeFieldDiff(
+      { otp: '111111', ssn: '000-00-0000', pin: '1234', name: 'Ada' },
+      { otp: '222222', ssn: '111-11-1111', pin: '9999', name: 'Ada' },
+      bare,
+    )
+    const serialized = JSON.stringify(changes)
+    expect(serialized).not.toContain('111111')
+    expect(serialized).not.toContain('222222')
+    expect(serialized).not.toContain('000-00-0000')
+    expect(serialized).not.toContain('1234')
+    expect(changes.map((change) => change.path).sort()).toEqual(['otp', 'pin', 'ssn'])
   })
 })

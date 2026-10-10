@@ -1,6 +1,8 @@
+import { capFieldChanges } from '../diff/capFieldChanges'
 import { computeFieldDiff } from '../diff/computeFieldDiff'
 import { asRecord } from '../diff/isPlainObject'
 import { mergeFieldChanges } from '../diff/mergeFieldChanges'
+import { normalizeRelations } from '../diff/normalizeRelations'
 import { projectBeforeOntoAfter } from '../diff/projectBeforeOntoAfter'
 import type { SensitiveFieldPolicy } from '../diff/SensitiveFieldPolicy'
 import { changesForSubmittedSecrets } from '../diff/submittedSecretPaths'
@@ -8,7 +10,10 @@ import { writeOnlySecretChanges } from '../diff/writeOnlySecretChanges'
 import type { AuditAction, RequestAuditMetadata } from '../types'
 import type { CapturedAuditContext } from '../request/AuditContextStore'
 import { buildAuditLogEntry } from './buildAuditLogEntry'
+import { noteDroppedAuditWrite } from './droppedAuditWrites'
 import type { AuditFailureHandler, AuditLogWriter } from './AuditLogWriter'
+
+type FieldList = Parameters<typeof normalizeRelations>[1]
 
 export type AuditChangeArgs = {
   collectionSlug: string
@@ -17,6 +22,7 @@ export type AuditChangeArgs = {
   doc: unknown
   previousDoc: unknown
   captured: CapturedAuditContext | undefined
+  fields: FieldList
   metadata: RequestAuditMetadata
   policy: SensitiveFieldPolicy
   writer: AuditLogWriter
@@ -29,20 +35,22 @@ export type AuditChangeArgs = {
  */
 export async function runAuditChange(args: AuditChangeArgs): Promise<void> {
   try {
-    const rawBefore = args.captured
-      ? args.captured.originalDoc
-      : args.operation === 'create'
-        ? null
-        : asRecord(args.previousDoc)
-    const after = asRecord(args.doc)
-    const before = projectBeforeOntoAfter(rawBefore, after)
     const action: AuditAction = args.operation === 'create' ? 'CREATE' : 'UPDATE'
-    const changes = mergeFieldChanges(
-      computeFieldDiff(before, after, args.policy),
-      [
-        ...changesForSubmittedSecrets(args.captured?.submittedSecretPaths ?? [], action),
-        ...writeOnlySecretChanges(args.data, rawBefore, after, action, args.policy),
-      ],
+    const rawBefore = action === 'CREATE' ? null : asRecord(args.previousDoc)
+    const rawAfter = asRecord(args.doc)
+    const before = projectBeforeOntoAfter(
+      asRecord(normalizeRelations(rawBefore, args.fields)),
+      asRecord(normalizeRelations(rawAfter, args.fields)),
+    )
+    const after = asRecord(normalizeRelations(rawAfter, args.fields))
+    const changes = capFieldChanges(
+      mergeFieldChanges(
+        computeFieldDiff(before, after, args.policy),
+        [
+          ...changesForSubmittedSecrets(args.captured?.submittedSecretPaths ?? [], action),
+          ...writeOnlySecretChanges(args.data, rawBefore, after, action, args.policy),
+        ],
+      ),
     )
     if (action === 'UPDATE' && changes.length === 0) return
 
@@ -57,6 +65,7 @@ export async function runAuditChange(args: AuditChangeArgs): Promise<void> {
       }),
     )
   } catch (error) {
+    noteDroppedAuditWrite()
     args.onFailure(
       error,
       `Audit trail failed for ${args.collectionSlug}; the original change was kept.`,
@@ -68,13 +77,16 @@ export async function runAuditDelete(args: {
   collectionSlug: string
   id: number | string
   doc: unknown
+  fields: FieldList
   metadata: RequestAuditMetadata
   policy: SensitiveFieldPolicy
   writer: AuditLogWriter
   onFailure: AuditFailureHandler
 }): Promise<void> {
   try {
-    const changes = computeFieldDiff(asRecord(args.doc), null, args.policy)
+    const changes = capFieldChanges(
+      computeFieldDiff(asRecord(normalizeRelations(args.doc, args.fields)), null, args.policy),
+    )
     await args.writer.write(
       buildAuditLogEntry({
         action: 'DELETE',
@@ -85,6 +97,7 @@ export async function runAuditDelete(args: {
       }),
     )
   } catch (error) {
+    noteDroppedAuditWrite()
     args.onFailure(
       error,
       `Audit trail failed for delete of ${args.collectionSlug} #${String(args.id)}; the original change was kept.`,

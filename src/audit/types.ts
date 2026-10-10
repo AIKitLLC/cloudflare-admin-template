@@ -12,7 +12,10 @@ export type RequestAuditMetadata = {
   /** Id passed to the `actor` relationship. Null when the operator row may already be gone. */
   actorRelationshipId: number | string | null
   actorEmail: string | null
+  /** `CF-Connecting-IP` only. Null when Cloudflare did not set it. */
   ipAddress: string | null
+  /** `X-Forwarded-For` or `X-Real-IP`. Not a trusted client address. */
+  untrustedClientIp: string | null
   userAgent: string | null
 }
 

@@ -13,7 +13,8 @@ Collection: `audit-logs` (admin label **Audit Logs**, D1 table `audit_logs`).
 | `documentId` | Record id (text, so numeric and string ids both fit) |
 | `actor` | Relationship to `users` (`actor_id`). Set null if that user is later deleted |
 | `operatorId`, `actorEmail` | Operator snapshot. These survive user deletion. `operatorId` is its own column so it does not collide with the relationship |
-| `ipAddress` | `cf-connecting-ip`, else the first `x-forwarded-for` hop, else `x-real-ip` |
+| `ipAddress` | `CF-Connecting-IP` only. Null when that header is absent. Forwarded headers are never copied here |
+| `untrustedClientIp` | First `X-Forwarded-For` hop, or `X-Real-IP`. Not authenticated. Do not treat it as the client |
 | `userAgent` | `User-Agent` header |
 | `occurredAt` | Timestamp of the audit row |
 | `changes[]` | `{ path, oldValue, newValue }` for each changed field |
@@ -22,7 +23,7 @@ Collection: `audit-logs` (admin label **Audit Logs**, D1 table `audit_logs`).
 
 ## Opting a collection in
 
-`withAuditTrail` is a decorator around a `CollectionConfig`. It appends four hooks and leaves the rest of the config alone.
+`withAuditTrail` is a decorator around a `CollectionConfig`. It prepends `beforeChange`, appends `afterChange` and `afterDelete`, and leaves the rest of the config alone.
 
 ```typescript
 export const Customers = withAuditTrail(
@@ -37,18 +38,20 @@ Do not wrap `audit-logs`. The helper throws. The record hooks also ignore that s
 
 ## How a change is captured
 
-1. `beforeChange` clones `originalDoc` (null on create) and reads actor, IP, and user agent onto `req.context`. The key is the string `__auditTrail`. Payload copies context with object spread, which drops symbols.
+1. `beforeChange` records only the names of submitted secrets, keyed on `req.context` under the string `__auditTrail`. Payload copies context with object spread, which drops symbols. The before document is not stored here.
 2. The collection write runs.
-3. `afterChange` pops that snapshot and diffs it against the saved `doc`. The raw row includes hidden auth fields (`hash`, `salt`, `loginAttempts`) that `afterRead` removes before `afterChange`. Those before-only keys are dropped so they are not logged as cleared. Nested groups become dotted paths (`address.city`). Arrays are one value so reordering is visible.
-4. `beforeDelete` stores the same request metadata. `afterDelete` diffs the deleted document down to null. Payload does not run beforeChange/afterChange for deletes.
+3. `afterChange` diffs Payload's `previousDoc` (bound to that operation) against the saved `doc`. Creates use a null before image. Relationship and upload values are reduced to ids first, including `hasMany` and polymorphic `{ relationTo, value }`, so a populated `doc` does not diff against a bare id or store the related document. Hidden auth fields that `afterRead` removes (`hash`, `salt`, `loginAttempts`) are dropped so they are not logged as cleared. Nested groups become dotted paths (`address.city`). Arrays are one value so reordering is visible.
+4. `afterDelete` diffs the deleted document down to null. Payload does not run beforeChange/afterChange for deletes.
 
-Updates with no business-field diff (only `updatedAt`) do not insert a row. Creates and deletes always do.
+Captures are not a stack. An update is stored under `collection:id` and replaced if that id is written again, and also under the `data` object for that call. A missing key is a miss. A failed write cannot hand its snapshot to the next document. Parallel and bulk writes in one request each keep their own `previousDoc`.
+
+Updates with no business-field diff (only `updatedAt`) do not insert a row. Creates and deletes always do. At most 64 change rows are stored; the last row is a `_truncated` marker when the diff is wider.
 
 ## Secrets
 
 `SensitiveFieldPolicy` is a composite strategy:
 
-- `PatternSensitivityRule` matches password, secret, token, api key, credential, private key, session, and names ending in `hash` or `salt`.
+- `PatternSensitivityRule` matches password, secret, token, api key, credential, private key, session, otp, pin, ssn, tax id, national id, passport, and names ending in `hash` or `salt`.
 - `ExplicitFieldSensitivityRule` matches `redactFields` passed to `withAuditTrail`.
 
 A sensitive path is stored as `[REDACTED]` on both sides when it actually changed. The raw value is not copied into the change object.
@@ -59,9 +62,9 @@ Redaction also walks nested objects and arrays, so a token inside a JSON blob is
 
 ## Append-only
 
-`src/audit/access/AuditLogAccessPolicy.ts` is the only access decision:
+`src/audit/access/AuditLogAccessPolicy.ts` is the only access decision. There is no `access.admin` entry. Payload only consults that hook on auth collections, and Audit Logs is not one.
 
-- `read` and `admin`: any authenticated user
+- `read`: denied by default. Allowed for the earliest user (lowest `users.id`) and for emails in `AUDIT_LOG_READER_EMAILS` (comma-separated, empty in `.env.example`, no real addresses). The function returns `boolean | Where` so a later check can return a row scope. A lookup error fails closed.
 - `create`, `update`, `delete`: denied
 
 Hooks create rows with `overrideAccess: true`. `rejectAuditLogUpdate` and `rejectAuditLogDelete` still throw, including when `overrideAccess` is set, so a normal admin API call cannot edit or delete history. Raw SQL against D1 is outside this app.
@@ -80,9 +83,11 @@ The D1 adapter's `beginTransaction` is a no-op unless `transactionOptions` is co
 - It sets `disableTransaction: true`.
 - If the operator foreign key points at a user that was just deleted, it retries once with `actor: null`.
 
-`FailOpenAuditLogWriter` decorates that writer and swallows a still-failing insert.
+`FailOpenAuditLogWriter` decorates that writer and swallows a still-failing insert. Each dropped write increments `droppedAuditWriteCount` and is logged as a structured error (`err`, `msg`, `droppedAuditWrites`) without field values.
 
-Tradeoff: the audit row is not atomic with the user's row. A crash between the two can leave a change without a log, or (once real transactions exist) a log whose parent transaction later rolls back. That is accepted so logging cannot roll back or 500 the user's write.
+Change rows are inserted in batches of 16. D1 allows 100 bound parameters, and each change row uses six (`16 * 6 = 96`). The insert stays on the request. `waitUntil` is not used: the user's row is already committed before `afterChange` returns, and a detached insert can outlive a failed request or be dropped when the isolate exits, with nobody left to notice.
+
+Tradeoff: the audit row is not atomic with the user's row. A crash between the two can leave a change without a log. That is accepted so logging cannot roll back or 500 the user's write.
 
 ## Admin viewer
 
@@ -98,22 +103,9 @@ The native column filters remain available.
 
 ## RBAC follow-up (issue #1, PR #11)
 
-`canReadAuditLogs` in `src/audit/access/AuditLogAccessPolicy.ts` is the only read check. `read` and `admin` both call it. Today it allows any authenticated user.
+`canReadAuditLogs` is the only read check. Until that PR is rebased, it denies by default and allows the earliest user or `AUDIT_LOG_READER_EMAILS`.
 
-PR #11 decides collection access with `evaluateCollectionAccess` and `isAccessGranted` from `src/access`. The read grant key is `audit-logs:read`. After that PR merges, change only `canReadAuditLogs` to:
-
-```ts
-const decision = await evaluateCollectionAccess({
-  req,
-  collectionSlug: 'audit-logs',
-  action: 'read',
-})
-return isAccessGranted(decision)
-```
-
-That allows a `grantsFullAccess` role and any role with `audit-logs:read`. It denies everyone else.
-
-`AuditLogs` sets `custom.rbac.enabled` so #11's catalog sync lists the collection. Do not wrap it with `withRbac`. That wrapper installs create, update, and delete from the matrix. Those three access functions stay `() => false`, so `audit-logs:update` and `audit-logs:delete` cannot edit history. The reject hooks stay so `overrideAccess` cannot either. Audit logging itself stays in collection `beforeChange` / `afterChange` hooks, which is the extension point #11 documents for this feature.
+After the rebase, return the `evaluateCollectionAccess` result for `audit-logs:read` unchanged, including a row-scope `Where`. Do not collapse it with `isAccessGranted`. Do not set `custom.rbac.enabled` and do not wrap `AuditLogs` in `withRbac`. That flag makes the catalog emit create, update, delete, and export cells that this collection cannot honor. Register only the `audit-logs:read` key. Logging stays in the collection hooks.
 
 ## Local test
 

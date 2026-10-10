@@ -439,6 +439,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "untrusted_client_ip": {
+          "name": "untrusted_client_ip",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "user_agent": {
           "name": "user_agent",
           "type": "text",
@@ -471,13 +478,6 @@
         }
       },
       "indexes": {
-        "audit_logs_summary_idx": {
-          "name": "audit_logs_summary_idx",
-          "columns": [
-            "summary"
-          ],
-          "isUnique": false
-        },
         "audit_logs_action_idx": {
           "name": "audit_logs_action_idx",
           "columns": [
@@ -517,13 +517,6 @@
           "name": "audit_logs_actor_email_idx",
           "columns": [
             "actor_email"
-          ],
-          "isUnique": false
-        },
-        "audit_logs_ip_address_idx": {
-          "name": "audit_logs_ip_address_idx",
-          "columns": [
-            "ip_address"
           ],
           "isUnique": false
         },

@@ -2,7 +2,7 @@ import type { CollectionConfig } from 'payload'
 
 import { AUDIT_LOGS_SLUG } from '../constants'
 import { SensitiveFieldPolicy } from '../diff/SensitiveFieldPolicy'
-import { captureAuditContext, captureDeleteContext } from './captureAuditContext'
+import { captureAuditContext } from './captureAuditContext'
 import { recordAuditChange } from './recordAuditChange'
 import { recordAuditDelete } from './recordAuditDelete'
 
@@ -46,7 +46,6 @@ export function withAuditTrail<T extends CollectionConfig>(
       ...collection.hooks,
       beforeChange: [captureAuditContext(policy), ...(collection.hooks?.beforeChange ?? [])],
       afterChange: [...(collection.hooks?.afterChange ?? []), recordAuditChange(policy)],
-      beforeDelete: [captureDeleteContext, ...(collection.hooks?.beforeDelete ?? [])],
       afterDelete: [...(collection.hooks?.afterDelete ?? []), recordAuditDelete(policy)],
     },
   }

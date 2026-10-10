@@ -23,6 +23,7 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   	\`operator_id\` text,
   	\`actor_email\` text,
   	\`ip_address\` text,
+  	\`untrusted_client_ip\` text,
   	\`user_agent\` text,
   	\`occurred_at\` text NOT NULL,
   	\`updated_at\` text DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) NOT NULL,
@@ -30,14 +31,12 @@ export async function up({ db, payload, req }: MigrateUpArgs): Promise<void> {
   	FOREIGN KEY (\`actor_id\`) REFERENCES \`users\`(\`id\`) ON UPDATE no action ON DELETE set null
   );
   `)
-  await db.run(sql`CREATE INDEX \`audit_logs_summary_idx\` ON \`audit_logs\` (\`summary\`);`)
   await db.run(sql`CREATE INDEX \`audit_logs_action_idx\` ON \`audit_logs\` (\`action\`);`)
   await db.run(sql`CREATE INDEX \`audit_logs_collection_slug_idx\` ON \`audit_logs\` (\`collection_slug\`);`)
   await db.run(sql`CREATE INDEX \`audit_logs_document_id_idx\` ON \`audit_logs\` (\`document_id\`);`)
   await db.run(sql`CREATE INDEX \`audit_logs_actor_idx\` ON \`audit_logs\` (\`actor_id\`);`)
   await db.run(sql`CREATE INDEX \`audit_logs_operator_id_idx\` ON \`audit_logs\` (\`operator_id\`);`)
   await db.run(sql`CREATE INDEX \`audit_logs_actor_email_idx\` ON \`audit_logs\` (\`actor_email\`);`)
-  await db.run(sql`CREATE INDEX \`audit_logs_ip_address_idx\` ON \`audit_logs\` (\`ip_address\`);`)
   await db.run(sql`CREATE INDEX \`audit_logs_occurred_at_idx\` ON \`audit_logs\` (\`occurred_at\`);`)
   await db.run(sql`CREATE INDEX \`audit_logs_updated_at_idx\` ON \`audit_logs\` (\`updated_at\`);`)
   await db.run(sql`CREATE INDEX \`audit_logs_created_at_idx\` ON \`audit_logs\` (\`created_at\`);`)

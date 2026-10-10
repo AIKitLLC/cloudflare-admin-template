@@ -1,49 +1,77 @@
-import type { Access, PayloadRequest } from 'payload'
+import type { Access, PayloadRequest, Where } from 'payload'
+
+import { AUDIT_LOG_READER_EMAILS_ENV } from '../constants'
 
 /**
- * The only read check for Audit Logs. `read` and `admin` both call this.
- * Create, update, and delete stay denied in `auditLogAccess` and are not
- * decided here.
- *
- * Until issue #1 lands, any authenticated operator can read. There are no roles.
- *
- * After PR #11, replace this body with the matrix read grant. Do not wrap
- * `AuditLogs` in `withRbac`: that wrapper installs create, update, and delete
- * from the matrix, and append-only is not a grant. `custom.rbac.enabled` is
- * already set so the catalog sync emits `audit-logs:read` (and the other
- * action keys) without taking over access.
- *
- *   import { evaluateCollectionAccess, isAccessGranted } from '@/access'
- *
- *   export async function canReadAuditLogs({ req }: { req: PayloadRequest }) {
- *     const decision = await evaluateCollectionAccess({
- *       req,
- *       collectionSlug: 'audit-logs',
- *       action: 'read',
- *     })
- *     return isAccessGranted(decision)
- *   }
- *
- * `evaluateCollectionAccess` allows a `grantsFullAccess` role and a granted
- * `audit-logs:read` key. It denies everyone else. Leave create, update, and
- * delete as `() => false` so `audit-logs:update` and `audit-logs:delete` in
- * the matrix cannot change history. Keep the reject hooks so `overrideAccess`
- * cannot either.
+ * What Payload access functions return. `false` denies. `true` allows every
+ * row. A `Where` is a row scope. After PR #11, return the value of
+ * `evaluateCollectionAccess` for `audit-logs:read` unchanged, including a
+ * `Where` from a row-scope contributor.
  */
-export function canReadAuditLogs({ req }: { req: PayloadRequest }): boolean {
-  return Boolean(req.user)
+export type AuditLogAccessResult = boolean | Where
+
+/**
+ * The only read check for Audit Logs.
+ *
+ * Denies by default. Allows the earliest user (lowest id) and emails listed in
+ * `AUDIT_LOG_READER_EMAILS` (comma-separated, empty by default). There is no
+ * `access.admin` entry: that hook is only consulted for auth collections.
+ */
+export async function canReadAuditLogs({
+  req,
+}: {
+  req: PayloadRequest
+}): Promise<AuditLogAccessResult> {
+  const user = req.user
+  if (!user || user.id == null) return false
+  if (emailAllowlisted(user.email)) return true
+  try {
+    return await isEarliestUser(req, user.id)
+  } catch (error) {
+    req.payload.logger.error({
+      err: error,
+      msg: 'Audit log read check failed closed.',
+    })
+    return false
+  }
 }
 
 export const auditLogAccess: {
-  admin: (args: { req: PayloadRequest }) => boolean
   create: Access
   read: Access
   update: Access
   delete: Access
 } = {
-  admin: canReadAuditLogs,
   create: () => false,
   read: canReadAuditLogs,
   update: () => false,
   delete: () => false,
+}
+
+function emailAllowlisted(email: unknown): boolean {
+  if (typeof email !== 'string' || email.length === 0) return false
+  return readerEmails().has(email.trim().toLowerCase())
+}
+
+function readerEmails(): Set<string> {
+  const raw = process.env[AUDIT_LOG_READER_EMAILS_ENV] ?? ''
+  return new Set(
+    raw
+      .split(',')
+      .map((entry) => entry.trim().toLowerCase())
+      .filter((entry) => entry.length > 0),
+  )
+}
+
+async function isEarliestUser(req: PayloadRequest, userId: number | string): Promise<boolean> {
+  const earliest = await req.payload.find({
+    collection: 'users',
+    depth: 0,
+    limit: 1,
+    overrideAccess: true,
+    sort: 'id',
+  })
+  const earliestId = earliest.docs[0]?.id
+  if (earliestId == null) return false
+  return String(earliestId) === String(userId)
 }

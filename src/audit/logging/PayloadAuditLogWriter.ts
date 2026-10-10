@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto'
+
 import type { Payload, RequiredDataFromCollectionSlug } from 'payload'
 
-import { AUDIT_LOGS_SLUG } from '../constants'
+import { AUDIT_LOGS_SLUG, CHANGE_ROW_INSERT_CHUNK } from '../constants'
 import type { AuditLogEntry } from '../types'
 import type { AuditLogWriter } from './AuditLogWriter'
 
@@ -23,6 +25,12 @@ type JsonValue = NonNullable<NonNullable<AuditLogData['changes']>[number]['oldVa
  * SQLite raises a foreign-key error and the insert is retried with the
  * relationship cleared. Other errors are not retried, so a committed row is
  * not written twice. The operator id and email snapshots stay on the entry.
+ *
+ * Change rows are inserted in batches of {@link CHANGE_ROW_INSERT_CHUNK}. D1
+ * rejects a statement with more than 100 bound parameters, and each change row
+ * uses six. The insert stays on the request. `waitUntil` is not used: a
+ * detached insert can outlive a failed request, and the worker can exit before
+ * it finishes, dropping the row with no caller left to notice.
  */
 export class PayloadAuditLogWriter implements AuditLogWriter {
   constructor(private readonly payload: Payload) {}
@@ -30,14 +38,25 @@ export class PayloadAuditLogWriter implements AuditLogWriter {
   async write(entry: AuditLogEntry): Promise<void> {
     const data = toAuditData(entry)
     try {
-      await this.insert(data)
+      await this.insertParentAndChanges(data)
     } catch (error) {
       if (data.actor == null || !isForeignKeyError(error)) throw error
-      await this.insert({ ...data, actor: null })
+      await this.insertParentAndChanges({ ...data, actor: null })
     }
   }
 
-  private insert(data: AuditLogData): Promise<unknown> {
+  private async insertParentAndChanges(data: AuditLogData): Promise<void> {
+    const changes = data.changes ?? []
+    const [first, ...rest] = chunk(changes, CHANGE_ROW_INSERT_CHUNK)
+    const created = await this.insert({ ...data, changes: first ?? [] })
+    let written = first?.length ?? 0
+    for (const batch of rest) {
+      await this.insertChangeRows(created.id, batch, written)
+      written += batch.length
+    }
+  }
+
+  private insert(data: AuditLogData): Promise<{ id: number }> {
     return this.payload.create({
       collection: AUDIT_LOGS_SLUG,
       data,
@@ -46,6 +65,39 @@ export class PayloadAuditLogWriter implements AuditLogWriter {
       overrideAccess: true,
     })
   }
+
+  private async insertChangeRows(
+    parentId: number,
+    rows: NonNullable<AuditLogData['changes']>,
+    alreadyWritten: number,
+  ): Promise<void> {
+    const db = this.payload.db as unknown as ChangeRowDb
+    await db.insert({
+      db: db.drizzle,
+      tableName: 'audit_logs_changes',
+      values: rows.map((row, index) => ({
+        _order: alreadyWritten + index + 1,
+        _parentID: parentId,
+        id: randomUUID(),
+        newValue: row.newValue ?? null,
+        oldValue: row.oldValue ?? null,
+        path: row.path,
+      })),
+    })
+  }
+}
+
+type ChangeRowDb = {
+  drizzle: unknown
+  insert: (args: { db: unknown; tableName: string; values: Record<string, unknown>[] }) => Promise<unknown>
+}
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const batches: T[][] = []
+  for (let index = 0; index < items.length; index += size) {
+    batches.push(items.slice(index, index + size))
+  }
+  return batches
 }
 
 function toAuditData(entry: AuditLogEntry): AuditLogData {
@@ -64,6 +116,7 @@ function toAuditData(entry: AuditLogEntry): AuditLogData {
     documentId: entry.documentId,
     ipAddress: entry.metadata.ipAddress,
     occurredAt: entry.occurredAt,
+    untrustedClientIp: entry.metadata.untrustedClientIp,
     summary: entry.summary,
     userAgent: entry.metadata.userAgent,
   }

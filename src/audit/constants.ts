@@ -16,3 +16,18 @@ export const IGNORED_DIFF_PATHS = new Set(['id', 'createdAt', 'updatedAt', 'coll
 
 /** Max JSON length stored for a single old or new value. */
 export const MAX_LOGGED_VALUE_CHARS = 4000
+
+/**
+ * D1 allows 100 bound parameters per statement. A change row has six columns,
+ * so 16 rows is the largest batch that stays under that limit (16 * 6 = 96).
+ */
+export const CHANGE_ROW_INSERT_CHUNK = 16
+
+/** Hard cap on change rows stored for one audit log, including a truncation marker. */
+export const MAX_CHANGE_ROWS = 64
+
+/**
+ * Comma-separated emails that may read audit logs, in addition to the first user.
+ * Placeholder only. Do not commit real addresses.
+ */
+export const AUDIT_LOG_READER_EMAILS_ENV = 'AUDIT_LOG_READER_EMAILS'
