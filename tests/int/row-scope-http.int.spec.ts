@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { spawn, type ChildProcess } from 'node:child_process'
 import { GRAPHQL_POST, REST_DELETE, REST_GET, REST_PATCH, REST_POST } from '@payloadcms/next/routes'
 import { getPayload, type CollectionSlug, type Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -670,7 +671,120 @@ describe('row scope HTTP and GraphQL', () => {
     expect(allowed.status).toBe(200)
     expect(await readLock(fixture.branchUser.email)).toBeFalsy()
   })
+
+  it('serves access and admin list and edit views without SQL', async () => {
+    const access = await get(getRequest('/api/access'), route(['access']))
+    expect(access.status).toBe(200)
+    const accessBody = (await access.json()) as {
+      collections: {
+        records: { read: { permission?: boolean; where?: unknown } }
+        users: { read: { permission?: boolean; where?: unknown } }
+      }
+    }
+    const accessJson = JSON.stringify(accessBody)
+    assertNoSql(accessJson)
+    expect(accessJson.toLowerCase()).not.toContain('select ')
+    expect(accessBody.collections.users.read.permission).toBe(true)
+    expect(accessBody.collections.records.read.permission).toBe(true)
+    expect(accessBody.collections.users.read.where).toBeTruthy()
+    expect(accessBody.collections.records.read.where).toBeTruthy()
+
+    await withAdminServer(async (base) => {
+      await expectAdminPage(base, '/admin/collections/users', fixture.actor.email)
+      await expectAdminPage(
+        base,
+        `/admin/collections/users/${fixture.actor.id}`,
+        fixture.actor.email,
+      )
+      await expectAdminPage(base, '/admin/collections/records', fixture.westTitle)
+      await expectAdminPage(
+        base,
+        `/admin/collections/records/${fixture.westRecordId}`,
+        fixture.westTitle,
+      )
+    })
+  }, 120000)
 })
+
+const SQL_MARKERS = ['case when', 'users_rels', 'querychunks', 'substr(']
+
+function assertNoSql(value: string) {
+  const text = value.toLowerCase()
+  for (const marker of SQL_MARKERS) {
+    expect(text).not.toContain(marker)
+  }
+}
+
+async function expectAdminPage(base: string, path: string, marker: string) {
+  const response = await fetch(`${base}${path}`, {
+    // Payload drops the auth cookie unless Origin is on the CSRF allowlist.
+    headers: { cookie, origin: ORIGIN },
+    redirect: 'manual',
+  })
+  expect(response.status).toBe(200)
+  const html = await response.text()
+  expect(html).not.toContain('NEXT_REDIRECT')
+  expect(html).not.toContain('"unauthenticated":true')
+  expect(html).toContain(marker)
+  assertNoSql(html)
+}
+
+async function withAdminServer(run: (base: string) => Promise<void>) {
+  const port = 3456
+  const child = spawn('pnpm', ['exec', 'next', 'dev', '--port', String(port)], {
+    cwd: '/workspace',
+    detached: true,
+    env: {
+      ...process.env,
+      PATH: `${process.env.HOME}/.nvm/versions/node/v24.21.0/bin:${process.env.PATH ?? ''}`,
+      PAYLOAD_SECRET: process.env.PAYLOAD_SECRET || 'test-secret-for-local-runs',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+  let output = ''
+  child.stdout?.on('data', (chunk: Buffer) => {
+    output += chunk.toString()
+  })
+  child.stderr?.on('data', (chunk: Buffer) => {
+    output += chunk.toString()
+  })
+  try {
+    await waitForServer(child, port, () => output)
+    await run(`http://127.0.0.1:${port}`)
+  } finally {
+    stopProcess(child)
+  }
+}
+
+async function waitForServer(child: ChildProcess, port: number, output: () => string) {
+  const deadline = Date.now() + 90000
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(`Admin server exited ${child.exitCode}: ${output().slice(-2000)}`)
+    }
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/admin/login`, { redirect: 'manual' })
+      if (response.status < 500) {
+        return
+      }
+    } catch {
+      // The server is still booting.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  throw new Error(`Admin server did not start: ${output().slice(-2000)}`)
+}
+
+function stopProcess(child: ChildProcess) {
+  if (child.pid === undefined) {
+    return
+  }
+  try {
+    process.kill(-child.pid, 'SIGTERM')
+  } catch {
+    child.kill('SIGTERM')
+  }
+}
 
 function route(slug: string[]) {
   return { params: Promise.resolve({ slug }) }

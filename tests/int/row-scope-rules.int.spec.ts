@@ -10,7 +10,7 @@ import { ScopeTree } from '@/scope/tree/scope-tree'
 import type { ScopeCatalog } from '@/scope/types'
 import type { DirectScope } from '@/scope/where/direct-scope'
 import { collapseCoveredIds } from '@/scope/where/collapse-covered-ids'
-import { whereForBinding } from '@/scope/where/where-for-binding'
+import { estimatedScopeBinds, whereForBinding } from '@/scope/where/where-for-binding'
 
 describe('row scope rules', () => {
   it('closes descendants and implies branches from an organization assignment', () => {
@@ -146,6 +146,28 @@ describe('row scope rules', () => {
         { 'dataClass.scopePath': { contains: '/sensitive/' } },
       ],
     })
+  })
+
+  it('counts about two parameters per branch organization on a record filter', () => {
+    const organizations = Array.from({ length: 10 }, (_, index) => `org-${index}`)
+    const branches = Array.from({ length: 25 }, (_, index) => `branch-${index}`)
+    const branchOrganizations = Array.from({ length: 25 }, (_, index) => `branch-org-${index}`)
+    const binds = estimatedScopeBinds(
+      {
+        organizationField: 'ownerOrganization',
+        branchField: 'ownerBranch',
+        dataClassField: 'ownerClass',
+      },
+      direct({
+        organizationIds: organizations,
+        branchIds: branches,
+        branchOrganizationIds: branchOrganizations,
+        dataClassIds: ['sensitive'],
+      }),
+      'read',
+    )
+    expect(binds).toBe(10 + 25 * 2 + 25 + 10 + 1)
+    expect(binds).toBeGreaterThan(80)
   })
 
   it('drops an assignment whose ancestor is already assigned', () => {

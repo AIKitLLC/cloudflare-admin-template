@@ -7,7 +7,6 @@ import { relationId } from '../../access/relation-id'
 import { skipsPrivilegeChecks } from '../../rbac/guards/privilege-context'
 import { readRowScopeBinding } from '../bindings/read-row-scope-binding'
 import { SCOPE_BRANCH_ORG_ERROR, SCOPE_NODE_ERROR } from '../errors'
-import { SKIP_SCOPE_PATH_CONTEXT } from '../constants'
 import { assertReparentKeys } from './assert-reparent-keys'
 import { loadEffectiveScope } from '../resolve/load-effective-scope'
 import { loadScopeCatalog } from '../resolve/load-scope-catalog'
@@ -16,18 +15,11 @@ import { parentMap, ScopeTree } from '../tree/scope-tree'
 
 export const guardScopeNode: CollectionBeforeChangeHook = async ({
   collection,
-  context,
   data,
   operation,
   originalDoc,
   req,
 }) => {
-  if (
-    context?.[SKIP_SCOPE_PATH_CONTEXT] === true ||
-    req.context?.[SKIP_SCOPE_PATH_CONTEXT] === true
-  ) {
-    return data
-  }
   if (!data) {
     return data
   }

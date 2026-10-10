@@ -1,9 +1,9 @@
-import { sql } from '../sql/scope-sql'
 import type { CollectionAfterChangeHook, CollectionSlug, PayloadRequest } from 'payload'
 
 import { relationId } from '../../access/relation-id'
-import { SKIP_SCOPE_PATH_CONTEXT } from '../constants'
+import { MAX_SCOPE_DEPTH } from '../constants'
 import { runStatement } from '../sql/run-statement'
+import { sql } from '../sql/scope-sql'
 import { childScopePath, rootScopePath } from '../where/where-path-contains'
 
 type PathDoc = {
@@ -22,23 +22,21 @@ const SCOPE_TABLES: Record<string, string> = {
  * Stores `/rootId/.../id/` so a filter can match a node and its descendants with one LIKE
  * per direct assignment. The value is derived from `parent` after the row exists.
  *
- * A move rewrites this node and every descendant in one UPDATE. D1 has no transaction
- * around Payload hooks, so a per-node walk could leave a subtree half-moved. One
- * statement is atomic. It does not set `skipScopePath` on the request.
+ * A move with a stored path rewrites this node and every descendant in one prefix-swap
+ * UPDATE. A move whose stored path is null rebuilds the subtree from parent links in one
+ * statement, because there is no prefix to swap. D1 applies each statement atomically.
+ *
+ * Two overlapping moves can interleave. The parent write and this hook are not one
+ * transaction, so each request can read a prefix the other request then replaces.
+ * The later statement wins and can leave a descendant on the path it computed.
+ * Running the move again repairs a prefix swap. A null path is repaired by the rebuild.
  */
 export const syncScopePath: CollectionAfterChangeHook = async ({
   collection,
-  context,
   doc,
   previousDoc,
   req,
 }) => {
-  if (
-    context?.[SKIP_SCOPE_PATH_CONTEXT] === true ||
-    req.context?.[SKIP_SCOPE_PATH_CONTEXT] === true
-  ) {
-    return doc
-  }
   const slug = collection?.slug
   const table = slug ? SCOPE_TABLES[slug] : undefined
   if (!slug || !table) {
@@ -48,7 +46,9 @@ export const syncScopePath: CollectionAfterChangeHook = async ({
   const previous = previousDoc as PathDoc | undefined
   const desired = await desiredScopePath(req, slug, record)
   const previousPath = previous?.scopePath ?? undefined
-  if (previousPath && previousPath !== desired) {
+  if (previous && !previousPath) {
+    await rebuildSubtree(req, table, record.id, desired)
+  } else if (previousPath && previousPath !== desired) {
     await swapScopePrefix(req, table, previousPath, desired)
   } else if ((record.scopePath ?? undefined) !== desired) {
     await writeScopePath(req, table, record.id, desired)
@@ -93,6 +93,30 @@ async function swapScopePrefix(
     sql`UPDATE ${sql.raw(`"${table}"`)}
       SET scope_path = ${newPrefix} || substr(scope_path, ${start})
       WHERE scope_path LIKE ${likePrefix(oldPrefix)} ESCAPE '\\'`,
+  )
+}
+
+async function rebuildSubtree(
+  req: PayloadRequest,
+  table: string,
+  id: number | string,
+  scopePath: string,
+): Promise<void> {
+  const quoted = sql.raw(`"${table}"`)
+  await runStatement(
+    req,
+    sql`WITH RECURSIVE subtree(id, scope_path, depth) AS (
+      SELECT ${id}, ${scopePath}, 0
+      UNION ALL
+      SELECT child.id, subtree.scope_path || child.id || '/', subtree.depth + 1
+      FROM ${quoted} AS child
+      INNER JOIN subtree ON child.parent_id = subtree.id
+      WHERE subtree.depth < ${MAX_SCOPE_DEPTH}
+    )
+    UPDATE ${quoted}
+    SET scope_path = subtree.scope_path
+    FROM subtree
+    WHERE ${quoted}.id = subtree.id`,
   )
 }
 

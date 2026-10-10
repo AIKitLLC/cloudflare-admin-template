@@ -1,10 +1,9 @@
 import type { Where } from 'payload'
 
 import type { CollectionAction, RowScopeBinding } from '../../access/types'
-import { D1_SAFE_PAGE_SIZE, SCOPE_PATH_FIELD } from '../constants'
+import { SCOPE_PATH_FIELD } from '../constants'
 import type { DirectScope } from './direct-scope'
 import { matchNothing } from './match-nothing'
-import { whereBindingSql } from './where-binding-sql'
 import { whereIdIn } from './where-id-in'
 import { whereOwnPathContains, wherePathContains } from './where-path-contains'
 
@@ -12,12 +11,7 @@ export function whereForBinding(
   binding: RowScopeBinding,
   scope: DirectScope,
   action: CollectionAction,
-  actorId?: number | string,
 ): Where {
-  const numericActorId = Number(actorId)
-  if (Number.isInteger(numericActorId) && estimatedBinds(binding, scope) > D1_SAFE_PAGE_SIZE) {
-    return whereBindingSql(binding, action, numericActorId)
-  }
   if (binding.dimension === 'organization') {
     if (action === 'read' || action === 'export') {
       return anyOf([
@@ -86,11 +80,24 @@ function relationshipIn(field: string, ids: readonly string[]): Where | undefine
   return whereIdIn(field, new Set(ids))
 }
 
-function estimatedBinds(binding: RowScopeBinding, scope: DirectScope): number {
+/**
+ * Bound parameters a Payload Where for this scope would use.
+ * A relationship `in` stores each id as a number and a string, about two parameters.
+ * Document `id IN` is inlined, but branch-organization ids on a record are relationship ids.
+ */
+export function estimatedScopeBinds(
+  binding: RowScopeBinding,
+  scope: DirectScope,
+  action: CollectionAction,
+): number {
   const organizations = distinctCount(scope.organizationIds)
   const branches = distinctCount(scope.branchIds)
   const classes = distinctCount(scope.dataClassIds)
+  const branchOrganizations = distinctCount(scope.branchOrganizationIds) * 2
   if (binding.dimension === 'organization') {
+    if (action === 'read' || action === 'export') {
+      return organizations + branchOrganizations
+    }
     return organizations
   }
   if (binding.dimension === 'branch') {
@@ -101,7 +108,7 @@ function estimatedBinds(binding: RowScopeBinding, scope: DirectScope): number {
   }
   let total = 0
   if (binding.organizationField) {
-    total += organizations
+    total += organizations + branchOrganizations
   }
   if (binding.branchField) {
     total += branches + organizations

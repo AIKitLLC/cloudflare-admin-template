@@ -19,6 +19,7 @@ import { Branches } from './scope/collections/Branches'
 import { DataClasses } from './scope/collections/DataClasses'
 import { Organizations } from './scope/collections/Organizations'
 import { Records } from './scope/collections/Records'
+import { WorkNotes } from './scope/collections/WorkNotes'
 import { ensureRowScopeRegistered } from './scope/register-row-scope'
 import { migrations } from './migrations'
 import { Permissions } from './rbac/collections/Permissions'
@@ -107,6 +108,7 @@ export default buildConfig({
     Branches,
     DataClasses,
     Records,
+    WorkNotes,
   ]),
   endpoints: [matrixEndpoint, grantEndpoint],
   serverURL,

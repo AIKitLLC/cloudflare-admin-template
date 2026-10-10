@@ -13,7 +13,7 @@ export function actorCoversPath(args: {
   nodeTable: 'organizations' | 'branches' | 'data_classes'
   targetPath: string
 }): ScopeSql {
-  if (!/^[a-z_.]+$/.test(args.targetPath)) {
+  if (!/^[a-z0-9_.]+$/.test(args.targetPath)) {
     throw new Error(`Unexpected scope path ${args.targetPath}`)
   }
   const fk = sql.raw(args.fk)

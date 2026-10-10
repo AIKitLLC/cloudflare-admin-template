@@ -3,9 +3,10 @@ import type { PayloadRequest, Where } from 'payload'
 import { readVisibleUsersPromise, storeVisibleUsersPromise } from '../cache/scope-request-cache'
 import { VISIBLE_USERS_CACHE_KEY } from '../constants'
 import { actorCoversPath } from '../sql/actor-covers-path'
+import { selectRows } from '../sql/select-rows'
 import { sql, type ScopeSql } from '../sql/scope-sql'
-import { whereRowMatches } from '../sql/where-sql'
 import { matchNothing } from './match-nothing'
+import { whereDocumentIds } from './where-id-in'
 
 export async function whereUsersWithinScope(req: PayloadRequest): Promise<Where> {
   const userId = String(req.user?.id ?? '')
@@ -13,7 +14,7 @@ export async function whereUsersWithinScope(req: PayloadRequest): Promise<Where>
   if (cached) {
     return cached
   }
-  const pending = Promise.resolve(visibleUserWhere(userId))
+  const pending = visibleUserWhere(req, userId)
   storeVisibleUsersPromise(req, userId, pending)
   try {
     return await pending
@@ -28,16 +29,30 @@ export async function whereUsersWithinScope(req: PayloadRequest): Promise<Where>
 /**
  * A limited reader sees an account when every assignment sits inside the caller's
  * scope, the account is not full access, and it has at least one assignment.
- * The caller always sees their own row. The condition joins the caller's
- * relationship rows, so it does not grow with the number of visible users or
- * bind one parameter per assignment.
+ * The caller always sees their own row. The ids come from one SELECT that joins
+ * the caller's relationship rows, so the parameter count does not grow with the
+ * number of assignments. The Where itself is a plain id list.
  */
-function visibleUserWhere(actorIdRaw: string): Where {
+async function visibleUserWhere(req: PayloadRequest, actorIdRaw: string): Promise<Where> {
   const actorId = Number(actorIdRaw)
   if (!Number.isInteger(actorId)) {
     return matchNothing()
   }
-  return whereRowMatches('users', sql`${selfOrScoped(actorId)}`)
+  const rows = await selectRows(
+    req,
+    sql`SELECT "users"."id" AS id FROM "users" WHERE ${selfOrScoped(actorId)}`,
+  )
+  return whereDocumentIds(idsFrom(rows))
+}
+
+function idsFrom(rows: Array<Record<string, unknown>>): Array<number | string> {
+  const ids: Array<number | string> = []
+  for (const row of rows) {
+    if (typeof row.id === 'number' || typeof row.id === 'string') {
+      ids.push(row.id)
+    }
+  }
+  return ids
 }
 
 function selfOrScoped(actorId: number): ScopeSql {

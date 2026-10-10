@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { sql } from '@payloadcms/db-d1-sqlite'
 import { createLocalReq, type CollectionSlug, type Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
@@ -25,6 +26,10 @@ import {
   DATA_CLASSES_SLUG,
   ORGANIZATIONS_SLUG,
   RECORDS_SLUG,
+  WORK_NOTE_BRANCH_FIELD,
+  WORK_NOTE_DATA_CLASS_FIELD,
+  WORK_NOTE_ORGANIZATION_FIELD,
+  WORK_NOTES_SLUG,
 } from '@/scope/constants'
 import {
   cleanupRowScopeFixture,
@@ -1011,6 +1016,215 @@ describe('row scope access', () => {
       expect(relationIds(unchanged.organizations)).toEqual([String(fixture.westId)])
     } finally {
       await deleteInChunks(ORGANIZATIONS_SLUG, orgIds)
+    }
+  }, 120000)
+
+  it('rebuilds a subtree when the moved node has no stored path', async () => {
+    const oldParent = await payload.create({
+      collection: ORGANIZATIONS_SLUG,
+      data: {
+        name: `Null path old ${fixture.stamp}`,
+        slug: `null-path-old-${fixture.stamp}`,
+        parent: fixture.westId,
+      },
+      overrideAccess: true,
+    })
+    const node = await payload.create({
+      collection: ORGANIZATIONS_SLUG,
+      data: {
+        name: `Null path node ${fixture.stamp}`,
+        slug: `null-path-node-${fixture.stamp}`,
+        parent: oldParent.id,
+      },
+      overrideAccess: true,
+    })
+    const grandchild = await payload.create({
+      collection: ORGANIZATIONS_SLUG,
+      data: {
+        name: `Null path grandchild ${fixture.stamp}`,
+        slug: `null-path-grandchild-${fixture.stamp}`,
+        parent: node.id,
+      },
+      overrideAccess: true,
+    })
+    const newParent = await payload.create({
+      collection: ORGANIZATIONS_SLUG,
+      data: {
+        name: `Null path new ${fixture.stamp}`,
+        slug: `null-path-new-${fixture.stamp}`,
+        parent: fixture.westId,
+      },
+      overrideAccess: true,
+    })
+    const drizzle = (payload.db as { drizzle: { run: (query: unknown) => Promise<unknown> } })
+      .drizzle
+    await drizzle.run(sql`UPDATE organizations SET scope_path = NULL WHERE id = ${node.id}`)
+    try {
+      await payload.update({
+        collection: ORGANIZATIONS_SLUG,
+        id: node.id,
+        data: { parent: newParent.id },
+        overrideAccess: true,
+      })
+      const stored = await payload.findByID({
+        collection: ORGANIZATIONS_SLUG,
+        id: grandchild.id,
+        depth: 0,
+        overrideAccess: true,
+      })
+      expect(stored.scopePath).toContain(`/${newParent.id}/`)
+      expect(stored.scopePath).toContain(`/${node.id}/`)
+      expect(stored.scopePath).not.toContain(`/${oldParent.id}/`)
+    } finally {
+      for (const id of [grandchild.id, node.id, oldParent.id, newParent.id]) {
+        await payload.delete({
+          collection: ORGANIZATIONS_SLUG,
+          id,
+          overrideAccess: true,
+        })
+      }
+    }
+  })
+
+  it('filters records and work notes for about 10 organizations and 25 branches', async () => {
+    const orgIds: number[] = []
+    const branchOrgIds: number[] = []
+    const branchIds: number[] = []
+    const userIds: number[] = []
+    let homeBranchId: number | undefined
+    let recordId: number | undefined
+    let noteId: number | undefined
+    let outsideNoteId: number | undefined
+    try {
+      await grantKey(payload, fixture.actorRoleId, `${WORK_NOTES_SLUG}:read`)
+      for (let index = 0; index < 10; index += 1) {
+        const org = await payload.create({
+          collection: ORGANIZATIONS_SLUG,
+          data: {
+            name: `Mix org ${fixture.stamp} ${index}`,
+            slug: `mix-org-${fixture.stamp}-${index}`,
+          },
+          overrideAccess: true,
+        })
+        orgIds.push(Number(org.id))
+      }
+      for (let index = 0; index < 25; index += 1) {
+        const org = await payload.create({
+          collection: ORGANIZATIONS_SLUG,
+          data: {
+            name: `Mix branch org ${fixture.stamp} ${index}`,
+            slug: `mix-branch-org-${fixture.stamp}-${index}`,
+          },
+          overrideAccess: true,
+        })
+        branchOrgIds.push(Number(org.id))
+        const branch = await payload.create({
+          collection: BRANCHES_SLUG,
+          data: {
+            name: `Mix branch ${fixture.stamp} ${index}`,
+            slug: `mix-branch-${fixture.stamp}-${index}`,
+            organization: org.id,
+          },
+          overrideAccess: true,
+        })
+        branchIds.push(Number(branch.id))
+      }
+      const homeBranch = await payload.create({
+        collection: BRANCHES_SLUG,
+        data: {
+          name: `Mix home ${fixture.stamp}`,
+          slug: `mix-home-${fixture.stamp}`,
+          organization: orgIds[0],
+        },
+        overrideAccess: true,
+      })
+      homeBranchId = Number(homeBranch.id)
+      const reader = await payload.create({
+        collection: 'users',
+        data: {
+          email: `mix-${fixture.stamp}@example.com`,
+          password: 'test-password-123',
+          roles: [fixture.actorRoleId],
+          organizations: orgIds,
+          branches: branchIds,
+          dataClasses: [fixture.sensitiveId],
+        },
+        overrideAccess: true,
+        context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+      })
+      userIds.push(Number(reader.id))
+      const record = await payload.create({
+        collection: RECORDS_SLUG,
+        data: {
+          title: `Mix record ${fixture.stamp}`,
+          organization: orgIds[0],
+          branch: homeBranch.id,
+          dataClass: fixture.piiId,
+        },
+        overrideAccess: true,
+      })
+      recordId = Number(record.id)
+      const note = await payload.create({
+        collection: WORK_NOTES_SLUG,
+        data: {
+          title: `Mix note ${fixture.stamp}`,
+          [WORK_NOTE_ORGANIZATION_FIELD]: orgIds[0],
+          [WORK_NOTE_BRANCH_FIELD]: homeBranch.id,
+          [WORK_NOTE_DATA_CLASS_FIELD]: fixture.piiId,
+        },
+        overrideAccess: true,
+      })
+      noteId = Number(note.id)
+      const outside = await payload.create({
+        collection: WORK_NOTES_SLUG,
+        data: {
+          title: `Mix outside ${fixture.stamp}`,
+          [WORK_NOTE_ORGANIZATION_FIELD]: fixture.eastId,
+          [WORK_NOTE_BRANCH_FIELD]: fixture.eastBranchId,
+          [WORK_NOTE_DATA_CLASS_FIELD]: fixture.piiId,
+        },
+        overrideAccess: true,
+      })
+      outsideNoteId = Number(outside.id)
+
+      expect(await visibleCount(RECORDS_SLUG, reader.id, record.id)).toBe(1)
+      expect(await visibleCount(WORK_NOTES_SLUG, reader.id, note.id)).toBe(1)
+      expect(await visibleCount(WORK_NOTES_SLUG, reader.id, outside.id)).toBe(0)
+      const listed = await payload.find({
+        collection: WORK_NOTES_SLUG,
+        depth: 0,
+        limit: 10,
+        overrideAccess: false,
+        user: asUser({ id: Number(reader.id), email: reader.email, password: '' }),
+      })
+      expect(listed.docs.some((doc) => doc.id === note.id)).toBe(true)
+      expect(listed.docs.some((doc) => doc.id === outside.id)).toBe(false)
+    } finally {
+      for (const id of [noteId, outsideNoteId]) {
+        if (id === undefined) continue
+        await payload.delete({
+          collection: WORK_NOTES_SLUG,
+          id,
+          overrideAccess: true,
+        })
+      }
+      if (recordId !== undefined) {
+        await payload.delete({
+          collection: RECORDS_SLUG,
+          id: recordId,
+          overrideAccess: true,
+        })
+      }
+      if (homeBranchId !== undefined) {
+        await payload.delete({
+          collection: BRANCHES_SLUG,
+          id: homeBranchId,
+          overrideAccess: true,
+        })
+      }
+      await deleteInChunks(BRANCHES_SLUG, branchIds)
+      await deleteInChunks('users', userIds, { [SKIP_RBAC_PRIVILEGE_CHECKS]: true })
+      await deleteInChunks(ORGANIZATIONS_SLUG, [...branchOrgIds, ...orgIds])
     }
   }, 120000)
 })

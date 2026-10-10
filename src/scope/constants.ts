@@ -2,6 +2,7 @@ export const ORGANIZATIONS_SLUG = 'organizations'
 export const BRANCHES_SLUG = 'branches'
 export const DATA_CLASSES_SLUG = 'data-classes'
 export const RECORDS_SLUG = 'records'
+export const WORK_NOTES_SLUG = 'work-notes'
 
 export const USER_ORGANIZATIONS_FIELD = 'organizations'
 export const USER_BRANCHES_FIELD = 'branches'
@@ -12,6 +13,9 @@ export const SCOPE_PATH_FIELD = 'scopePath'
 export const BRANCH_ORGANIZATION_FIELD = 'organization'
 export const RECORD_BRANCH_FIELD = 'branch'
 export const RECORD_DATA_CLASS_FIELD = 'dataClass'
+export const WORK_NOTE_ORGANIZATION_FIELD = 'ownerOrganization'
+export const WORK_NOTE_BRANCH_FIELD = 'ownerBranch'
+export const WORK_NOTE_DATA_CLASS_FIELD = 'ownerClass'
 
 /**
  * D1 rejects a statement with more than 100 bound parameters.
@@ -26,7 +30,11 @@ export const D1_SAFE_PAGE_SIZE = 80
  */
 export const MAX_DIRECT_ASSIGNMENTS = 80
 
-export const SKIP_SCOPE_PATH_CONTEXT = 'skipScopePath'
+/**
+ * Document `id IN` lists are inlined, but a relationship `in` binds about two
+ * parameters per id. Keep each access `in` list at or below this size.
+ */
+export const ID_IN_CHUNK = 40
 
 export const MAX_SCOPE_DEPTH = 32
 
