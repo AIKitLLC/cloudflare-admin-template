@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { withRbac } from '../../access/with-rbac'
+import { guardRolePermissionDelete, guardRolePermissionWrite } from '../guards/guard-role-grants'
 
 export const RolePermissions: CollectionConfig = withRbac({
   slug: 'role-permissions',
@@ -20,6 +21,10 @@ export const RolePermissions: CollectionConfig = withRbac({
       unique: true,
     },
   ],
+  hooks: {
+    beforeChange: [guardRolePermissionWrite],
+    beforeDelete: [guardRolePermissionDelete],
+  },
   fields: [
     {
       name: 'role',

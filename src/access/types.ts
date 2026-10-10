@@ -14,13 +14,14 @@ export type RbacCollectionOptions = {
   enabled?: boolean
   anonymousRead?: boolean
   selfService?: boolean
-  selfServiceLockedFields?: string[]
+  selfServiceFields?: string[]
 }
 
 export type UserGrants = {
   userId: number | string
   fullAccess: boolean
   permissionKeys: Set<string>
+  roleIds: string[]
 }
 
 export type AccessEvaluationContext = {

@@ -6,15 +6,25 @@ import type {
 import { APIError } from 'payload'
 
 import { ROLES_SLUG, SUPER_ADMIN_SLUG } from '../../access/constants'
+import { assertCanChangeFullAccessFlag } from '../guards/guard-full-access-flag'
 
-export const protectSuperAdminRole: CollectionBeforeChangeHook = ({
+export const protectSuperAdminRole: CollectionBeforeChangeHook = async ({
+  context,
   data,
   originalDoc,
   operation,
+  req,
 }) => {
   if (typeof data?.slug === 'string') {
     data.slug = data.slug.trim().toLowerCase()
   }
+  await assertCanChangeFullAccessFlag({
+    context,
+    data: data ?? {},
+    operation,
+    originalDoc,
+    req,
+  })
   if (operation === 'update' && originalDoc?.slug === SUPER_ADMIN_SLUG) {
     if (data?.slug && data.slug !== SUPER_ADMIN_SLUG) {
       throw new APIError('The super-admin role slug cannot be changed.', 400)

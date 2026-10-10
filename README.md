@@ -133,8 +133,9 @@ Restart the app once so the permission catalog picks up the new collection. Gran
 
 Roles, permissions, and role-permission grants live in D1.
 
-- **Super Admin** (`grantsFullAccess`) bypasses the matrix. The first user, and every existing user when no roles are assigned yet, receives this role so an upgrade cannot lock the admin out.
-- Other roles start with no grants. Assign actions per collection and read/write per field in `/admin/permission-matrix`.
+- **Super Admin** (`grantsFullAccess`) bypasses the matrix. The first user receives this role. Existing users with no roles receive it once, on the first seed after upgrade, and that promotion does not run again.
+- Only a full-access user can turn on `grantsFullAccess`, assign or remove a full-access role, or edit grants on a role they hold. The last full-access assignment cannot be removed.
+- Other roles start with no grants. Assign actions per collection and read/write per field in `/admin/permission-matrix`. Collections added without `withRbac` are still denied until a grant exists.
 - `GET /api/{collection}/export` returns CSV. It requires the `export` action and still applies read and field permissions.
 - Media keeps anonymous read for public file URLs. Signed-in users still need `media:read`.
 
@@ -169,9 +170,11 @@ Update `wrangler.jsonc` with your D1 `database_id` and R2 bucket name.
 ### 2. Run Database Migrations & Deploy
 
 ```bash
-pnpm payload migrate:create
+pnpm payload migrate
 pnpm run deploy
 ```
+
+`pnpm payload migrate` applies the committed migrations, including the RBAC tables. `pnpm payload migrate:create` only scaffolds a new migration file after you change a collection. It does not update D1.
 
 ---
 

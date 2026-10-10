@@ -9,3 +9,7 @@ export function isWhereConstraint(value: AccessConstraint): value is Where {
 export function isAccessGranted(value: AccessConstraint): boolean {
   return value !== false
 }
+
+export function isUnconditionalAllow(value: AccessConstraint): boolean {
+  return value === true
+}

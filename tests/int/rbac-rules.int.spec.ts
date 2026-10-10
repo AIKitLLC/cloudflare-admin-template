@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { omitAuthSecrets } from '@/access/export/create-export-endpoint'
 import { permissionKey } from '@/access/permission-key'
 import { toCsv } from '@/access/export/to-csv'
 import {
@@ -52,9 +53,28 @@ describe('RBAC rules', () => {
   })
 
   it('escapes csv formulas and quotes', () => {
-    const csv = toCsv([{ id: 1, name: '=cmd', note: 'say "hi"' }])
-    expect(csv.split('\n')[0]).toBe('id,name,note')
+    const csv = toCsv([
+      { id: 1, name: '=cmd', note: 'say "hi"', amount: -12.5, padded: '\t=cmd', broken: '\r=cmd' },
+    ])
+    expect(csv.split('\n')[0]).toBe('id,amount,broken,name,note,padded')
     expect(csv).toContain("'=cmd")
     expect(csv).toContain('"say ""hi"""')
+    expect(csv).toContain('-12.5')
+    expect(csv).not.toContain("'-12.5")
+    expect(csv).toContain("'\t=cmd")
+    expect(csv).toContain("'\r=cmd")
+  })
+
+  it('drops auth secrets before they can reach a csv row', () => {
+    const visible = omitAuthSecrets({
+      id: 1,
+      email: 'a@example.com',
+      hash: 'secret-hash',
+      salt: 'secret-salt',
+      resetPasswordToken: 'token',
+      sessions: [{ id: 's' }],
+    })
+    expect(visible).toEqual({ id: 1, email: 'a@example.com' })
+    expect(toCsv([visible])).not.toContain('secret-hash')
   })
 })

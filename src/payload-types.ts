@@ -130,7 +130,7 @@ export interface UserAuthOperations {
 export interface User {
   id: number;
   /**
-   * Access roles. A user with no roles cannot read or change collections. The roles field itself is not self-service editable.
+   * Access roles. A user with no roles cannot read or change collections. Self-service edits cannot change roles.
    */
   roles?: (number | Role)[] | null;
   updatedAt: string;

@@ -51,11 +51,16 @@ export async function evaluateFieldAccess(args: {
     return true
   }
 
-  const locked = new Set(options.selfServiceLockedFields ?? [])
   const topLevelField = args.fieldPath.split('.')[0] ?? args.fieldPath
   const ownDocument = isOwnDocument(args.req, args.collectionSlug, documentId(args))
-  if (options.selfService && ownDocument && !locked.has(topLevelField)) {
-    return true
+  if (options.selfService && ownDocument) {
+    if (args.mode === 'read') {
+      return true
+    }
+    const allowlist = new Set(options.selfServiceFields ?? [])
+    if (allowlist.has(topLevelField)) {
+      return true
+    }
   }
 
   const action = args.mode === 'read' ? 'readField' : 'writeField'

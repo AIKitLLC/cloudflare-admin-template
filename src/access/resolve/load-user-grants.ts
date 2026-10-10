@@ -10,25 +10,36 @@ import {
 import { relationId, relationIds } from '../relation-id'
 import type { UserGrants } from '../types'
 
+type GrantCacheEntry = {
+  userId: string
+  promise: Promise<UserGrants>
+}
+
 type PermissionRecord = {
   key?: string | null
   active?: boolean | null
 }
 
-function readCache(req: PayloadRequest, userId: number | string): UserGrants | undefined {
-  const cached = req.context?.[GRANT_CACHE_KEY] as UserGrants | undefined
-  if (cached && String(cached.userId) === String(userId)) {
-    return cached
+function readCache(req: PayloadRequest, userId: number | string): Promise<UserGrants> | undefined {
+  const cached = req.context?.[GRANT_CACHE_KEY] as GrantCacheEntry | undefined
+  if (cached && cached.userId === String(userId)) {
+    return cached.promise
   }
   return undefined
 }
 
-function storeCache(req: PayloadRequest, grants: UserGrants): UserGrants {
+function storeCache(
+  req: PayloadRequest,
+  userId: number | string,
+  promise: Promise<UserGrants>,
+): void {
   if (!req.context) {
     req.context = {}
   }
-  req.context[GRANT_CACHE_KEY] = grants
-  return grants
+  req.context[GRANT_CACHE_KEY] = {
+    userId: String(userId),
+    promise,
+  } satisfies GrantCacheEntry
 }
 
 function emptyGrants(userId: number | string): UserGrants {
@@ -36,7 +47,15 @@ function emptyGrants(userId: number | string): UserGrants {
     userId,
     fullAccess: false,
     permissionKeys: new Set(),
+    roleIds: [],
   }
+}
+
+function roleIdsFromRequestUser(req: PayloadRequest): string[] | undefined {
+  if (!req.user || !('roles' in req.user)) {
+    return undefined
+  }
+  return relationIds((req.user as { roles?: unknown }).roles)
 }
 
 export async function loadUserGrants(req: PayloadRequest): Promise<UserGrants | undefined> {
@@ -50,27 +69,39 @@ export async function loadUserGrants(req: PayloadRequest): Promise<UserGrants | 
     return cached
   }
 
-  let user: { id: number | string; roles?: unknown } | null = null
-  try {
-    user = (await req.payload.findByID({
-      collection: USERS_SLUG,
-      id: userId,
-      depth: 0,
-      overrideAccess: true,
-      disableErrors: true,
-      req,
-    })) as { id: number | string; roles?: unknown } | null
-  } catch {
-    user = null
+  const pending = resolveUserGrants(req, userId)
+  storeCache(req, userId, pending)
+  return pending
+}
+
+async function resolveUserGrants(
+  req: PayloadRequest,
+  userId: number | string,
+): Promise<UserGrants> {
+  const requestRoleIds = roleIdsFromRequestUser(req)
+  let roleIds = requestRoleIds
+  if (!roleIds) {
+    let user: { id: number | string; roles?: unknown } | null = null
+    try {
+      user = (await req.payload.findByID({
+        collection: USERS_SLUG,
+        id: userId,
+        depth: 0,
+        overrideAccess: true,
+        disableErrors: true,
+        req,
+      })) as { id: number | string; roles?: unknown } | null
+    } catch {
+      user = null
+    }
+    if (!user) {
+      return emptyGrants(userId)
+    }
+    roleIds = relationIds(user.roles)
   }
 
-  if (!user) {
-    return storeCache(req, emptyGrants(userId))
-  }
-
-  const roleIds = relationIds(user.roles)
   if (roleIds.length === 0) {
-    return storeCache(req, emptyGrants(user.id))
+    return emptyGrants(userId)
   }
 
   const roles = await req.payload.find({
@@ -90,11 +121,12 @@ export async function loadUserGrants(req: PayloadRequest): Promise<UserGrants | 
     Boolean((role as { grantsFullAccess?: boolean | null }).grantsFullAccess),
   )
   if (fullAccess) {
-    return storeCache(req, {
-      userId: user.id,
+    return {
+      userId,
       fullAccess: true,
       permissionKeys: new Set(),
-    })
+      roleIds,
+    }
   }
 
   const grants = await req.payload.find({
@@ -170,11 +202,12 @@ export async function loadUserGrants(req: PayloadRequest): Promise<UserGrants | 
     }
   }
 
-  return storeCache(req, {
-    userId: user.id,
+  return {
+    userId,
     fullAccess: false,
     permissionKeys: keys,
-  })
+    roleIds,
+  }
 }
 
 export async function userGrantsFullAccess(req: PayloadRequest): Promise<boolean> {

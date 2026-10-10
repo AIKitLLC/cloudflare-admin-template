@@ -39,15 +39,19 @@ Export requires the `export` action, then reads through normal access so read an
 
 - The `super-admin` role is created on startup if it is missing, and `grantsFullAccess` cannot be turned off or the role deleted.
 - Every active permission is granted to that role so the matrix shows a complete column. Unchecking it is rejected; the bypass does not depend on those rows.
-- If the database has users and none of them have roles, all of them receive `super-admin`. That is the upgrade path from the pre-RBAC template.
+- Upgrade promotion runs once. The first seed writes `rbac:upgrade_promotion` in Payload's `payload-kv` collection. Later startups do not scan users or assign roles, even if every full-access assignment was removed outside the API.
+- The last user who holds a full-access role cannot have that role removed or be deleted. This is enforced for full-access actors too.
+- Only a full-access user can set `grantsFullAccess`, or assign or remove a full-access role. Collection hooks enforce that for REST and GraphQL.
+- A user who is not full-access cannot create, update, or delete grants on a role they hold, including through `POST /api/rbac/grants`.
 - The first user created with no roles also receives `super-admin`, which covers the create-first-user screen after a fresh boot.
 - Later users created without roles get no access until an administrator assigns one.
+- Collections registered without `withRbac` are wrapped at config build. Startup throws if a non-internal collection is still uncovered. An uncovered collection does not fall back to Payload's logged-in allow.
 
 `access.admin` on users stays "any logged-in user", so a limited role can open the admin panel. Nav items still follow collection read permission.
 
 ## Admin UI
 
-`/admin/permission-matrix` is a root admin view. It is linked after the nav items for users who can read `role-permissions`. Edits call `POST /api/rbac/grants`. `GET /api/rbac/matrix` returns the same grid plus `canEdit`.
+`/admin/permission-matrix` is a root admin view. It is linked after the nav items for users who can read `role-permissions`. Edits call `POST /api/rbac/grants`. That route requires the permission id to exist and requires unconditional (`true`, not a Where) create and update on `role-permissions`, or full access. `GET /api/rbac/matrix` returns the same grid plus `canEdit`.
 
 ## Adding a collection
 
@@ -61,7 +65,7 @@ export const Customers = withRbac({
 Optional `withRbac` options:
 
 - `anonymousRead`: unauthenticated `read` is allowed. Signed-in users still need the read grant.
-- `selfService` / `selfServiceLockedFields`: own-document read and update, with listed top-level fields excluded.
+- `selfService` / `selfServiceFields`: own-document read is allowed. Own-document writes are limited to the allowlist. Users allow `email` and `password`. A `writeField` grant is still required to edit any other field, including `roles`.
 
 Restart after adding a collection so the catalog sync inserts the new permission rows, then grant them in the matrix.
 
@@ -80,4 +84,12 @@ Grants are request-cached and loaded with `overrideAccess`, so field access cann
 
 ## Migrations
 
-Schema changes are Payload migrations under `src/migrations`, registered from `src/migrations/index.ts`, and passed to the D1 adapter as `prodMigrations`. Local development also pushes the Drizzle schema when `NODE_ENV` is not production. Production Workers apply `prodMigrations` on connect. Run `pnpm payload migrate` against the target D1 database before relying on a deploy.
+Schema changes are Payload migrations under `src/migrations`, registered from `src/migrations/index.ts`, and passed to the D1 adapter as `prodMigrations`. Local development also pushes the Drizzle schema when `NODE_ENV` is not production. Production Workers apply `prodMigrations` on connect. Run `pnpm payload migrate` against the target D1 database before relying on a deploy. `pnpm payload migrate:create` only scaffolds a new file. It does not apply one.
+
+`20261010_080937_payload_kv` creates Payload's database KV table. That collection belongs to Payload, not to the permission matrix, so it is not in the RBAC migration. The one-time promotion flag and the catalog fingerprint are rows in that table (`rbac:upgrade_promotion` and `rbac:catalog_fingerprint`). `20261010_080938_rbac_permission_matrix` creates the RBAC tables.
+
+Startup seeding is idempotent. A matching fingerprint skips the catalog and grant writes. Unique collisions during a concurrent boot are treated as insert-or-ignore. A seed failure is logged and does not stop the Worker from serving requests.
+
+`src/app/(payload)/layout.tsx` keeps a local `viewport` export because `@payloadcms/next/layouts` in Payload 3.82 does not export `generatePayloadViewport`.
+
+`cors` and `csrf` allow `PAYLOAD_PUBLIC_SERVER_URL` (default `http://localhost:3000`) plus any comma-separated `PAYLOAD_ALLOWED_ORIGINS`.

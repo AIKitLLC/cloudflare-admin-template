@@ -77,13 +77,6 @@ export async function up({ db }: MigrateUpArgs): Promise<void> {
   await db.run(sql`CREATE INDEX \`users_rels_parent_idx\` ON \`users_rels\` (\`parent_id\`);`)
   await db.run(sql`CREATE INDEX \`users_rels_path_idx\` ON \`users_rels\` (\`path\`);`)
   await db.run(sql`CREATE INDEX \`users_rels_roles_id_idx\` ON \`users_rels\` (\`roles_id\`);`)
-  await db.run(sql`CREATE TABLE \`payload_kv\` (
-  	\`id\` integer PRIMARY KEY NOT NULL,
-  	\`key\` text NOT NULL,
-  	\`data\` text NOT NULL
-  );
-  `)
-  await db.run(sql`CREATE UNIQUE INDEX \`payload_kv_key_idx\` ON \`payload_kv\` (\`key\`);`)
   await db.run(
     sql`ALTER TABLE \`payload_locked_documents_rels\` ADD \`roles_id\` integer REFERENCES roles(id);`,
   )
@@ -109,7 +102,6 @@ export async function down({ db }: MigrateDownArgs): Promise<void> {
   await db.run(sql`DROP TABLE \`role_permissions\`;`)
   await db.run(sql`DROP TABLE \`permissions\`;`)
   await db.run(sql`DROP TABLE \`roles\`;`)
-  await db.run(sql`DROP TABLE \`payload_kv\`;`)
   await db.run(sql`PRAGMA foreign_keys=OFF;`)
   await db.run(sql`CREATE TABLE \`__new_payload_locked_documents_rels\` (
   	\`id\` integer PRIMARY KEY NOT NULL,

@@ -5,6 +5,7 @@ import {
   collectPermissionDefinitions,
   type PermissionDefinition,
 } from '../catalog/permission-definition'
+import { isUniqueConstraintError } from './unique-constraint'
 
 type PermissionDoc = {
   id: number | string
@@ -37,37 +38,25 @@ export async function syncPermissionCatalog(
   for (const definition of desired) {
     const current = byKey.get(definition.key)
     if (!current) {
-      await payload.create({
-        collection: PERMISSIONS_SLUG as CollectionSlug,
-        data: {
-          key: definition.key,
-          label: definition.label,
-          collectionSlug: definition.collectionSlug,
-          action: definition.action,
-          fieldPath: definition.fieldPath,
-          active: true,
-          description: definition.fieldPath
-            ? `Field ${definition.action} on ${definition.collectionSlug}.${definition.fieldPath}`
-            : `Collection ${definition.action} on ${definition.collectionSlug}`,
-        },
-        overrideAccess: true,
-      })
-      created += 1
+      const inserted = await createPermission(payload, definition)
+      if (inserted) {
+        created += 1
+        continue
+      }
+      const raced = await findPermissionByKey(payload, definition.key)
+      if (!raced) {
+        created += 1
+        continue
+      }
+      byKey.set(definition.key, raced)
+      if (needsCatalogUpdate(raced, definition)) {
+        await updatePermission(payload, raced.id, definition)
+        updated += 1
+      }
       continue
     }
     if (needsCatalogUpdate(current, definition)) {
-      await payload.update({
-        collection: PERMISSIONS_SLUG as CollectionSlug,
-        id: current.id,
-        data: {
-          label: definition.label,
-          collectionSlug: definition.collectionSlug,
-          action: definition.action,
-          fieldPath: definition.fieldPath ?? null,
-          active: true,
-        },
-        overrideAccess: true,
-      })
+      await updatePermission(payload, current.id, definition)
       updated += 1
     }
   }
@@ -85,6 +74,72 @@ export async function syncPermissionCatalog(
   }
 
   return { created, updated, deactivated }
+}
+
+async function createPermission(
+  payload: Payload,
+  definition: PermissionDefinition,
+): Promise<boolean> {
+  try {
+    await payload.create({
+      collection: PERMISSIONS_SLUG as CollectionSlug,
+      data: permissionData(definition),
+      overrideAccess: true,
+    })
+    return true
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) {
+      throw error
+    }
+    return false
+  }
+}
+
+function permissionData(definition: PermissionDefinition) {
+  return {
+    key: definition.key,
+    label: definition.label,
+    collectionSlug: definition.collectionSlug,
+    action: definition.action,
+    fieldPath: definition.fieldPath,
+    active: true,
+    description: definition.fieldPath
+      ? `Field ${definition.action} on ${definition.collectionSlug}.${definition.fieldPath}`
+      : `Collection ${definition.action} on ${definition.collectionSlug}`,
+  }
+}
+
+async function updatePermission(
+  payload: Payload,
+  id: number | string,
+  definition: PermissionDefinition,
+): Promise<void> {
+  await payload.update({
+    collection: PERMISSIONS_SLUG as CollectionSlug,
+    id,
+    data: {
+      label: definition.label,
+      collectionSlug: definition.collectionSlug,
+      action: definition.action,
+      fieldPath: definition.fieldPath ?? null,
+      active: true,
+    },
+    overrideAccess: true,
+  })
+}
+
+async function findPermissionByKey(
+  payload: Payload,
+  key: string,
+): Promise<PermissionDoc | undefined> {
+  const found = await payload.find({
+    collection: PERMISSIONS_SLUG as CollectionSlug,
+    depth: 0,
+    limit: 1,
+    overrideAccess: true,
+    where: { key: { equals: key } },
+  })
+  return found.docs[0] as PermissionDoc | undefined
 }
 
 function needsCatalogUpdate(current: PermissionDoc, definition: PermissionDefinition): boolean {

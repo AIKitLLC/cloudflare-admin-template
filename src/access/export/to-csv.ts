@@ -1,4 +1,5 @@
-const FORMULA_PREFIX = /^[=+\-@]/
+const FORMULA_PREFIX = /^[=+@\t\r-]/
+const NEGATIVE_NUMBER = /^-(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/
 
 export function toCsv(rows: Record<string, unknown>[]): string {
   const columns = collectColumns(rows)
@@ -37,9 +38,16 @@ function formatCell(value: unknown): string {
 }
 
 function escapeCell(value: string): string {
-  const safe = FORMULA_PREFIX.test(value) ? `'${value}` : value
+  const safe = needsFormulaGuard(value) ? `'${value}` : value
   if (/[",\n\r]/.test(safe)) {
     return `"${safe.replaceAll('"', '""')}"`
   }
   return safe
+}
+
+function needsFormulaGuard(value: string): boolean {
+  if (NEGATIVE_NUMBER.test(value)) {
+    return false
+  }
+  return FORMULA_PREFIX.test(value)
 }

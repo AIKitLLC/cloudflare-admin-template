@@ -12,6 +12,25 @@ import { toCsv } from './to-csv'
 
 const PAGE_SIZE = 200
 const MAX_ROWS = 2000
+const AUTH_EXPORT_FIELDS = new Set([
+  'hash',
+  'salt',
+  'resetPasswordToken',
+  'resetPasswordExpiration',
+  'loginAttempts',
+  'lockUntil',
+  'sessions',
+])
+
+export function omitAuthSecrets(row: Record<string, unknown>): Record<string, unknown> {
+  const visible: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(row)) {
+    if (!AUTH_EXPORT_FIELDS.has(key)) {
+      visible[key] = value
+    }
+  }
+  return visible
+}
 
 export function createExportEndpoint(collectionSlug: string): Endpoint {
   return {
@@ -54,7 +73,7 @@ export async function exportCollection(
     }
     throw error
   }
-  const csv = toCsv(rows.docs)
+  const csv = toCsv(rows.docs.map(omitAuthSecrets))
   const headers = new Headers({
     'Content-Type': 'text/csv; charset=utf-8',
     'Content-Disposition': `attachment; filename="${collectionSlug}.csv"`,

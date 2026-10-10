@@ -8,6 +8,7 @@ import { CloudflareContext, getCloudflareContext } from '@opennextjs/cloudflare'
 import { GetPlatformProxyOptions } from 'wrangler'
 import { r2Storage } from '@payloadcms/storage-r2'
 
+import { assertRbacCoverage, ensureRbacCoverage } from './access/ensure-rbac-coverage'
 import { applyFieldAccess } from './access/fields/apply-field-access'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
@@ -22,9 +23,19 @@ const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
 const realpath = (value: string) => (fs.existsSync(value) ? fs.realpathSync(value) : undefined)
 
-const isCLI = process.argv.some((value) => realpath(value).endsWith(path.join('payload', 'bin.js')))
+const isCLI = process.argv.some((value) =>
+  realpath(value)?.endsWith(path.join('payload', 'bin.js')),
+)
 const isProduction = process.env.NODE_ENV === 'production'
 const isNextProductionBuild = process.env.NEXT_PHASE === 'phase-production-build'
+const serverURL = process.env.PAYLOAD_PUBLIC_SERVER_URL || 'http://localhost:3000'
+const allowedOrigins = [
+  serverURL,
+  ...(process.env.PAYLOAD_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+]
 
 const createLog =
   (level: string, fn: typeof console.log) => (objOrMsg: object | string, msg?: string) => {
@@ -71,11 +82,22 @@ export default buildConfig({
       },
     },
   },
-  collections: [Users, Media, Roles, Permissions, RolePermissions],
+  collections: ensureRbacCoverage([Users, Media, Roles, Permissions, RolePermissions]),
   endpoints: [matrixEndpoint, grantEndpoint],
+  serverURL,
+  cors: allowedOrigins,
+  csrf: allowedOrigins,
   onInit: async (payload) => {
     applyFieldAccess(payload)
-    await seedRbac(payload)
+    assertRbacCoverage(payload)
+    try {
+      await seedRbac(payload)
+    } catch (error) {
+      payload.logger.error({
+        msg: 'RBAC seed failed. Requests continue with the last successful catalog.',
+        err: error,
+      })
+    }
   },
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',

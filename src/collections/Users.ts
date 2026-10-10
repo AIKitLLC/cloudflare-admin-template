@@ -1,6 +1,10 @@
 import type { CollectionConfig } from 'payload'
 
 import { withRbac } from '../access/with-rbac'
+import {
+  guardLastFullAccessDeletion,
+  guardUserRoleAssignment,
+} from '../rbac/guards/guard-full-access-assignment'
 import { assignSuperAdminToFirstUser } from '../rbac/hooks/assign-super-admin-to-first-user'
 
 export const Users: CollectionConfig = withRbac(
@@ -22,17 +26,19 @@ export const Users: CollectionConfig = withRbac(
         admin: {
           position: 'sidebar',
           description:
-            'Access roles. A user with no roles cannot read or change collections. The roles field itself is not self-service editable.',
+            'Access roles. A user with no roles cannot read or change collections. Self-service edits cannot change roles.',
         },
       },
     ],
     hooks: {
+      beforeChange: [guardUserRoleAssignment],
+      beforeDelete: [guardLastFullAccessDeletion],
       afterChange: [assignSuperAdminToFirstUser],
     },
     versions: false,
   },
   {
     selfService: true,
-    selfServiceLockedFields: ['roles'],
+    selfServiceFields: ['email', 'password'],
   },
 )

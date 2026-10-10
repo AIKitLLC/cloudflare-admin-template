@@ -1,4 +1,10 @@
 /* THIS FILE WAS GENERATED AUTOMATICALLY BY PAYLOAD. MODIFY AT YOUR OWN RISK. */
+/*
+ * Payload 3.82's `@payloadcms/next/layouts` does not export `generatePayloadViewport`.
+ * The generated layout imported that function and failed typecheck, so the viewport
+ * export below is declared here. Regenerate this file with `payload generate:importmap`
+ * only after confirming that export exists again.
+ */
 import type { Viewport } from 'next'
 import config from '@payload-config'
 import '@payloadcms/next/css'
