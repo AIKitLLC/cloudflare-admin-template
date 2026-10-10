@@ -69,6 +69,7 @@ export interface Config {
   collections: {
     users: User;
     media: Media;
+    'audit-logs': AuditLog;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -78,6 +79,7 @@ export interface Config {
   collectionsSelect: {
     users: UsersSelect<false> | UsersSelect<true>;
     media: MediaSelect<false> | MediaSelect<true>;
+    'audit-logs': AuditLogsSelect<false> | AuditLogsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -158,6 +160,72 @@ export interface Media {
   filesize?: number | null;
   width?: number | null;
   height?: number | null;
+}
+/**
+ * Append-only trail of who changed which field. Filter by record ID, collection, or operator. Records cannot be edited or deleted.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-logs".
+ */
+export interface AuditLog {
+  id: number;
+  /**
+   * Short description of the action and the fields that changed.
+   */
+  summary: string;
+  action: 'CREATE' | 'UPDATE' | 'DELETE';
+  /**
+   * Slug of the collection that changed.
+   */
+  collectionSlug: string;
+  /**
+   * Id of the record that changed.
+   */
+  documentId: string;
+  /**
+   * Authenticated user who made the change. Cleared if that user is later deleted; the operator id and email snapshots remain.
+   */
+  actor?: (number | null) | User;
+  /**
+   * Snapshot of the operator id. Kept after the user row is deleted. Stored separately from the operator relationship so the two columns cannot collide.
+   */
+  operatorId?: string | null;
+  /**
+   * Snapshot of the operator email at the time of the change.
+   */
+  actorEmail?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  occurredAt: string;
+  /**
+   * Old and new value of each changed field. Secrets are redacted.
+   */
+  changes?:
+    | {
+        path: string;
+        oldValue?:
+          | {
+              [k: string]: unknown;
+            }
+          | unknown[]
+          | string
+          | number
+          | boolean
+          | null;
+        newValue?:
+          | {
+              [k: string]: unknown;
+            }
+          | unknown[]
+          | string
+          | number
+          | boolean
+          | null;
+        id?: string | null;
+      }[]
+    | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -270,6 +338,32 @@ export interface MediaSelect<T extends boolean = true> {
   filesize?: T;
   width?: T;
   height?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-logs_select".
+ */
+export interface AuditLogsSelect<T extends boolean = true> {
+  summary?: T;
+  action?: T;
+  collectionSlug?: T;
+  documentId?: T;
+  actor?: T;
+  operatorId?: T;
+  actorEmail?: T;
+  ipAddress?: T;
+  userAgent?: T;
+  occurredAt?: T;
+  changes?:
+    | T
+    | {
+        path?: T;
+        oldValue?: T;
+        newValue?: T;
+        id?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
