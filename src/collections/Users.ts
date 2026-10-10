@@ -2,6 +2,7 @@ import type { CollectionConfig } from 'payload'
 
 import { withRbac } from '../access/with-rbac'
 import {
+  guardAuthCredentialOperation,
   guardLastFullAccessDeletion,
   guardUserRoleAssignment,
 } from '../rbac/guards/guard-full-access-assignment'
@@ -31,6 +32,7 @@ export const Users: CollectionConfig = withRbac(
       },
     ],
     hooks: {
+      beforeOperation: [guardAuthCredentialOperation],
       beforeChange: [guardUserRoleAssignment],
       beforeDelete: [guardLastFullAccessDeletion],
       afterChange: [assignSuperAdminToFirstUser],

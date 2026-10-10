@@ -12,5 +12,8 @@ export const SUBSET_GRANT_ERROR = 'You can only grant permissions you already ho
 export const SUBSET_ASSIGNMENT_ERROR =
   'You can only assign a role whose permissions are a subset of your own.'
 
+export const PRIVILEGED_USER_ERROR =
+  'You can only update or delete a user whose permissions are a subset of your own.'
+
 export const UNCONDITIONAL_GRANT_ERROR =
   'You need unconditional create and update access to role permissions.'
