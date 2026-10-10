@@ -4,7 +4,11 @@ import { JOB_QUEUE_BINDING } from '../constants'
 import type { JobQueueMessage } from '../types'
 
 export type JobQueueBinding = {
-  send: (message: JobQueueMessage) => Promise<void>
+  send: (message: JobQueueMessage, options?: { delaySeconds?: number }) => Promise<void>
+}
+
+export function isWorkerIsolate(): boolean {
+  return typeof navigator !== 'undefined' && /Cloudflare-Workers/i.test(navigator.userAgent)
 }
 
 export async function readJobQueue(): Promise<JobQueueBinding | undefined> {

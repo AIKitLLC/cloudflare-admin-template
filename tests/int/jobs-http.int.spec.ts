@@ -1,11 +1,18 @@
 // @vitest-environment node
-import { GRAPHQL_POST, REST_GET, REST_POST } from '@payloadcms/next/routes'
+import { GRAPHQL_POST, REST_DELETE, REST_GET, REST_PATCH, REST_POST } from '@payloadcms/next/routes'
 import { getPayload, type CollectionSlug, type Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import config from '@/payload.config'
 import { defineJob } from '@/jobs/registry/define-job'
-import { JOB_NOT_FOUND_MESSAGE, RETRY_ONLY_FAILED_MESSAGE, UNKNOWN_JOB_MESSAGE } from '@/jobs/errors'
+import {
+  IDEMPOTENCY_CONFLICT_MESSAGE,
+  JOB_NOT_FOUND_MESSAGE,
+  JOB_PRIVILEGE_MESSAGE,
+  PAYLOAD_HAS_SECRET_MESSAGE,
+  RETRY_ONLY_FAILED_MESSAGE,
+  UNKNOWN_JOB_MESSAGE,
+} from '@/jobs/errors'
 import { processJob } from '@/jobs/runner/process-job'
 import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
 import { setRoleGrant } from '@/rbac/matrix/set-role-grant'
@@ -13,6 +20,8 @@ import { setRoleGrant } from '@/rbac/matrix/set-role-grant'
 const ORIGIN = 'http://localhost:3000'
 const post = REST_POST(config)
 const get = REST_GET(config)
+const patch = REST_PATCH(config)
+const remove = REST_DELETE(config)
 const graphql = GRAPHQL_POST(config)
 
 let payload: Payload
@@ -275,6 +284,131 @@ describe('job HTTP permissions', () => {
     )
     expect(JSON.stringify(await graphqlDenied.json())).toContain('not allowed to retry')
   })
+
+  it('refuses REST and GraphQL updates and deletes, including for full access', async () => {
+    const trigger = await loginWith(['jobs:trigger'])
+    const queued = await post(
+      jsonRequest('/api/jobs/trigger', { name: 'test.echo', payload: { message: 'locked' } }, trigger),
+      route(['jobs', 'trigger']),
+    )
+    expect(queued.status).toBe(201)
+    const jobId = Number(((await queued.json()) as { doc?: { id?: number } }).doc?.id)
+    createdJobIds.push(jobId)
+
+    const admin = await loginSuperAdmin()
+    const patched = await patch(
+      jsonRequest(`/api/jobs/${jobId}`, { status: 'SUCCESS' }, admin, ORIGIN, 'PATCH'),
+      route(['jobs', String(jobId)]),
+    )
+    expect(patched.status).toBe(403)
+
+    const deleted = await remove(
+      jsonRequest(`/api/jobs/${jobId}`, undefined, admin, ORIGIN, 'DELETE'),
+      route(['jobs', String(jobId)]),
+    )
+    expect(deleted.status).toBe(403)
+
+    const graphqlUpdate = await graphql(
+      jsonRequest(
+        '/api/graphql',
+        {
+          query: `mutation Update($id: Int!) { updateJob(id: $id, data: { name: "test.echo" }) { id } }`,
+          variables: { id: jobId },
+        },
+        admin,
+      ),
+    )
+    expect(JSON.stringify(await graphqlUpdate.json())).toMatch(/not allowed|forbidden/i)
+
+    const graphqlDelete = await graphql(
+      jsonRequest(
+        '/api/graphql',
+        {
+          query: `mutation Delete($id: Int!) { deleteJob(id: $id) { id } }`,
+          variables: { id: jobId },
+        },
+        admin,
+      ),
+    )
+    expect(JSON.stringify(await graphqlDelete.json())).toMatch(/not allowed|forbidden/i)
+  })
+
+  it('requires full access for system.ping and scopes idempotency keys to the caller', async () => {
+    const trigger = await loginWith(['jobs:trigger'])
+    const denied = await post(
+      jsonRequest('/api/jobs/trigger', { name: 'system.ping', payload: { note: 'no' } }, trigger),
+      route(['jobs', 'trigger']),
+    )
+    expect(denied.status).toBe(403)
+    expect(JSON.stringify(await denied.json())).toContain(JOB_PRIVILEGE_MESSAGE)
+
+    const secret = await post(
+      jsonRequest('/api/jobs/trigger', { name: 'test.echo', payload: { message: 'ok', password: 'x' } }, trigger),
+      route(['jobs', 'trigger']),
+    )
+    expect(secret.status).toBe(400)
+    expect(JSON.stringify(await secret.json())).toContain(PAYLOAD_HAS_SECRET_MESSAGE)
+
+    const admin = await loginSuperAdmin()
+    const ping = await post(
+      jsonRequest('/api/jobs/trigger', { name: 'system.ping', payload: { note: 'ok' } }, admin),
+      route(['jobs', 'trigger']),
+    )
+    expect(ping.status).toBe(201)
+    const pingId = Number(((await ping.json()) as { doc?: { id?: number } }).doc?.id)
+    createdJobIds.push(pingId)
+
+    const key = `idem-${stamp}`
+    const first = await post(
+      jsonRequest(
+        '/api/jobs/trigger',
+        { name: 'test.echo', payload: { message: 'same' }, idempotencyKey: key },
+        trigger,
+      ),
+      route(['jobs', 'trigger']),
+    )
+    expect(first.status).toBe(201)
+    const firstBody = (await first.json()) as { doc?: { id?: number } }
+    const firstId = Number(firstBody.doc?.id)
+    createdJobIds.push(firstId)
+
+    const second = await post(
+      jsonRequest(
+        '/api/jobs/trigger',
+        { name: 'test.echo', payload: { message: 'same' }, idempotencyKey: key },
+        trigger,
+      ),
+      route(['jobs', 'trigger']),
+    )
+    expect(second.status).toBe(200)
+    const secondId = Number(((await second.json()) as { doc?: { id?: number } }).doc?.id)
+    expect(secondId).toBe(firstId)
+
+    const conflict = await post(
+      jsonRequest(
+        '/api/jobs/trigger',
+        { name: 'test.echo', payload: { message: 'different' }, idempotencyKey: key },
+        trigger,
+      ),
+      route(['jobs', 'trigger']),
+    )
+    expect(conflict.status).toBe(400)
+    expect(JSON.stringify(await conflict.json())).toContain(IDEMPOTENCY_CONFLICT_MESSAGE)
+
+    const other = await loginWith(['jobs:trigger'])
+    const separate = await post(
+      jsonRequest(
+        '/api/jobs/trigger',
+        { name: 'test.echo', payload: { message: 'same' }, idempotencyKey: key },
+        other,
+      ),
+      route(['jobs', 'trigger']),
+    )
+    expect(separate.status).toBe(201)
+    const separateId = Number(((await separate.json()) as { doc?: { id?: number } }).doc?.id)
+    createdJobIds.push(separateId)
+    expect(separateId).not.toBe(firstId)
+  })
 })
 
 function route(slug: string[]) {
@@ -309,6 +443,31 @@ function cookieHeader(response: Response): string {
     .map((cookie) => cookie.split(';')[0]?.trim())
     .filter((cookie) => cookie && cookie.includes('='))
     .join('; ')
+}
+
+async function loginSuperAdmin(): Promise<string> {
+  const role = await payload.find({
+    collection: 'roles' as CollectionSlug,
+    depth: 0,
+    limit: 1,
+    overrideAccess: true,
+    where: { slug: { equals: 'super-admin' } },
+  })
+  if (!role.docs[0]) {
+    throw new Error('super-admin role was not seeded')
+  }
+  const email = `jobs-admin-${stamp}-${createdUserIds.length}@example.com`
+  const password = 'test-password-123'
+  const user = await payload.create({
+    collection: 'users',
+    data: { email, password, roles: [role.docs[0].id] },
+    overrideAccess: true,
+    context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+  })
+  createdUserIds.push(user.id)
+  const response = await post(jsonRequest('/api/users/login', { email, password }), route(['users', 'login']))
+  expect(response.status).toBe(200)
+  return cookieHeader(response)
 }
 
 async function loginWith(keys: string[]): Promise<string> {

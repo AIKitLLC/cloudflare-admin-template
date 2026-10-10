@@ -27,11 +27,16 @@ export const MAX_LOGS_CHARS = 16_000
 export const MAX_LIST_LIMIT = 50
 export const MAX_LIST_PAGE = 20
 export const MAX_WHERE_IN = 25
-export const MAINTENANCE_BATCH = 25
+
+/** Free-plan Workers allow 50 subrequests. Leave headroom for the invocation itself. */
+export const SCHEDULED_D1_BUDGET = 40
+export const SCHEDULED_REAP_LIMIT = 2
+export const SCHEDULED_RUN_LIMIT = 2
 
 export const JOB_SYSTEM_WRITE = 'jobSystemWrite'
 export const JOB_TRIGGER_WRITE = 'jobTrigger'
 export const JOB_RETRY_WRITE = 'jobRetry'
+export const JOB_HANDLER_READ = 'jobHandlerRead'
 export const SKIP_JOB_ENQUEUE = 'skipJobEnqueue'
 
 export const REDACTED = '[redacted]'

@@ -151,9 +151,9 @@ pnpm payload migrate
 
 Long-running work is a row in `jobs`, not an HTTP request. Only names registered with `defineJob` can run. The admin **Job Monitor** (`/admin/job-monitor`) lists jobs, shows redacted payloads and logs, and can trigger or retry when the role has `jobs:trigger` or `jobs:retry`. Viewing requires `jobs:read`. Those keys are denied until granted.
 
-Production delivery uses Cloudflare Queues and a cron trigger. The Worker entry is `custom-worker.ts`, which adds `queue` and `scheduled` on top of the OpenNext `fetch` handler. Local `pnpm dev` and Vitest run jobs in-process when the queue binding is not used. See [docs/jobs.md](docs/jobs.md).
+The Worker entry is `custom-worker.ts`. Its `queue` and `scheduled` handlers forward to the OpenNext `fetch` handler on an internal route, so Payload is bundled once. Build that Worker with `pnpm build:worker` (also used by `pnpm run deploy`). That command loads a small esbuild hook so Turbopack's hashed `drizzle-kit` external stays out of the bundle, and it keeps the internal `jobs.internal` host when OpenNext copies headers. Migrations still use the real `drizzle-kit` through `payload migrate`. A cron of `*/5 * * * *` is active in `wrangler.jsonc` and fires as soon as the Worker is deployed. It does not require a queue. Each run reaps expired leases and executes a bounded set of due jobs inside that invocation.
 
-The queue names in `wrangler.jsonc` (`placeholder-jobs`, `placeholder-jobs-dlq`) are placeholders. Create the real queues and replace those names before the first deploy that should process jobs. The cron in that file is also a placeholder schedule.
+Cloudflare Queues are optional. The `queues` block in `wrangler.jsonc` is commented out, the same way an optional binding stays commented until the resource exists. Wrangler rejects a deploy that names a queue which does not exist, so leave that block commented until the queues have been created and the placeholder names have been replaced. When `JOB_QUEUE` is absent, jobs stay `PENDING` until the cron runs them. Local `pnpm dev` still runs due jobs in-process. Vitest does not. See [docs/jobs.md](docs/jobs.md).
 
 ## 🚢 Deployment
 

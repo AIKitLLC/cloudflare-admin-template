@@ -1,6 +1,6 @@
 import type { Payload } from 'payload'
 
-import { MAINTENANCE_BATCH } from '../constants'
+import { SCHEDULED_REAP_LIMIT, SCHEDULED_RUN_LIMIT } from '../constants'
 import { d1 } from './d1-client'
 import { JOB_COLUMNS, JOBS_TABLE } from './job-columns'
 
@@ -14,7 +14,7 @@ export async function selectDueJobIds(payload: Payload, now: Date): Promise<numb
        ORDER BY ${JOB_COLUMNS.runAt} ASC
        LIMIT ?`,
     )
-    .bind(now.toISOString(), MAINTENANCE_BATCH)
+    .bind(now.toISOString(), SCHEDULED_RUN_LIMIT)
     .all<{ id: number }>()
   return (result.results ?? []).map((row) => Number(row.id))
 }
@@ -30,7 +30,7 @@ export async function selectExpiredLeaseIds(payload: Payload, now: Date): Promis
        ORDER BY ${JOB_COLUMNS.leaseExpiresAt} ASC
        LIMIT ?`,
     )
-    .bind(now.toISOString(), MAINTENANCE_BATCH)
+    .bind(now.toISOString(), SCHEDULED_REAP_LIMIT)
     .all<{ id: number }>()
   return (result.results ?? []).map((row) => Number(row.id))
 }

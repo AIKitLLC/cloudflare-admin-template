@@ -13,11 +13,15 @@
   ],
   // Production requires PAYLOAD_PUBLIC_SERVER_URL. Admin sessions, CSRF, and media
   // URLs use it. PAYLOAD_ALLOWED_ORIGINS is an optional comma-separated extra list.
-  // Keep PAYLOAD_SECRET as a secret, not a var.
-  // "vars": {
-  //   "PAYLOAD_PUBLIC_SERVER_URL": "https://admin.example.com",
-  //   "PAYLOAD_ALLOWED_ORIGINS": "https://admin.example.com"
-  // },
+  // Keep PAYLOAD_SECRET as a secret, not a var. Uncomment the URL vars and set them,
+  // or set them in the Cloudflare dashboard.
+  // JOBS_INTERNAL_SECRET authenticates the in-worker jobs route. Replace this
+  // placeholder before production. It is not a Cloudflare resource.
+  "vars": {
+    // "PAYLOAD_PUBLIC_SERVER_URL": "https://admin.example.com",
+    // "PAYLOAD_ALLOWED_ORIGINS": "https://admin.example.com",
+    "JOBS_INTERNAL_SECRET": "placeholder-jobs-internal-secret"
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS",
@@ -49,29 +53,34 @@
     // },
   ],
 
-  // PLACEHOLDER background jobs. These queue names are not Cloudflare resources.
-  // Do not deploy, and do not create the queues, until the names below are replaced.
-  // The producer binding JOB_QUEUE and the consumer must use the same queue name.
-  // placeholder-jobs-dlq is the queue-level dead letter (delivery failures).
-  // A job that exhausts application attempts is marked FAILED on the jobs row.
-  // The cron runs the lease reaper and wakes due PENDING jobs.
-  "queues": {
-    "producers": [
-      {
-        "binding": "JOB_QUEUE",
-        "queue": "placeholder-jobs",
-      },
-    ],
-    "consumers": [
-      {
-        "queue": "placeholder-jobs",
-        "max_batch_size": 10,
-        "max_batch_timeout": 5,
-        "max_retries": 10,
-        "dead_letter_queue": "placeholder-jobs-dlq",
-      },
-    ],
-  },
+  // Optional Cloudflare Queue for background jobs. Leave this commented until the
+  // queues exist in the account. Wrangler refuses to deploy if a named queue is
+  // missing, so a deploy with this block commented does not create queues and does
+  // not require them. Binding name: JOB_QUEUE. The producer and the consumer must
+  // use the same queue name. placeholder-jobs-dlq is only for messages the consumer
+  // never acknowledges. A job that exhausts its attempts is marked FAILED on the
+  // jobs row. When JOB_QUEUE is absent, the cron below runs due jobs inside the
+  // scheduled invocation. Uncomment this and replace the placeholder names to opt in.
+  // "queues": {
+  //   "producers": [
+  //     {
+  //       "binding": "JOB_QUEUE",
+  //       "queue": "placeholder-jobs"
+  //     }
+  //   ],
+  //   "consumers": [
+  //     {
+  //       "queue": "placeholder-jobs",
+  //       "max_batch_size": 10,
+  //       "max_batch_timeout": 5,
+  //       "max_retries": 10,
+  //       "dead_letter_queue": "placeholder-jobs-dlq"
+  //     }
+  //   ]
+  // },
+  // This cron is active on deploy. It fires every five minutes and does not require
+  // a queue. The scheduled handler reaps expired leases and runs a bounded set of
+  // due jobs in that invocation.
   "triggers": {
     "crons": ["*/5 * * * *"],
   },

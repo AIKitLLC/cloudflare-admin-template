@@ -24,6 +24,10 @@ export function getJob(name: string): JobDefinition<unknown> | undefined {
   return registry.get(name)
 }
 
+export function listJobDefinitions(): JobDefinition<unknown>[] {
+  return listJobNames().map((name) => registry.get(name) as JobDefinition<unknown>)
+}
+
 export function listJobNames(): string[] {
   return [...registry.keys()]
     .filter((name) => !(name.startsWith('test.') && process.env.NODE_ENV === 'production'))

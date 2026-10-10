@@ -9,11 +9,12 @@ export type JobLogEntry = {
 
 export type JobContext<TPayload> = {
   attempt: number
+  heartbeat: () => Promise<boolean>
   idempotencyKey: string
   jobId: number | string
   log: (message: string) => void
   payload: TPayload
-  heartbeat: () => Promise<boolean>
+  signal: AbortSignal
 }
 
 export type JobDefinition<TPayload> = {
@@ -22,6 +23,8 @@ export type JobDefinition<TPayload> = {
   leaseMs?: number
   maxAttempts?: number
   name: string
+  permissionKey?: string
+  requiresFullAccess?: boolean
   validate: (input: unknown) => TPayload
 }
 

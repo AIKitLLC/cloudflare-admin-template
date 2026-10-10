@@ -6,7 +6,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import config from '@/payload.config'
 import { REDACTED } from '@/jobs/constants'
 import { backoffMs } from '@/jobs/delivery/backoff'
+import { deliverJob } from '@/jobs/delivery/deliver-job'
 import { enqueueRegisteredJob } from '@/jobs/delivery/enqueue-registered-job'
+import { errorDetails } from '@/jobs/redaction/cap-stored-text'
 import { claimJob } from '@/jobs/persistence/claim-job'
 import { d1 } from '@/jobs/persistence/d1-client'
 import { reapExpiredLeases } from '@/jobs/persistence/reap-expired-leases'
@@ -22,6 +24,11 @@ let payload: Payload
 let actor: TypedUser
 const createdJobIds: Array<number | string> = []
 let runs = 0
+let releaseSlow = () => {}
+let slowSignal: AbortSignal | undefined
+let releaseRenew = () => {}
+let renewSignal: AbortSignal | undefined
+let cronRuns = 0
 
 defineJob({
   name: 'test.counter',
@@ -33,6 +40,47 @@ defineJob({
   },
   async execute() {
     runs += 1
+  },
+})
+
+defineJob({
+  name: 'test.slow',
+  maxAttempts: 3,
+  leaseMs: 60_000,
+  validate(input: unknown) {
+    return input ?? {}
+  },
+  async execute(context) {
+    slowSignal = context.signal
+    await new Promise<void>((resolve) => {
+      releaseSlow = resolve
+    })
+  },
+})
+
+defineJob({
+  name: 'test.renew',
+  maxAttempts: 3,
+  leaseMs: 900,
+  validate(input: unknown) {
+    return input ?? {}
+  },
+  async execute(context) {
+    renewSignal = context.signal
+    await new Promise<void>((resolve) => {
+      releaseRenew = resolve
+    })
+  },
+})
+
+defineJob({
+  name: 'test.cron',
+  maxAttempts: 2,
+  validate(input: unknown) {
+    return input ?? {}
+  },
+  async execute() {
+    cronRuns += 1
   },
 })
 
@@ -95,15 +143,33 @@ describe('job runner', () => {
     }
   }, 120000)
 
-  it('redacts sensitive keys and caps stored errors', () => {
-    expect(redactSensitive({ password: 'hunter2', note: 'hi', nested: { apiKey: 'k' } })).toEqual({
+  it('redacts secret segments for display and leaves ordinary keys alone', () => {
+    expect(redactSensitive({ password: 'hunter2', note: 'hi', nested: { api_key: 'k' } })).toEqual({
       password: REDACTED,
       note: 'hi',
-      nested: { apiKey: REDACTED },
+      nested: { api_key: REDACTED },
     })
+    expect(redactSensitive({ author: 'ada', passenger: 1, tokenCount: 2 })).toEqual({
+      author: 'ada',
+      passenger: 1,
+      tokenCount: 2,
+    })
+    const error = new Error('password=hunter2')
+    error.stack = 'STACK SHOULD NOT BE STORED'
+    const details = errorDetails(error)
+    expect(details).toContain('[redacted]')
+    expect(details).not.toContain('STACK')
+    expect(details).not.toContain('hunter2')
     expect(backoffMs(1, 1000)).toBe(1000)
     expect(backoffMs(2, 1000)).toBe(2000)
     expect(backoffMs(3, 1000)).toBe(4000)
+  })
+
+  it('refuses secret-like payload keys and stores ordinary keys unchanged', async () => {
+    await expect(makeJob('test.counter', { password: 'hunter2' })).rejects.toThrow(/secrets/i)
+    const job = await makeJob('test.counter', { author: 'ada', passenger: 1, tokenCount: 2 })
+    const stored = await readStoredJob(payload, job.id, { raw: true })
+    expect(stored?.payload).toEqual({ author: 'ada', passenger: 1, tokenCount: 2 })
   })
 
   it('lets only one of two claims win', async () => {
@@ -121,9 +187,9 @@ describe('job runner', () => {
 
   it('runs a duplicate delivery once', async () => {
     runs = 0
-    const job = await makeJob('test.counter', { note: 'once', password: 'secret' })
-    const stored = await readStoredJob(payload, job.id)
-    expect(stored?.payload).toEqual({ note: 'once', password: REDACTED })
+    const job = await makeJob('test.counter', { note: 'once' })
+    const stored = await readStoredJob(payload, job.id, { raw: true })
+    expect(stored?.payload).toEqual({ note: 'once' })
 
     const first = await processJob(payload, job.id)
     const second = await processJob(payload, job.id)
@@ -135,6 +201,31 @@ describe('job runner', () => {
     await processQueueBatch(payload, { messages })
     expect(messages.every((message) => message.acked)).toBe(true)
     expect(runs).toBe(1)
+
+    const invalid = {
+      acked: false,
+      retried: false,
+      body: { jobId: 'abc' as unknown as number },
+      ack() {
+        this.acked = true
+      },
+      retry() {
+        this.retried = true
+      },
+    }
+    const logged: unknown[] = []
+    const original = payload.logger.error.bind(payload.logger)
+    payload.logger.error = ((entry: unknown) => {
+      logged.push(entry)
+      return original(entry)
+    }) as typeof payload.logger.error
+    try {
+      await processQueueBatch(payload, { messages: [invalid] })
+    } finally {
+      payload.logger.error = original
+    }
+    expect(invalid.acked).toBe(true)
+    expect(JSON.stringify(logged)).toContain('non-integer')
   })
 
   it('retries with backoff and then fails at the attempt limit', async () => {
@@ -191,33 +282,79 @@ describe('job runner', () => {
     expect(runs).toBe(1)
   })
 
+  it('rejects the status write when a slow handler finishes after the reaper', async () => {
+    const job = await makeJob('test.slow', { note: 'slow' })
+    const running = processJob(payload, job.id)
+    await waitFor(async () => (await readStoredJob(payload, job.id))?.status === 'RUNNING')
+    const now = new Date()
+    await d1(payload)
+      .prepare('UPDATE jobs SET lease_expires_at = ? WHERE id = ?')
+      .bind(new Date(now.getTime() - 1000).toISOString(), job.id)
+      .run()
+    const reaped = await reapExpiredLeases(payload, now)
+    expect(reaped.requeued).toBe(1)
+    releaseSlow()
+    const result = await running
+    expect(result.outcome).toBe('skipped')
+    expect((await readStoredJob(payload, job.id))?.status).toBe('PENDING')
+    expect(slowSignal?.aborted).toBe(false)
+  })
+
+  it('aborts the handler when lease renewal loses the claim', async () => {
+    const job = await makeJob('test.renew', { note: 'renew' })
+    const running = processJob(payload, job.id)
+    await waitFor(async () => (await readStoredJob(payload, job.id))?.status === 'RUNNING')
+    await d1(payload)
+      .prepare('UPDATE jobs SET claim_token = ? WHERE id = ?')
+      .bind('stolen', job.id)
+      .run()
+    await waitFor(() => renewSignal?.aborted === true, 2000)
+    releaseRenew()
+    const result = await running
+    expect(result.outcome).toBe('skipped')
+    expect((await readStoredJob(payload, job.id))?.status).toBe('RUNNING')
+  })
+
+  it('sends queue retries with delaySeconds', async () => {
+    const sent: Array<{ options?: { delaySeconds?: number } }> = []
+    await deliverJob(payload, 1, {
+      delayMs: 5_000,
+      queue: {
+        async send(_message, options) {
+          sent.push({ options })
+        },
+      },
+    })
+    expect(sent[0]?.options?.delaySeconds).toBe(5)
+  })
+
   it('wakes a due job from the scheduled maintenance pass', async () => {
-    runs = 0
-    const job = await makeJob('test.counter', { note: 'cron' })
-    await runScheduledMaintenance(payload, new Date())
-    const stored = await readStoredJob(payload, job.id)
-    expect(stored?.status === 'SUCCESS' || stored?.status === 'PENDING' || stored?.status === 'RUNNING').toBe(
-      true,
-    )
-    if (stored?.status !== 'SUCCESS') {
-      await processJob(payload, job.id)
-    }
+    cronRuns = 0
+    await d1(payload)
+      .prepare("UPDATE jobs SET status = 'SUCCESS' WHERE status IN ('PENDING', 'RUNNING')")
+      .run()
+    const job = await makeJob('test.cron', { note: 'cron' })
+    const maintenance = await runScheduledMaintenance(payload, new Date())
+    expect(maintenance.d1Calls).toBeLessThanOrEqual(40)
+    expect(maintenance.ran).toBe(1)
     expect((await readStoredJob(payload, job.id))?.status).toBe('SUCCESS')
-    expect(runs).toBe(1)
+    expect(cronRuns).toBe(1)
   })
 
   it('keeps the worker entry and placeholder queue config', () => {
     const worker = readFileSync('custom-worker.ts', 'utf8')
-    expect(worker).toContain('runWithCloudflareRequestContext')
+    expect(worker).toContain('openNextWorker.fetch')
+    expect(worker).toContain('buildWorkerRequest')
     expect(worker).toContain('async queue')
     expect(worker).toContain('async scheduled')
-    expect(worker).toContain('handleQueueBatch')
-    expect(worker).toContain('handleScheduled')
+    expect(worker).not.toContain('payload.config')
     const wrangler = readFileSync('wrangler.jsonc', 'utf8')
     expect(wrangler).toContain('"main": "custom-worker.ts"')
+    expect(wrangler).toContain('// "queues"')
     expect(wrangler).toContain('placeholder-jobs')
     expect(wrangler).toContain('placeholder-jobs-dlq')
-    expect(wrangler).toContain('"crons"')
+    expect(wrangler).toContain('"crons": ["*/5 * * * *"]')
+    expect(wrangler).not.toMatch(/^\s*"queues":/m)
   })
 })
 
@@ -236,6 +373,17 @@ async function makeJob(name: string, body: unknown) {
   })
   createdJobIds.push(result.job.id)
   return result.job
+}
+
+async function waitFor(predicate: () => Promise<boolean> | boolean, timeoutMs = 2000): Promise<void> {
+  const started = Date.now()
+  while (Date.now() - started < timeoutMs) {
+    if (await predicate()) {
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  throw new Error('timed out waiting for a job condition')
 }
 
 function queueMessage(jobId: number) {

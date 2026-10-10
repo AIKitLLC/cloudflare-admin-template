@@ -1,8 +1,9 @@
 import { createLocalReq, type Payload, type PayloadRequest } from 'payload'
 
-import { JOB_SYSTEM_WRITE, SKIP_JOB_ENQUEUE } from '../constants'
-import { JOBS_SLUG } from '../constants'
-import type { StoredJob } from '../types'
+import { JOB_SYSTEM_WRITE, JOBS_SLUG, MAX_ERROR_CHARS, SKIP_JOB_ENQUEUE } from '../constants'
+import { capLogs, capText } from '../redaction/cap-stored-text'
+import { redactSensitive, redactText } from '../redaction/redact-sensitive'
+import type { JobLogEntry, StoredJob } from '../types'
 
 type HookDoc = Record<string, unknown>
 
@@ -24,16 +25,32 @@ export async function invokeJobChangeHooks(
     },
     payload,
   )
-  const data: HookDoc = { ...(doc as HookDoc) }
+  const data: HookDoc = redactHookDoc({ ...(doc as HookDoc) })
+  const previous = redactHookDoc({ ...(previousDoc as HookDoc) })
   try {
-    await runBeforeChange(collection.hooks?.beforeChange, data, previousDoc, req, collection)
-    await runAfterChange(collection.hooks?.afterChange, data, previousDoc, doc, req, collection)
+    await runBeforeChange(collection.hooks?.beforeChange, data, previous, req, collection)
+    await runAfterChange(collection.hooks?.afterChange, data, previous, data, req, collection)
   } catch (error) {
     payload.logger.error({
       err: error,
       msg: 'Job change hooks failed after the row was updated.',
     })
   }
+}
+
+function redactHookDoc(doc: HookDoc): HookDoc {
+  const next = { ...doc }
+  if ('payload' in next) {
+    next.payload = redactSensitive(next.payload)
+  }
+  if (typeof next.error === 'string') {
+    next.error = capText(redactText(next.error), MAX_ERROR_CHARS)
+  }
+  if (Array.isArray(next.logs)) {
+    next.logs = capLogs(next.logs as JobLogEntry[])
+  }
+  delete next.claimToken
+  return next
 }
 
 async function runBeforeChange(

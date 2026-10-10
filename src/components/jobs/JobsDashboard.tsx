@@ -118,8 +118,9 @@ export function JobsDashboard({
     <div className="jobs-dashboard">
       <h1>Job monitor</h1>
       <p className="jobs-dashboard__intro">
-        Registered jobs run from Cloudflare Queues. Payloads, errors, and logs are redacted and size-capped
-        before they are stored. Trigger and retry are separate permissions from viewing.
+        Registered jobs run on the schedule. Queues are optional. Payloads are stored as submitted, and
+        secrets are refused. The monitor redacts sensitive fields in what it shows. Trigger and retry are
+        separate permissions from viewing.
       </p>
       {message ? <p className="jobs-dashboard__status">{message}</p> : null}
       {canTrigger ? (

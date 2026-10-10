@@ -2,6 +2,7 @@ import { defineJob } from './define-job'
 
 export const systemPingJob = defineJob({
   name: 'system.ping',
+  requiresFullAccess: true,
   maxAttempts: 1,
   leaseMs: 15_000,
   validate(input: unknown): { note: string } {

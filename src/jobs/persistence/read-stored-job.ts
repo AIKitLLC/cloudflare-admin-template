@@ -1,11 +1,12 @@
 import type { Payload } from 'payload'
 
-import { JOBS_SLUG } from '../constants'
+import { JOB_HANDLER_READ, JOBS_SLUG } from '../constants'
 import type { StoredJob } from '../types'
 
 export async function readStoredJob(
   payload: Payload,
   id: number | string,
+  options?: { raw?: boolean },
 ): Promise<StoredJob | null> {
   const doc = await payload
     .findByID({
@@ -14,6 +15,7 @@ export async function readStoredJob(
       depth: 0,
       overrideAccess: true,
       disableErrors: true,
+      context: options?.raw ? { [JOB_HANDLER_READ]: true } : undefined,
     })
     .catch((): null => null)
   if (!doc) {

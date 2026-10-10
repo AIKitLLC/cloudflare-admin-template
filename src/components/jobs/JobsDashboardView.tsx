@@ -5,9 +5,10 @@ import React from 'react'
 
 import { evaluateCollectionAccess } from '../../access/evaluate-collection-access'
 import { isAccessGranted } from '../../access/result'
+import { loadUserGrants } from '../../access/resolve/load-user-grants'
 import { evaluateJobDispatch } from '../../jobs/auth/evaluate-job-dispatch'
 import { JOBS_SLUG } from '../../jobs/constants'
-import { listJobNames } from '../../jobs/registry/job-registry'
+import { listJobDefinitions } from '../../jobs/registry/job-registry'
 import { JobsDashboard, type JobMonitorRow } from './JobsDashboard'
 
 export async function JobsDashboardView({
@@ -28,6 +29,22 @@ export async function JobsDashboardView({
     : false
   const canTrigger = req.user ? await evaluateJobDispatch(req, 'trigger') : false
   const canRetry = req.user ? await evaluateJobDispatch(req, 'retry') : false
+  const grants = req.user ? await loadUserGrants(req) : null
+  const jobNames = listJobDefinitions()
+    .filter((job) => !job.name.startsWith('test.'))
+    .filter((job) => {
+      if (!canTrigger) {
+        return false
+      }
+      if (job.requiresFullAccess) {
+        return grants?.fullAccess === true
+      }
+      if (job.permissionKey) {
+        return grants?.fullAccess === true || grants?.permissionKeys.has(job.permissionKey) === true
+      }
+      return true
+    })
+    .map((job) => job.name)
   const result = canRead
     ? await req.payload.find({
         collection: JOBS_SLUG,
@@ -56,7 +73,7 @@ export async function JobsDashboardView({
           canRead={canRead}
           canRetry={canRetry}
           canTrigger={canTrigger}
-          jobNames={listJobNames().filter((name) => !name.startsWith('test.'))}
+          jobNames={jobNames}
           jobs={(result?.docs ?? []) as JobMonitorRow[]}
         />
       </Gutter>

@@ -1,18 +1,24 @@
 import { randomUUID } from 'crypto'
 import type { Payload, PayloadRequest } from 'payload'
 
-import { JOBS_SLUG, JOB_TRIGGER_WRITE, MAX_PAYLOAD_CHARS } from '../constants'
+import { DEFAULT_MAX_ATTEMPTS, JOBS_SLUG, JOB_TRIGGER_WRITE, MAX_PAYLOAD_CHARS } from '../constants'
 import {
+  IDEMPOTENCY_CONFLICT_MESSAGE,
   INVALID_PAYLOAD_MESSAGE,
+  JOB_PRIVILEGE_MESSAGE,
+  PAYLOAD_HAS_SECRET_MESSAGE,
   PAYLOAD_TOO_LARGE_MESSAGE,
   TRIGGER_FORBIDDEN_MESSAGE,
   UNKNOWN_JOB_MESSAGE,
   jobError,
 } from '../errors'
 import { getJob } from '../registry/job-registry'
+import { findSecretKey } from '../redaction/secret-key'
 import { isWellFormedJobName } from '../validation/job-name'
 import type { StoredJob } from '../types'
 import { evaluateJobDispatch } from '../auth/evaluate-job-dispatch'
+import { evaluateJobTrigger } from '../auth/evaluate-job-trigger'
+import { isScopedIdempotencyKey, sameJobPayload, scopeIdempotencyKey } from './idempotency-key'
 
 export type EnqueueResult = {
   created: boolean
@@ -32,11 +38,31 @@ export async function enqueueRegisteredJob(args: {
   if (!isWellFormedJobName(name) || !getJob(name)) {
     throw jobError(UNKNOWN_JOB_MESSAGE)
   }
-  assertPayloadSize(args.payload)
-  const idempotencyKey = normalizeKey(args.idempotencyKey)
+  if (!(await evaluateJobTrigger(args.req, name))) {
+    throw jobError(JOB_PRIVILEGE_MESSAGE, 403)
+  }
+  const definition = getJob(name)
+  if (!definition) {
+    throw jobError(UNKNOWN_JOB_MESSAGE)
+  }
+  let validated: unknown
+  try {
+    validated = definition.validate(args.payload ?? {})
+  } catch (error) {
+    const message = error instanceof Error ? error.message : INVALID_PAYLOAD_MESSAGE
+    throw jobError(message || INVALID_PAYLOAD_MESSAGE)
+  }
+  if (findSecretKey(args.payload) || findSecretKey(validated)) {
+    throw jobError(PAYLOAD_HAS_SECRET_MESSAGE)
+  }
+  assertPayloadSize(validated)
+  const idempotencyKey = scopedKey(args.req.user?.id ?? 'anonymous', name, args.idempotencyKey)
   if (idempotencyKey) {
     const existing = await findByIdempotencyKey(args.req.payload, idempotencyKey)
     if (existing) {
+      if (existing.name !== name || !sameJobPayload(existing.payload, validated)) {
+        throw jobError(IDEMPOTENCY_CONFLICT_MESSAGE)
+      }
       return { created: false, job: existing }
     }
   }
@@ -45,11 +71,11 @@ export async function enqueueRegisteredJob(args: {
       collection: JOBS_SLUG,
       data: {
         name,
-        payload: (args.payload ?? {}) as Record<string, unknown>,
+        payload: validated as Record<string, unknown>,
         idempotencyKey: idempotencyKey ?? randomUUID(),
         status: 'PENDING',
         attempt: 0,
-        maxAttempts: 5,
+        maxAttempts: definition.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
       },
       overrideAccess: true,
       draft: false,
@@ -82,7 +108,11 @@ function assertPayloadSize(value: unknown): void {
   }
 }
 
-function normalizeKey(value: string | null | undefined): string | undefined {
+function scopedKey(
+  userId: number | string,
+  jobName: string,
+  value: string | null | undefined,
+): string | undefined {
   if (typeof value !== 'string') {
     return undefined
   }
@@ -90,10 +120,13 @@ function normalizeKey(value: string | null | undefined): string | undefined {
   if (!trimmed) {
     return undefined
   }
-  if (trimmed.length > 200) {
+  if (trimmed.length > 120) {
     throw jobError('Idempotency key is too long.')
   }
-  return trimmed
+  if (isScopedIdempotencyKey(trimmed)) {
+    return trimmed
+  }
+  return scopeIdempotencyKey(userId, jobName, trimmed)
 }
 
 async function findByIdempotencyKey(payload: Payload, key: string): Promise<StoredJob | null> {
