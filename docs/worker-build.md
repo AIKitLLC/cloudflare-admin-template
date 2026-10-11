@@ -27,12 +27,12 @@ Webpack gets OpenNext through the compile. The Worker still threw `Unexpected lo
 pnpm test:worker
 ```
 
-That rebuilds the Worker, runs `wrangler deploy --dry-run` (it uploads nothing), applies `pnpm payload migrate` to local D1, and serves `/admin` and `/my-route` with `wrangler dev --local`.
+That rebuilds the Worker, runs `wrangler deploy --dry-run` (it uploads nothing), deletes the local D1 state, applies `pnpm payload migrate`, and serves `/admin` and `/my-route` with `wrangler dev --local`. The local serve sets `PAYLOAD_PUBLIC_SERVER_URL` to `http://127.0.0.1:8791`. A production Worker throws on startup without that variable. The local D1 reset drops a dev-mode `payload-migrations` row (`batch` -1) that would otherwise make production startup call `process.exit(0)`.
 
-A dry run of this build reported:
+A dry run of the integrated stack reported:
 
 ```text
-Total Upload: 15584.64 KiB / gzip: 3576.45 KiB
+Total Upload: 15840.19 KiB / gzip: 3632.12 KiB
 ```
 
 Gzip is over 3 MiB. Deploy on the Workers Paid plan. Cloudflare's current script limit is 64 MiB uncompressed on every plan ([changelog, 4 September 2026](https://developers.cloudflare.com/changelog/post/2026-09-04-increased-worker-size-limit/)). This bundle is under that. The Free plan still allows 10 ms of CPU per request ([limits](https://developers.cloudflare.com/workers/platform/limits/)), which is too small to render Payload.

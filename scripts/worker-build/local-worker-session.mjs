@@ -3,6 +3,9 @@ import { spawn } from 'node:child_process'
 const port = 8791
 const origin = `http://127.0.0.1:${port}`
 const secret = 'local-worker-check-secret'
+// The built worker runs with NODE_ENV=production. #11 refuses to boot without a
+// public origin so admin cookies cannot fall back to localhost:3000.
+const publicServerURL = origin
 
 export async function withLocalWorker(run) {
   const child = spawn(
@@ -18,6 +21,8 @@ export async function withLocalWorker(run) {
       '9231',
       '--var',
       `PAYLOAD_SECRET:${secret}`,
+      '--var',
+      `PAYLOAD_PUBLIC_SERVER_URL:${publicServerURL}`,
       '--show-interactive-dev-session',
       'false',
     ],
@@ -29,6 +34,7 @@ export async function withLocalWorker(run) {
         CI: 'true',
         WRANGLER_SEND_METRICS: 'false',
         PAYLOAD_SECRET: secret,
+        PAYLOAD_PUBLIC_SERVER_URL: publicServerURL,
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     },

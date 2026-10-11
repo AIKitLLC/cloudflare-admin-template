@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -44,6 +44,13 @@ test(
       'README tells operators to use Workers Paid when gzip exceeds 3 MiB',
     )
 
+    // Int tests push the schema in dev mode and leave a payload-migrations row
+    // with batch -1. The next production boot treats that row as a prompt and
+    // calls process.exit(0) when nobody can confirm it. Start from an empty
+    // local D1 so this check does not depend on whichever suite ran last.
+    // Stay out of NODE_ENV=production here: the Payload CLI uses the local
+    // platform proxy, and production would open a remote binding.
+    rmSync(join(process.cwd(), '.wrangler/state/v3/d1'), { recursive: true, force: true })
     const migrate = spawnSync('pnpm', ['payload', 'migrate'], {
       cwd: process.cwd(),
       env: {
@@ -51,6 +58,7 @@ test(
         CI: 'true',
         WRANGLER_SEND_METRICS: 'false',
         PAYLOAD_SECRET: 'local-worker-check-secret',
+        PAYLOAD_PUBLIC_SERVER_URL: 'http://127.0.0.1:8791',
       },
       encoding: 'utf8',
       timeout: 120_000,
