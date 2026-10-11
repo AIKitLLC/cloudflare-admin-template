@@ -11,10 +11,14 @@ import { AUDIT_LOG_READER_EMAILS_ENV } from '../constants'
 export type AuditLogAccessResult = boolean | Where
 
 /**
- * The only read check for Audit Logs.
+ * Hard gate for reading Audit Logs. Being signed in is not enough.
  *
- * Denies by default. Allows the earliest user (lowest id) and emails listed in
- * `AUDIT_LOG_READER_EMAILS` (comma-separated, empty by default). There is no
+ * Allows only:
+ * - the single earliest user (lowest `users.id`), or
+ * - an email listed exactly in `AUDIT_LOG_READER_EMAILS` (comma-separated, empty by default).
+ *
+ * Everyone else is denied. If the earliest-user lookup throws, returns no row,
+ * or returns more than one row, the check fails closed. There is no
  * `access.admin` entry: that hook is only consulted for auth collections.
  */
 export async function canReadAuditLogs({
@@ -23,7 +27,7 @@ export async function canReadAuditLogs({
   req: PayloadRequest
 }): Promise<AuditLogAccessResult> {
   const user = req.user
-  if (!user || user.id == null) return false
+  if (!user || user.id == null || user.id === '') return false
   if (emailAllowlisted(user.email)) return true
   try {
     return await isEarliestUser(req, user.id)
@@ -69,9 +73,12 @@ async function isEarliestUser(req: PayloadRequest, userId: number | string): Pro
     depth: 0,
     limit: 1,
     overrideAccess: true,
+    pagination: false,
     sort: 'id',
   })
-  const earliestId = earliest.docs[0]?.id
-  if (earliestId == null) return false
+  const docs = earliest?.docs
+  if (!Array.isArray(docs) || docs.length !== 1) return false
+  const earliestId = docs[0]?.id
+  if (earliestId == null || earliestId === '') return false
   return String(earliestId) === String(userId)
 }

@@ -1,7 +1,8 @@
 import type { PayloadRequest } from 'payload'
 import { describe, expect, it } from 'vitest'
 
-import { CHANGE_ROW_INSERT_CHUNK, MAX_CHANGE_ROWS, REDACTED_VALUE } from '@/audit/constants'
+import { CHANGE_ROW_INSERT_CHUNK, MAX_CHANGE_ROWS, REDACTED_VALUE, AUDIT_LOG_READER_EMAILS_ENV } from '@/audit/constants'
+import { canReadAuditLogs } from '@/audit/access/AuditLogAccessPolicy'
 import {
   applyAuditLogViewerFilters,
   readAuditLogViewerFilters,
@@ -418,6 +419,68 @@ describe('change row cap', () => {
       true,
     )
     expect(capped.some((change) => change.path === 'field-68')).toBe(false)
+  })
+})
+
+describe('audit log read gate', () => {
+  function request(user: { id?: number | string; email?: string } | null, find: () => Promise<unknown>) {
+    return {
+      payload: {
+        find,
+        logger: { error() {} },
+      },
+      user,
+    }
+  }
+
+  it('allows only the single lowest user id', async () => {
+    const find = async () => ({ docs: [{ id: 1 }] })
+    await expect(
+      canReadAuditLogs({ req: request({ id: 1, email: 'first@example.com' }, find) as never }),
+    ).resolves.toBe(true)
+    await expect(
+      canReadAuditLogs({ req: request({ id: 2, email: 'second@example.com' }, find) as never }),
+    ).resolves.toBe(false)
+    await expect(canReadAuditLogs({ req: request(null, find) as never })).resolves.toBe(false)
+  })
+
+  it('fails closed when the earliest-user lookup throws or is ambiguous', async () => {
+    await expect(
+      canReadAuditLogs({
+        req: request({ id: 1, email: 'first@example.com' }, async () => {
+          throw new Error('d1 down')
+        }) as never,
+      }),
+    ).resolves.toBe(false)
+    await expect(
+      canReadAuditLogs({
+        req: request({ id: 1, email: 'first@example.com' }, async () => ({ docs: [] })) as never,
+      }),
+    ).resolves.toBe(false)
+    await expect(
+      canReadAuditLogs({
+        req: request({ id: 1, email: 'first@example.com' }, async () => ({
+          docs: [{ id: 1 }, { id: 2 }],
+        })) as never,
+      }),
+    ).resolves.toBe(false)
+  })
+
+  it('allows an exact allowlist email and no one else', async () => {
+    const previous = process.env[AUDIT_LOG_READER_EMAILS_ENV]
+    process.env[AUDIT_LOG_READER_EMAILS_ENV] = ' listed@example.com '
+    try {
+      const find = async () => ({ docs: [{ id: 1 }] })
+      await expect(
+        canReadAuditLogs({ req: request({ id: 9, email: 'Listed@Example.com' }, find) as never }),
+      ).resolves.toBe(true)
+      await expect(
+        canReadAuditLogs({ req: request({ id: 9, email: 'other@example.com' }, find) as never }),
+      ).resolves.toBe(false)
+    } finally {
+      if (previous === undefined) delete process.env[AUDIT_LOG_READER_EMAILS_ENV]
+      else process.env[AUDIT_LOG_READER_EMAILS_ENV] = previous
+    }
   })
 })
 
