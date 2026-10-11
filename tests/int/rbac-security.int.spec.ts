@@ -23,7 +23,11 @@ import {
 } from '@/rbac/guards/privilege-errors'
 import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
 import { seedRbac } from '@/rbac/seed/seed-rbac'
-import { writeCatalogFingerprint } from '@/rbac/seed/rbac-state'
+import {
+  markUpgradePromotionDone,
+  readUpgradePromotionDone,
+  writeCatalogFingerprint,
+} from '@/rbac/seed/rbac-state'
 import { setRoleGrant } from '@/rbac/matrix/set-role-grant'
 
 let payload: Payload
@@ -182,6 +186,97 @@ describe('RBAC privilege boundaries', () => {
       expect(await response.json()).toMatchObject({ error: UNCONDITIONAL_GRANT_ERROR })
     } finally {
       unregister()
+    }
+  })
+
+  it('N existing users, no roles -> only the first becomes Super Admin', async () => {
+    const superAdmin = await findSuperAdminRole()
+    for (let index = 0; index < 3; index += 1) {
+      await createUser(`rbac-upgrade-${index}-${stamp}@example.com`, [])
+    }
+    const before = await payload.find({
+      collection: 'users',
+      depth: 0,
+      overrideAccess: true,
+      pagination: false,
+    })
+    const snapshot = before.docs.map((doc) => ({
+      id: doc.id,
+      createdAt: (doc as { createdAt?: string | null }).createdAt ?? null,
+      roles: (doc as { roles?: unknown }).roles,
+    }))
+    expect(snapshot.length).toBeGreaterThanOrEqual(3)
+    const info = payload.logger.info.bind(payload.logger)
+    const logs: unknown[] = []
+    payload.logger.info = ((entry: unknown, ...rest: unknown[]) => {
+      logs.push(entry)
+      return info(entry, ...rest)
+    }) as typeof payload.logger.info
+    try {
+      for (const user of snapshot) {
+        await payload.update({
+          collection: 'users',
+          id: user.id,
+          data: { roles: [] },
+          overrideAccess: true,
+          context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+        })
+      }
+      await payload.delete({
+        collection: 'payload-kv' as CollectionSlug,
+        where: { key: { equals: 'rbac:upgrade_promotion' } },
+        overrideAccess: true,
+      })
+      expect(await readUpgradePromotionDone(payload)).toBe(false)
+
+      await seedRbac(payload)
+
+      const after = await payload.find({
+        collection: 'users',
+        depth: 0,
+        overrideAccess: true,
+        pagination: false,
+      })
+      const promoted = after.docs.filter((doc) =>
+        roleIds((doc as { roles?: unknown }).roles).includes(String(superAdmin.id)),
+      )
+      expect(promoted).toHaveLength(1)
+      const winner = promoted[0] as {
+        id: number | string
+        createdAt?: string | null
+        email?: string
+      }
+      const expected = [...snapshot].sort((left, right) => {
+        const created = (left.createdAt ?? '').localeCompare(right.createdAt ?? '')
+        if (created !== 0) return created
+        return Number(left.id) - Number(right.id)
+      })[0]
+      expect(String(winner.id)).toBe(String(expected.id))
+      const untouched = after.docs.filter((doc) => String(doc.id) !== String(winner.id))
+      expect(untouched.length).toBeGreaterThanOrEqual(2)
+      for (const doc of untouched) {
+        expect(roleIds((doc as { roles?: unknown }).roles)).toEqual([])
+      }
+      expect(await readUpgradePromotionDone(payload)).toBe(true)
+      expect(logs).toContainEqual(
+        expect.objectContaining({
+          msg: 'Promoted the earliest existing user to super-admin',
+          userId: winner.id,
+          email: winner.email ?? null,
+        }),
+      )
+    } finally {
+      payload.logger.info = info as typeof payload.logger.info
+      for (const user of snapshot) {
+        await payload.update({
+          collection: 'users',
+          id: user.id,
+          data: { roles: Array.isArray(user.roles) ? user.roles : [] },
+          overrideAccess: true,
+          context: { [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
+        })
+      }
+      await markUpgradePromotionDone(payload)
     }
   })
 

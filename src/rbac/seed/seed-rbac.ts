@@ -5,7 +5,7 @@ import { collectPermissionDefinitions } from '../catalog/permission-definition'
 import { catalogFingerprint } from './catalog-fingerprint'
 import { ensureSuperAdminRole, type SuperAdminRole } from './ensure-super-admin-role'
 import { grantSuperAdminPermissions } from './grant-super-admin-permissions'
-import { promoteUnassignedUsers } from './promote-unassigned-users'
+import { promoteEarliestUnassignedUser, type PromotedUser } from './promote-earliest-user'
 import {
   markUpgradePromotionDone,
   readCatalogFingerprint,
@@ -34,9 +34,9 @@ export async function seedRbac(payload: Payload): Promise<void> {
   const role = superAdmin?.grantsFullAccess ? superAdmin : await ensureSuperAdminRole(payload)
   const grants =
     savedFingerprint === fingerprint ? 0 : await grantSuperAdminPermissions(payload, role.id)
-  let promoted = 0
+  let promoted: PromotedUser | null = null
   if (!promotionDone) {
-    promoted = await promoteUnassignedUsers(payload, role.id)
+    promoted = await promoteEarliestUnassignedUser(payload, role.id)
     await markUpgradePromotionDone(payload)
   }
   await writeCatalogFingerprint(payload, fingerprint)
@@ -46,7 +46,8 @@ export async function seedRbac(payload: Payload): Promise<void> {
     permissionsUpdated: catalog?.updated ?? 0,
     permissionsDeactivated: catalog?.deactivated ?? 0,
     superAdminGrantsWritten: grants,
-    usersPromotedToSuperAdmin: promoted,
+    usersPromotedToSuperAdmin: promoted ? 1 : 0,
+    ...(promoted ? { promotedUserId: promoted.id, promotedUserEmail: promoted.email } : {}),
   })
 }
 

@@ -133,7 +133,7 @@ Restart the app once so the permission catalog picks up the new collection. Gran
 
 Roles, permissions, and role-permission grants live in D1.
 
-- **Super Admin** (`grantsFullAccess`) bypasses the matrix. The first user receives this role. Existing users with no roles receive it once, on the first seed after upgrade, and that promotion does not run again.
+- **Super Admin** (`grantsFullAccess`) bypasses the matrix. The first user on an empty install receives this role. On an upgrade where users already exist and none has a role, only the earliest user (lowest `createdAt`, then lowest id) receives it, and that user's id and email are logged. The promotion runs once.
 - Only a full-access user can turn on `grantsFullAccess` or assign or remove a full-access role. Anyone else can grant only permissions they already hold, and can assign only roles whose grants are a subset of their own. They can update, delete, or unlock another user only when that user's permissions are a subset of theirs, including password and email changes. The last full-access assignment cannot be removed.
 - Other roles start with no grants. Assign actions per collection and read/write per field in `/admin/permission-matrix`. Plugin collections and globals are covered by the same rules. A global's keys are `global:{slug}:read` and `global:{slug}:update`.
 - `GET /api/{collection}/export` returns CSV. It requires the `export` action and still applies read and field permissions.
