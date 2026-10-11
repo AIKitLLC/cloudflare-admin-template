@@ -2,6 +2,8 @@ import { timingSafeEqual } from 'node:crypto'
 
 import { JOBS_INTERNAL_HOST, JOBS_WORKER_PATH } from './worker-dispatch'
 
+export { JOBS_INTERNAL_HEADER } from './worker-dispatch'
+
 export const JOBS_INTERNAL_SECRET_PLACEHOLDER = 'placeholder-jobs-internal-secret'
 export const JOBS_INTERNAL_SECRET_MIN_LENGTH = 32
 

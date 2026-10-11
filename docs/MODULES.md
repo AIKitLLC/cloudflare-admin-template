@@ -31,7 +31,7 @@ RBAC does not import RLS, jobs, or audit. RLS registers its row filter and its u
 
 Add the workspace dependency (or, later, a published version) and call the plugin from the product's Payload config. Pass `trails` to `adminAudit` for each collection whose changes should be logged. User accounts in this template pass `redactFields` for password, hash, salt, reset token, and sessions.
 
-Migrations stay in the app. Payload generates them into `src/migrations` when the composed config changes. Plugins do not ship SQL. After a package upgrade that changes a collection, run `pnpm payload migrate:create` in the app, review the SQL, and commit it. `@aikit/admin-rbac` also exports `seedRbac`, which the plugin already calls on startup.
+Migrations stay in the app. Payload generates them into `src/migrations` when the composed config changes. Plugins do not ship SQL. The latest `src/migrations/*.json` file is the full schema after every committed migration. Each `.ts` file is only that migration's SQL. After a package upgrade that changes a collection, run `pnpm payload migrate:create --skip-empty` in the app, review the SQL, and commit both the `.ts` file and the new snapshot. `@aikit/admin-rbac` also exports `seedRbac`, which the plugin already calls on startup.
 
 ## Versioning
 
