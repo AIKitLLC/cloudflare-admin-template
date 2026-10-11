@@ -208,9 +208,9 @@ describe('RBAC privilege boundaries', () => {
     expect(snapshot.length).toBeGreaterThanOrEqual(3)
     const info = payload.logger.info.bind(payload.logger)
     const logs: unknown[] = []
-    payload.logger.info = ((entry: unknown, ...rest: unknown[]) => {
+    payload.logger.info = ((entry: unknown, msg?: string, ...args: unknown[]) => {
       logs.push(entry)
-      return info(entry, ...rest)
+      return info(entry, msg, ...args)
     }) as typeof payload.logger.info
     try {
       for (const user of snapshot) {
