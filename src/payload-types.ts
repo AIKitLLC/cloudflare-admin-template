@@ -77,6 +77,7 @@ export interface Config {
     'data-classes': DataClass;
     records: Record;
     'system-parameters': SystemParameter;
+    jobs: Job;
     'audit-logs': AuditLog;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
@@ -95,6 +96,7 @@ export interface Config {
     'data-classes': DataClassesSelect<false> | DataClassesSelect<true>;
     records: RecordsSelect<false> | RecordsSelect<true>;
     'system-parameters': SystemParametersSelect<false> | SystemParametersSelect<true>;
+    jobs: JobsSelect<false> | JobsSelect<true>;
     'audit-logs': AuditLogsSelect<false> | AuditLogsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -290,7 +292,7 @@ export interface Permission {
   label: string;
   description?: string | null;
   collectionSlug: string;
-  action: 'create' | 'read' | 'update' | 'delete' | 'export' | 'readField' | 'writeField';
+  action: 'create' | 'read' | 'update' | 'delete' | 'export' | 'readField' | 'writeField' | 'trigger' | 'retry';
   /**
    * Empty for collection actions. Dotted path for field permissions.
    */
@@ -443,6 +445,46 @@ export interface SystemParameter {
   createdAt: string;
 }
 /**
+ * Background jobs. Trigger and retry from the job monitor. Payloads are redacted before they are stored.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "jobs".
+ */
+export interface Job {
+  id: number;
+  name: string;
+  payload:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+  error?: string | null;
+  logs?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  attempt: number;
+  maxAttempts: number;
+  runAt?: string | null;
+  leaseExpiresAt?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  idempotencyKey: string;
+  claimToken?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
@@ -509,6 +551,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'audit-logs';
         value: number | AuditLog;
+      } | null)
+    | ({
+        relationTo: 'jobs';
+        value: number | Job;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -720,6 +766,27 @@ export interface SystemParametersSelect<T extends boolean = true> {
   valueType?: T;
   value?: T;
   sensitive?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "jobs_select".
+ */
+export interface JobsSelect<T extends boolean = true> {
+  name?: T;
+  payload?: T;
+  status?: T;
+  error?: T;
+  logs?: T;
+  attempt?: T;
+  maxAttempts?: T;
+  runAt?: T;
+  leaseExpiresAt?: T;
+  startedAt?: T;
+  finishedAt?: T;
+  idempotencyKey?: T;
+  claimToken?: T;
   updatedAt?: T;
   createdAt?: T;
 }

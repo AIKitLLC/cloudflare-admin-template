@@ -141,6 +141,12 @@ async function findPermissionByKey(
 }
 
 function permissionDescription(definition: PermissionDefinition): string {
+  if (definition.action === 'trigger') {
+    return `Manually enqueue a registered ${definition.collectionSlug} job.`
+  }
+  if (definition.action === 'retry') {
+    return `Retry a failed ${definition.collectionSlug} job.`
+  }
   if (definition.fieldPath) {
     return `Field ${definition.action} on ${definition.collectionSlug}.${definition.fieldPath}`
   }

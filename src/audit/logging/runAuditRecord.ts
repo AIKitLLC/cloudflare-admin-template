@@ -6,6 +6,7 @@ import { normalizeRelations } from '../diff/normalizeRelations'
 import { projectBeforeOntoAfter } from '../diff/projectBeforeOntoAfter'
 import type { SensitiveFieldPolicy } from '../diff/SensitiveFieldPolicy'
 import { changesForSubmittedSecrets } from '../diff/submittedSecretPaths'
+import { whenSensitiveFieldNames } from '../diff/whenSensitiveFields'
 import { writeOnlySecretChanges } from '../diff/writeOnlySecretChanges'
 import type { AuditAction, RequestAuditMetadata } from '../types'
 import type { CapturedAuditContext } from '../request/AuditContextStore'
@@ -43,15 +44,16 @@ export async function runAuditChange(args: AuditChangeArgs): Promise<void> {
       asRecord(normalizeRelations(rawAfter, args.fields)),
     )
     const after = asRecord(normalizeRelations(rawAfter, args.fields))
+    const policy = args.policy.and(whenSensitiveFieldNames(args.fields, [rawBefore, rawAfter]))
     const changes = capFieldChanges(
       mergeFieldChanges(
-        computeFieldDiff(before, after, args.policy),
+        computeFieldDiff(before, after, policy),
         [
           ...changesForSubmittedSecrets(args.captured?.submittedSecretPaths ?? [], action),
-          ...writeOnlySecretChanges(args.data, rawBefore, after, action, args.policy),
+          ...writeOnlySecretChanges(args.data, rawBefore, after, action, policy),
         ],
       ),
-      args.policy,
+      policy,
     )
     if (action === 'UPDATE' && changes.length === 0) return
 
@@ -85,9 +87,10 @@ export async function runAuditDelete(args: {
   onFailure: AuditFailureHandler
 }): Promise<void> {
   try {
+    const policy = args.policy.and(whenSensitiveFieldNames(args.fields, [args.doc]))
     const changes = capFieldChanges(
-      computeFieldDiff(asRecord(normalizeRelations(args.doc, args.fields)), null, args.policy),
-      args.policy,
+      computeFieldDiff(asRecord(normalizeRelations(args.doc, args.fields)), null, policy),
+      policy,
     )
     await args.writer.write(
       buildAuditLogEntry({

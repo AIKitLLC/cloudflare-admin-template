@@ -5,6 +5,7 @@ import * as migration_20261010_080938_rbac_permission_matrix from './20261010_08
 import * as migration_20261010_100434_row_level_security from './20261010_100434_row_level_security'
 import * as migration_20261010_110209_scope_path from './20261010_110209_scope_path'
 import * as migration_20261010_143942_system_parameters from './20261010_143942_system_parameters'
+import * as migration_20261010_154532_jobs_queue from './20261010_154532_jobs_queue'
 
 export const migrations = [
   {
@@ -41,5 +42,10 @@ export const migrations = [
     up: migration_20261010_143942_system_parameters.up,
     down: migration_20261010_143942_system_parameters.down,
     name: '20261010_143942_system_parameters',
+  },
+  {
+    up: migration_20261010_154532_jobs_queue.up,
+    down: migration_20261010_154532_jobs_queue.down,
+    name: '20261010_154532_jobs_queue',
   },
 ]

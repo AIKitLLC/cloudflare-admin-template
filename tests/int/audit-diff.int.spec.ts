@@ -487,3 +487,74 @@ function wideEntry(): AuditLogEntry {
     summary: 'UPDATE audit-subjects #1',
   }
 }
+
+describe('custom.audit.redact whenSensitive', () => {
+  const fields = [
+    {
+      name: 'value',
+      type: 'json',
+      custom: { audit: { redact: 'whenSensitive' } },
+    },
+    { name: 'sensitive', type: 'checkbox' },
+    { name: 'key', type: 'text' },
+  ]
+  const metadata = {
+    actorId: null,
+    actorRelationshipId: null,
+    actorEmail: null,
+    ipAddress: null,
+    untrustedClientIp: null,
+    userAgent: null,
+  }
+
+  async function loggedChanges(args: {
+    data: Record<string, unknown>
+    doc: Record<string, unknown>
+    previousDoc: Record<string, unknown>
+  }) {
+    const entries: Array<{ changes: Array<{ path: string; oldValue: unknown; newValue: unknown }> }> = []
+    await runAuditChange({
+      captured: undefined,
+      collectionSlug: 'system-parameters',
+      data: args.data,
+      doc: args.doc,
+      fields,
+      metadata,
+      onFailure: () => {},
+      operation: 'update',
+      policy: SensitiveFieldPolicy.fromExtraFields(),
+      previousDoc: args.previousDoc,
+      writer: {
+        write: async (entry) => {
+          entries.push(entry)
+        },
+      },
+    })
+    return entries[0]?.changes ?? []
+  }
+
+  it('redacts a sensitive system-parameter value and keeps a non-sensitive one', async () => {
+    const secret = 'billing-allowlist-secret'
+    const nextSecret = 'billing-allowlist-next'
+    const sensitive = await loggedChanges({
+      data: { value: nextSecret, sensitive: true },
+      previousDoc: { id: 4, key: 'billing-allowlist', sensitive: true, value: secret },
+      doc: { id: 4, key: 'billing-allowlist', sensitive: true, value: nextSecret },
+    })
+    const valueChange = sensitive.find((change) => change.path === 'value')
+    expect(valueChange).toMatchObject({ oldValue: REDACTED_VALUE, newValue: REDACTED_VALUE })
+    expect(JSON.stringify(sensitive)).not.toContain(secret)
+    expect(JSON.stringify(sensitive)).not.toContain(nextSecret)
+
+    const plain = 'public-banner'
+    const open = await loggedChanges({
+      data: { value: plain, sensitive: false },
+      previousDoc: { id: 5, key: 'banner', sensitive: false, value: 'old-banner' },
+      doc: { id: 5, key: 'banner', sensitive: false, value: plain },
+    })
+    expect(open.find((change) => change.path === 'value')).toMatchObject({
+      oldValue: 'old-banner',
+      newValue: plain,
+    })
+  })
+})

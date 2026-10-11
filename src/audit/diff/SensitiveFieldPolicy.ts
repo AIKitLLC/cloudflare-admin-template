@@ -76,6 +76,11 @@ export class SensitiveFieldPolicy {
     if (!path) return false
     return this.rules.some((rule) => rule.isSensitive(path))
   }
+
+  and(fieldNames: readonly string[]): SensitiveFieldPolicy {
+    if (fieldNames.length === 0) return this
+    return new SensitiveFieldPolicy([...this.rules, new ExplicitFieldSensitivityRule(fieldNames)])
+  }
 }
 
 function leafName(path: string): string {

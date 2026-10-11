@@ -8,13 +8,16 @@ import {
 import { globalAccessSlug } from '../../access/global-slug'
 import { collectionEnablesRbac } from '../../access/options'
 import { COLLECTION_ACTIONS } from '../../access/constants'
+import { extraCatalogDefinitions, suppressedPermissionKeys } from './catalog-contributors'
+
+export type CatalogAction = PermissionAction | 'trigger' | 'retry'
 
 export type PermissionDefinition = {
   key: string
   label: string
   groupLabel: string
   collectionSlug: string
-  action: PermissionAction
+  action: CatalogAction
   fieldPath?: string
 }
 
@@ -90,7 +93,11 @@ export function collectPermissionDefinitions(
       })
     }
   }
-  return definitions
+  const suppressed = suppressedPermissionKeys()
+  return [
+    ...definitions.filter((definition) => !suppressed.has(definition.key)),
+    ...extraCatalogDefinitions(),
+  ]
 }
 
 function globalGroupLabel(globalConfig: CatalogGlobal): string {

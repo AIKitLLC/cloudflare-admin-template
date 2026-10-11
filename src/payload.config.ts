@@ -12,7 +12,7 @@ import { coverLiveConfig } from './access/cover-unwrapped'
 import { assertRbacCoverage, ensureRbacCoverage } from './access/ensure-rbac-coverage'
 import { applyFieldAccess } from './access/fields/apply-field-access'
 import { rbacCoveragePlugin } from './access/rbac-coverage-plugin'
-import { AuditLogs } from './audit'
+import { AuditLogs, withAuditTrail } from './audit'
 import { resolvePublicServerURL } from './config/public-server-url'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
@@ -23,6 +23,8 @@ import { Records } from './scope/collections/Records'
 import { ensureRowScopeRegistered } from './scope/register-row-scope'
 import { SystemParameters } from './system-parameters/collections/SystemParameters'
 import { migrations } from './migrations'
+import { Jobs } from './jobs/collection/Jobs'
+import { retryJobMutation } from './jobs/graphql/retry-job-mutation'
 import { Permissions } from './rbac/collections/Permissions'
 import { RolePermissions } from './rbac/collections/RolePermissions'
 import { Roles } from './rbac/collections/Roles'
@@ -101,7 +103,10 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
     components: {
-      afterNavLinks: ['/components/rbac/PermissionMatrixNavLink#PermissionMatrixNavLink'],
+      afterNavLinks: [
+        '/components/rbac/PermissionMatrixNavLink#PermissionMatrixNavLink',
+        '/components/jobs/JobsNavLink#JobsNavLink',
+      ],
       views: {
         permissionMatrix: {
           Component: '/components/rbac/PermissionMatrixView#PermissionMatrixView',
@@ -109,6 +114,14 @@ export default buildConfig({
           exact: true,
           meta: {
             title: 'Permission Matrix',
+          },
+        },
+        jobMonitor: {
+          Component: '/components/jobs/JobsDashboardView#JobsDashboardView',
+          path: '/job-monitor',
+          exact: true,
+          meta: {
+            title: 'Job Monitor',
           },
         },
       },
@@ -124,11 +137,15 @@ export default buildConfig({
     Branches,
     DataClasses,
     Records,
-    SystemParameters,
+    withAuditTrail(SystemParameters),
+    withAuditTrail(Jobs),
     AuditLogs,
     ...testOnlyCollections(),
   ]),
   endpoints: [matrixEndpoint, grantEndpoint],
+  graphQL: {
+    mutations: retryJobMutation,
+  },
   serverURL,
   cors: allowedOrigins,
   csrf: allowedOrigins,

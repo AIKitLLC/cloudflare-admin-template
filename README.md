@@ -178,7 +178,15 @@ export const Customers = withRbac(
 )
 ```
 
----
+## Background jobs
+
+Long-running work is a row in `jobs`, not an HTTP request. Only names registered with `defineJob` can run. The admin **Job Monitor** (`/admin/job-monitor`) lists jobs, shows redacted payloads and logs, and can trigger or retry when the role has `jobs:trigger` or `jobs:retry`. Viewing requires `jobs:read`. Those keys are denied until granted.
+
+The Worker entry is `custom-worker.ts`. Its `queue` and `scheduled` handlers forward to the OpenNext `fetch` handler on an internal route, so Payload is bundled once. `pnpm build:worker` runs `next build --webpack`, then inlines `preview-props.json` and fills a missing `x-forwarded-host` from the request URL so `jobs.internal` survives OpenNext. Webpack does not emit Turbopack's hashed `drizzle-kit` require, so there is no drizzle-kit esbuild stub. Migrations still use the real `drizzle-kit` through `payload migrate`.
+
+Deploying this branch enables a cron of `*/5 * * * *`. It is active in `wrangler.jsonc` and starts firing as soon as the Worker is deployed, every five minutes, with or without a queue. Each run reaps expired leases and executes a bounded set of due jobs inside that invocation. Set `JOBS_INTERNAL_SECRET` with `wrangler secret put JOBS_INTERNAL_SECRET` (at least 32 characters). Do not put it in `wrangler.jsonc` vars.
+
+Cloudflare Queues are optional. The `queues` block in `wrangler.jsonc` is commented out, the same way an optional binding stays commented until the resource exists. Wrangler rejects a deploy that names a queue which does not exist, so leave that block commented until the queues have been created and the placeholder names have been replaced. When `JOB_QUEUE` is absent, jobs stay `PENDING` until the cron runs them. Local `pnpm dev` still runs due jobs in-process. Vitest does not. See [docs/jobs.md](docs/jobs.md).
 
 ## 🚢 Deployment
 

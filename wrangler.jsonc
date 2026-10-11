@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "main": ".open-next/worker.js",
+  "main": "custom-worker.ts",
   "name": "my-app",
   "compatibility_date": "2025-08-15",
   "compatibility_flags": [
@@ -13,11 +13,19 @@
   ],
   // Production requires PAYLOAD_PUBLIC_SERVER_URL. Admin sessions, CSRF, and media
   // URLs use it. PAYLOAD_ALLOWED_ORIGINS is an optional comma-separated extra list.
-  // Keep PAYLOAD_SECRET as a secret, not a var.
-  // "vars": {
-  //   "PAYLOAD_PUBLIC_SERVER_URL": "https://admin.example.com",
-  //   "PAYLOAD_ALLOWED_ORIGINS": "https://admin.example.com"
-  // },
+  // Keep PAYLOAD_SECRET as a secret, not a var. Uncomment the URL vars and set them,
+  // or set them in the Cloudflare dashboard.
+  // JOBS_INTERNAL_SECRET authenticates the in-worker jobs route. Do not put it
+  // in vars: a var blocks `wrangler secret put` for the same name, and a
+  // committed value would be known. Set it with:
+  //   wrangler secret put JOBS_INTERNAL_SECRET
+  // Production refuses a missing value, the .env.example placeholder, or a
+  // value shorter than 32 characters. The host check on jobs.internal stays
+  // the primary guard.
+  "vars": {
+    // "PAYLOAD_PUBLIC_SERVER_URL": "https://admin.example.com",
+    // "PAYLOAD_ALLOWED_ORIGINS": "https://admin.example.com",
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS",
@@ -58,6 +66,38 @@
     //   "bucket_name": "<BUCKET_NAME>",
     // },
   ],
+
+  // Optional Cloudflare Queue for background jobs. Leave this commented until the
+  // queues exist in the account. Wrangler refuses to deploy if a named queue is
+  // missing, so a deploy with this block commented does not create queues and does
+  // not require them. Binding name: JOB_QUEUE. The producer and the consumer must
+  // use the same queue name. placeholder-jobs-dlq is only for messages the consumer
+  // never acknowledges. A job that exhausts its attempts is marked FAILED on the
+  // jobs row. When JOB_QUEUE is absent, the cron below runs due jobs inside the
+  // scheduled invocation. Uncomment this and replace the placeholder names to opt in.
+  // "queues": {
+  //   "producers": [
+  //     {
+  //       "binding": "JOB_QUEUE",
+  //       "queue": "placeholder-jobs"
+  //     }
+  //   ],
+  //   "consumers": [
+  //     {
+  //       "queue": "placeholder-jobs",
+  //       "max_batch_size": 10,
+  //       "max_batch_timeout": 5,
+  //       "max_retries": 10,
+  //       "dead_letter_queue": "placeholder-jobs-dlq"
+  //     }
+  //   ]
+  // },
+  // This cron is active on deploy. It fires every five minutes and does not require
+  // a queue. The scheduled handler reaps expired leases and runs a bounded set of
+  // due jobs in that invocation.
+  "triggers": {
+    "crons": ["*/5 * * * *"],
+  },
 
   // Here's how to configure an additional environment
   // It can be deployed with `CLOUDFLARE_ENV=staging pnpm run deploy`

@@ -63,6 +63,9 @@
     "pnpm": "^9 || ^10 || ^11"
   },
   "pnpm": {
+    "overrides": {
+      "esbuild": "0.28.2"
+    },
     "onlyBuiltDependencies": [
       "sharp",
       "esbuild",
