@@ -40,4 +40,4 @@ Gzip is over 3 MiB. Deploy on the Workers Paid plan. Cloudflare's current script
 ## Stacked pull requests
 
 - #11 changes `build` from `payload build` to `next build`. Drop that hunk on rebase. This branch already sets `next build --webpack`. The admin layout, `src/payload-css.d.ts`, and `tsconfig.json` on #11 match the typecheck fixes here. #11's `payload.config.ts` includes the same local-D1 guard for `next build`.
-- #15 (`cursor/background-jobs-61a7`) wraps esbuild to stub Turbopack's hashed `drizzle-kit` require and to inline preview props. Webpack removes the need for the drizzle-kit stub. Keep a single preview-props patch. #15's host-header patch for the jobs route is separate and should stay on that branch.
+- #15 (`cursor/background-jobs-61a7`) wrapped esbuild to stub Turbopack's hashed `drizzle-kit` require. The integration branch drops that stub and the esbuild override. `scripts/worker-build/build-cloudflare-worker.mjs` keeps #18's preview-props inlining and then applies #15's host-header patch.
