@@ -23,7 +23,7 @@ Do not put secrets in the payload. Keys are split on `-`, `_`, and camelCase bou
 
 The queue consumer and the cron both call the same claim function. A duplicate message, or a cron wake-up while a consumer is working, does not run the handler twice.
 
-The cron is `*/5 * * * *` and is active in `wrangler.jsonc`. It fires as soon as the Worker is deployed. It does not require a queue. Each invocation reaps at most two expired leases and runs at most two due jobs. A counter on that run stops it before 40 counted D1 calls so the invocation stays under the Workers free-plan limit of 50 subrequests. The counter is passed through the job code. It does not wrap the shared D1 client, so another request in the same isolate is not counted and cannot fail that budget.
+Deploying this branch enables the cron `*/5 * * * *`. It is active in `wrangler.jsonc` and starts firing as soon as the Worker is deployed, every five minutes. It does not require a queue. Each invocation reaps at most two expired leases and runs at most two due jobs. A counter on that run stops it before 40 counted D1 calls so the invocation stays under the Workers free-plan limit of 50 subrequests. The counter is passed through the job code. It does not wrap the shared D1 client, so another request in the same isolate is not counted and cannot fail that budget.
 
 The `queues` block is commented out. Wrangler rejects a deploy that names a queue which does not exist. Leave the block commented until the queues exist, then replace `placeholder-jobs` and `placeholder-jobs-dlq`. Those names are not Cloudflare resources.
 
@@ -66,6 +66,8 @@ OpenNext's generated `.open-next/worker.js` exports `fetch` only. `wrangler.json
 `JOBS_INTERNAL_SECRET` is not a var in `wrangler.jsonc`. A var would block `wrangler secret put` under the same name, and the value would be committed. Set it with `wrangler secret put JOBS_INTERNAL_SECRET`. `.env.example` has a placeholder for local use only. In production the route refuses a secret that is missing, equal to that placeholder, or shorter than 32 characters. It logs that once and skips the run, so the cron does not throw every five minutes. A queue batch in that state is acknowledged and left `PENDING` for a later cron, instead of being retried until it hits the dead-letter queue. The comparison is constant-time. The host check remains the primary guard: a public request is 404 even with the right secret.
 
 `pnpm build:worker` depends on the exact packages `@opennextjs/cloudflare@1.20.10` (which depends on `@opennextjs/aws@4.1.9`) and `esbuild@0.28.2`. The host-header patch looks for one assignment in the generated OpenNext middleware, and the drizzle stub wraps esbuild's `build` function. Those strings are not a public API. A bump of either package can make the build throw or ship a Worker that 404s the internal route. Re-run `tests/int/jobs-worker-build.int.spec.ts` after changing them. The cron described above is active. The queue block stays commented until real queues exist.
+
+#18 builds the Worker with webpack and inlines `preview-props.json` in its own script. Webpack does not emit the hashed `drizzle-kit` require, so this branch's stub duplicates that work. When this branch is rebased onto #18, drop the drizzle-kit stub and keep a single preview-props patch. The host-header patch for `jobs.internal` stays on this branch.
 
 ## Local checks
 
