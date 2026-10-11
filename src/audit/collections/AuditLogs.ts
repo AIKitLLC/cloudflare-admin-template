@@ -11,6 +11,12 @@ import { acceptAuditJsonValue } from './acceptAuditJsonValue'
  */
 export const AuditLogs: CollectionConfig = {
   slug: AUDIT_LOGS_SLUG,
+  custom: {
+    rbac: {
+      // Closed collection. Only audit-logs:read is catalogued. Coverage must not wrap this.
+      ownsAccess: true,
+    },
+  },
   labels: {
     singular: 'Audit Log',
     plural: 'Audit Logs',

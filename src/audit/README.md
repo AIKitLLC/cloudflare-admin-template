@@ -64,7 +64,7 @@ Redaction also walks nested objects and arrays, so a token inside a JSON blob is
 
 `src/audit/access/AuditLogAccessPolicy.ts` is the only access decision. There is no `access.admin` entry. Payload only consults that hook on auth collections, and Audit Logs is not one.
 
-- `read`: a hard gate. Signed-in is not enough. Only the single earliest user (lowest `users.id`) or an email listed exactly in `AUDIT_LOG_READER_EMAILS` (comma-separated, empty in `.env.example`, no real addresses) may read. If that lookup throws, returns no row, or returns more than one row, the check fails closed. The function returns `boolean | Where` so a later check can return a row scope.
+- `read`: the `audit-logs:read` grant from `evaluateCollectionAccess`, returned unchanged, including a row-scope `Where`. Full access still passes. Signed-in is not enough.
 - `create`, `update`, `delete`: denied
 
 Hooks create rows with `overrideAccess: true`. `rejectAuditLogUpdate` and `rejectAuditLogDelete` still throw, including when `overrideAccess` is set, so a normal admin API call cannot edit or delete history. Raw SQL against D1 is outside this app.
@@ -103,11 +103,9 @@ The Audit Logs list is the viewer. Columns include timestamp, action, collection
 
 The native column filters remain available.
 
-## RBAC follow-up (issue #1, PR #11)
+## RBAC
 
-`canReadAuditLogs` is the only read check. Until that PR is rebased, it is a hard gate: only the single earliest user or an exact `AUDIT_LOG_READER_EMAILS` entry may read, and a failed lookup denies access.
-
-After the rebase, return the `evaluateCollectionAccess` result for `audit-logs:read` unchanged, including a row-scope `Where`. Do not collapse it with `isAccessGranted`. Do not set `custom.rbac.enabled` and do not wrap `AuditLogs` in `withRbac`. That flag makes the catalog emit create, update, delete, and export cells that this collection cannot honor. Register only the `audit-logs:read` key. Logging stays in the collection hooks.
+`canReadAuditLogs` returns `evaluateCollectionAccess` for `audit-logs:read` unchanged, including a row-scope `Where`. It is not collapsed with `isAccessGranted`. `custom.rbac.enabled` is not set, and `AuditLogs` is not wrapped in `withRbac`. That flag would make the catalog emit create, update, delete, and export cells this collection cannot honor. `custom.rbac.ownsAccess` keeps coverage from wrapping it. The catalog registers only `audit-logs:read`. Logging stays in the collection hooks.
 
 ## Local test
 

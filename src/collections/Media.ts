@@ -1,22 +1,26 @@
 import type { CollectionConfig } from 'payload'
 
+import { withRbac } from '../access/with-rbac'
 import { withAuditTrail } from '../audit'
 
-export const Media: CollectionConfig = withAuditTrail({
-  slug: 'media',
-  access: {
-    read: () => true,
-  },
-  fields: [
+export const Media: CollectionConfig = withAuditTrail(
+  withRbac(
     {
-      name: 'alt',
-      type: 'text',
-      required: true,
+      slug: 'media',
+      fields: [
+        {
+          name: 'alt',
+          type: 'text',
+          required: true,
+        },
+      ],
+      upload: {
+        crop: false,
+        focalPoint: false,
+      },
     },
-  ],
-  upload: {
-    // These are not supported on Workers yet due to lack of sharp
-    crop: false,
-    focalPoint: false,
-  },
-})
+    {
+      anonymousRead: true,
+    },
+  ),
+)

@@ -32,9 +32,3 @@ export const CHANGE_ROW_INSERT_CHUNK = 16
 
 /** Hard cap on change rows stored for one audit log, including a truncation marker. */
 export const MAX_CHANGE_ROWS = 64
-
-/**
- * Comma-separated emails that may read audit logs, in addition to the first user.
- * Placeholder only. Do not commit real addresses.
- */
-export const AUDIT_LOG_READER_EMAILS_ENV = 'AUDIT_LOG_READER_EMAILS'

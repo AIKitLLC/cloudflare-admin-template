@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto'
 
-import { getPayload, type Payload, type PayloadRequest } from 'payload'
+import { getPayload, type CollectionSlug, type Payload, type PayloadRequest } from 'payload'
 import config from '@/payload.config'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { DELETE as restDelete, PATCH as restPatch } from '@/app/(payload)/api/[...slug]/route'
 import { POST as graphqlPost } from '@/app/(payload)/api/graphql/route'
-import { AUDIT_LOG_READER_EMAILS_ENV } from '@/audit/constants'
 import { droppedAuditWriteCount } from '@/audit/logging/droppedAuditWrites'
+import { setRoleGrant } from '@/rbac/matrix/set-role-grant'
 
 let payload: Payload
 
@@ -306,49 +306,62 @@ describe('audit operations', () => {
     expect(droppedAuditWriteCount()).toBe(droppedBefore + 1)
   })
 
-  it('denies audit log reads for users who are not the earliest user or on the allowlist', async () => {
+  it('allows audit log reads only for the audit-logs:read grant', async () => {
     const password = `pw-${randomUUID()}`
-    const email = `denied-${randomUUID()}@example.com`
-    const previousAllowlist = process.env[AUDIT_LOG_READER_EMAILS_ENV]
-    delete process.env[AUDIT_LOG_READER_EMAILS_ENV]
-    try {
-      const denied = await payload.create({
-        collection: 'users',
-        data: { email, password },
-        overrideAccess: true,
-      })
-
-      await expect(
-        payload.find({ collection: 'audit-logs', overrideAccess: false, user: denied }),
-      ).rejects.toThrow()
-
-      process.env[AUDIT_LOG_READER_EMAILS_ENV] = email
-      const allowed = await payload.find({
-        collection: 'audit-logs',
-        overrideAccess: false,
-        user: denied,
-        limit: 1,
-      })
-      expect(allowed.docs).toBeDefined()
-    } finally {
-      if (previousAllowlist === undefined) delete process.env[AUDIT_LOG_READER_EMAILS_ENV]
-      else process.env[AUDIT_LOG_READER_EMAILS_ENV] = previousAllowlist
-    }
-
-    const earliest = await payload.find({
-      collection: 'users',
+    const readerRole = await payload.create({
+      collection: 'roles',
+      data: {
+        name: `Audit reader ${randomUUID()}`,
+        slug: `audit-reader-${randomUUID()}`,
+        grantsFullAccess: false,
+      },
+      overrideAccess: true,
+    })
+    const permission = await payload.find({
+      collection: 'permissions' as CollectionSlug,
       depth: 0,
       limit: 1,
       overrideAccess: true,
-      sort: 'id',
+      where: { key: { equals: 'audit-logs:read' } },
     })
-    const asEarliest = await payload.find({
+    expect(permission.docs[0]).toBeTruthy()
+    await setRoleGrant(payload, {
+      roleId: readerRole.id,
+      permissionId: permission.docs[0].id,
+      granted: true,
+    })
+
+    const reader = await payload.create({
+      collection: 'users',
+      data: { email: `reader-${randomUUID()}@example.com`, password, roles: [readerRole.id] },
+      overrideAccess: true,
+    })
+    const denied = await payload.create({
+      collection: 'users',
+      data: { email: `denied-${randomUUID()}@example.com`, password },
+      overrideAccess: true,
+    })
+
+    const allowed = await payload.find({
       collection: 'audit-logs',
       overrideAccess: false,
-      user: earliest.docs[0],
+      user: reader,
       limit: 1,
     })
-    expect(asEarliest.docs).toBeDefined()
+    expect(allowed.docs).toBeDefined()
+    await expect(
+      payload.find({ collection: 'audit-logs', overrideAccess: false, user: denied }),
+    ).rejects.toThrow()
+
+    const catalog = await payload.find({
+      collection: 'permissions' as CollectionSlug,
+      depth: 0,
+      overrideAccess: true,
+      pagination: false,
+      where: { key: { contains: 'audit-logs:' } },
+    })
+    const keys = catalog.docs.map((doc) => (doc as { key?: string }).key)
+    expect(keys).toEqual(['audit-logs:read'])
   })
 })
 

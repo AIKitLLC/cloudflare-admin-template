@@ -1,5 +1,7 @@
-import { getPayload } from 'payload'
+import { getPayload, type CollectionSlug } from 'payload'
 import config from '../../src/payload.config.js'
+
+import { SUPER_ADMIN_SLUG } from '../../src/access/constants'
 
 export const testUser = {
   email: 'dev@payloadcms.com',
@@ -23,10 +25,24 @@ export async function seedTestUser(): Promise<void> {
     overrideAccess: true,
   })
 
-  // Create fresh test user
+  const superAdmin = await payload.find({
+    collection: 'roles' as CollectionSlug,
+    depth: 0,
+    limit: 1,
+    overrideAccess: true,
+    where: {
+      slug: {
+        equals: SUPER_ADMIN_SLUG,
+      },
+    },
+  })
+
   await payload.create({
     collection: 'users',
-    data: testUser,
+    data: {
+      ...testUser,
+      roles: superAdmin.docs[0] ? [superAdmin.docs[0].id] : [],
+    },
     overrideAccess: true,
   })
 }
