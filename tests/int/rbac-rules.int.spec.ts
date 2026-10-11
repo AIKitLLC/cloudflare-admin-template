@@ -4,6 +4,7 @@ import { omitAuthSecrets } from '@/access/export/create-export-endpoint'
 import { permissionKey } from '@/access/permission-key'
 import { toCsv } from '@/access/export/to-csv'
 import {
+  earliestUser,
   shouldAssignSuperAdminOnCreate,
   shouldPromoteUnassignedUsers,
 } from '@/rbac/seed/promotion-policy'
@@ -19,6 +20,23 @@ describe('RBAC rules', () => {
     expect(shouldPromoteUnassignedUsers([])).toBe(false)
     expect(shouldPromoteUnassignedUsers([{ roles: [] }, { roles: null }])).toBe(true)
     expect(shouldPromoteUnassignedUsers([{ roles: [1] }, { roles: [] }])).toBe(false)
+  })
+
+  it('selects the earliest user by createdAt, then id', () => {
+    expect(earliestUser([])).toBeUndefined()
+    expect(
+      earliestUser([
+        { id: 3, createdAt: '2026-01-02T00:00:00.000Z' },
+        { id: 9, createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 4, createdAt: '2026-01-01T00:00:00.000Z' },
+      ])?.id,
+    ).toBe(4)
+    expect(
+      earliestUser([
+        { id: '10', createdAt: null },
+        { id: '2', createdAt: null },
+      ])?.id,
+    ).toBe('2')
   })
 
   it('assigns super-admin only to the first user created without roles', () => {
