@@ -1,6 +1,8 @@
 import type { CollectionConfig } from 'payload'
 
-export const Media: CollectionConfig = {
+import { withAuditTrail } from '../audit'
+
+export const Media: CollectionConfig = withAuditTrail({
   slug: 'media',
   access: {
     read: () => true,
@@ -17,4 +19,4 @@ export const Media: CollectionConfig = {
     crop: false,
     focalPoint: false,
   },
-}
+})

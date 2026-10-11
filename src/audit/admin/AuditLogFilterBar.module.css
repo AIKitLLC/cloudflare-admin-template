@@ -1,0 +1,63 @@
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--theme-elevation-150);
+  border-radius: var(--style-radius-m, 4px);
+  background: var(--theme-elevation-50);
+}
+
+.intro {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--theme-elevation-700);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 12rem;
+  flex: 1 1 12rem;
+}
+
+.label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--theme-elevation-800);
+}
+
+.input {
+  height: 2.25rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--theme-elevation-200);
+  border-radius: var(--style-radius-s, 4px);
+  background: var(--theme-input-bg, var(--theme-elevation-0));
+  color: var(--theme-text);
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.button {
+  height: 2.25rem;
+  padding: 0 0.9rem;
+  border-radius: var(--style-radius-s, 4px);
+  border: 1px solid var(--theme-elevation-250);
+  background: var(--theme-elevation-100);
+  color: var(--theme-text);
+  cursor: pointer;
+}
+
+.primary {
+  background: var(--theme-elevation-900);
+  color: var(--theme-bg, var(--theme-elevation-0));
+  border-color: transparent;
+}

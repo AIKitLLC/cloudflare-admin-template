@@ -72,6 +72,7 @@ Open [http://localhost:3000/admin](http://localhost:3000/admin) to access the ad
 ```text
 ├── src/
 │   ├── app/                 # Next.js App Router (Admin & API endpoints)
+│   ├── audit/               # Opt-in field-level audit trail (see src/audit/README.md)
 │   ├── collections/         # Payload Collection definitions
 │   │   ├── Users.ts         # User authentication collection
 │   │   └── Media.ts         # Asset upload collection (R2)
@@ -208,3 +209,9 @@ pnpm test:worker
 ## 📄 License
 
 MIT © [AIKit LLC](https://github.com/AIKitLLC)
+
+## Audit trail
+
+`Users` and `Media` record an append-only, field-level audit row on create, update, and delete. Opt another collection in with `withAuditTrail` from `src/audit`. Passwords, tokens, hashes, salts, sessions, and similar secrets are stored as `[REDACTED]`. A failed audit write is counted, logged, and does not fail the user's change.
+
+`untrustedClientIp` is personal data visible to anyone who can read the trail. Reads are a hard gate: only the single earliest user or an exact `AUDIT_LOG_READER_EMAILS` entry may read, and a failed lookup denies access. The D1 migration `src/migrations/20261010_080422_audit_logs.ts` creates only `audit_logs` and `audit_logs_changes`. It does not create `payload_kv`. See [src/audit/README.md](src/audit/README.md) for the viewer filters and how `canReadAuditLogs` will return the `audit-logs:read` decision once the permission matrix from issue #1 is available.
