@@ -1,0 +1,6 @@
+export { adminAudit, type AuditTrailTarget } from './plugin'
+export { AUDIT_LOGS_SLUG, REDACTED_VALUE } from './constants'
+export { AuditLogs } from './collections/AuditLogs'
+export { withAuditTrail, type AuditTrailOptions } from './hooks/withAuditTrail'
+export { SensitiveFieldPolicy } from './diff/SensitiveFieldPolicy'
+export { canReadAuditLogs, auditLogAccess } from './access/AuditLogAccessPolicy'

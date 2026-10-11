@@ -1,7 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
-import { withRbac } from '../../src/access/with-rbac'
-import { BRANCHES_SLUG, DATA_CLASSES_SLUG, ORGANIZATIONS_SLUG } from '../../src/scope/constants'
+import { withRbac } from '@aikit/admin-rbac'
+import { BRANCHES_SLUG, DATA_CLASSES_SLUG, ORGANIZATIONS_SLUG } from '@aikit/admin-rls'
 
 export const WORK_NOTES_SLUG = 'work-notes'
 export const WORK_NOTE_ORGANIZATION_FIELD = 'ownerOrganization'

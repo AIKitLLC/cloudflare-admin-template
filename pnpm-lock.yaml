@@ -8,6 +8,24 @@ importers:
 
   .:
     dependencies:
+      '@aikit/admin-audit':
+        specifier: workspace:*
+        version: link:packages/admin-audit
+      '@aikit/admin-core':
+        specifier: workspace:*
+        version: link:packages/admin-core
+      '@aikit/admin-jobs':
+        specifier: workspace:*
+        version: link:packages/admin-jobs
+      '@aikit/admin-params':
+        specifier: workspace:*
+        version: link:packages/admin-params
+      '@aikit/admin-rbac':
+        specifier: workspace:*
+        version: link:packages/admin-rbac
+      '@aikit/admin-rls':
+        specifier: workspace:*
+        version: link:packages/admin-rls
       '@opennextjs/cloudflare':
         specifier: 1.20.10
         version: 1.20.10(next@16.4.0(@babel/core@7.29.7)(@playwright/test@1.63.0)(@types/node@24.12.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(sass@1.77.4))(wrangler@4.116.0)
@@ -93,6 +111,59 @@ importers:
       wrangler:
         specifier: ~4.116.0
         version: 4.116.0
+
+  packages/admin-audit:
+    dependencies:
+      '@aikit/admin-core':
+        specifier: workspace:*
+        version: link:../admin-core
+      '@aikit/admin-rbac':
+        specifier: workspace:*
+        version: link:../admin-rbac
+      payload:
+        specifier: 3.82.1
+        version: 3.82.1(graphql@16.14.2)(typescript@6.0.3)
+
+  packages/admin-core: {}
+
+  packages/admin-jobs:
+    dependencies:
+      '@aikit/admin-rbac':
+        specifier: workspace:*
+        version: link:../admin-rbac
+      payload:
+        specifier: 3.82.1
+        version: 3.82.1(graphql@16.14.2)(typescript@6.0.3)
+
+  packages/admin-params:
+    dependencies:
+      '@aikit/admin-core':
+        specifier: workspace:*
+        version: link:../admin-core
+      '@aikit/admin-rbac':
+        specifier: workspace:*
+        version: link:../admin-rbac
+      payload:
+        specifier: 3.82.1
+        version: 3.82.1(graphql@16.14.2)(typescript@6.0.3)
+
+  packages/admin-rbac:
+    dependencies:
+      '@aikit/admin-core':
+        specifier: workspace:*
+        version: link:../admin-core
+      payload:
+        specifier: 3.82.1
+        version: 3.82.1(graphql@16.14.2)(typescript@6.0.3)
+
+  packages/admin-rls:
+    dependencies:
+      '@aikit/admin-rbac':
+        specifier: workspace:*
+        version: link:../admin-rbac
+      payload:
+        specifier: 3.82.1
+        version: 3.82.1(graphql@16.14.2)(typescript@6.0.3)
 
 packages:
 
@@ -9299,7 +9370,7 @@ snapshots:
       eslint: 9.39.5
       eslint-import-resolver-node: 0.3.10
       eslint-import-resolver-typescript: 3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.71.1(eslint@9.39.5)(typescript@6.0.3))(eslint@9.39.5))(eslint@9.39.5)
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.71.1(eslint@9.39.5)(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.5)
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.71.1(eslint@9.39.5)(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.71.1(eslint@9.39.5)(typescript@6.0.3))(eslint@9.39.5))(eslint@9.39.5))(eslint@9.39.5)
       eslint-plugin-jsx-a11y: 6.10.2(eslint@9.39.5)
       eslint-plugin-react: 7.37.5(eslint@9.39.5)
       eslint-plugin-react-hooks: 7.1.1(eslint@9.39.5)
@@ -9332,7 +9403,7 @@ snapshots:
       tinyglobby: 0.2.17
       unrs-resolver: 1.12.2
     optionalDependencies:
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.71.1(eslint@9.39.5)(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.5)
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.71.1(eslint@9.39.5)(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.71.1(eslint@9.39.5)(typescript@6.0.3))(eslint@9.39.5))(eslint@9.39.5))(eslint@9.39.5)
     transitivePeerDependencies:
       - supports-color
 
@@ -9347,7 +9418,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.71.1(eslint@9.39.5)(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.5):
+  eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.71.1(eslint@9.39.5)(typescript@6.0.3))(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0(@typescript-eslint/parser@8.71.1(eslint@9.39.5)(typescript@6.0.3))(eslint@9.39.5))(eslint@9.39.5))(eslint@9.39.5):
     dependencies:
       '@rtsao/scc': 1.1.0
       array-includes: 3.2.0
@@ -11483,7 +11554,7 @@ snapshots:
   tsx@4.21.0:
     dependencies:
       esbuild: 0.27.7
-      get-tsconfig: 4.8.1
+      get-tsconfig: 4.14.3
     optionalDependencies:
       fsevents: 2.3.3
 

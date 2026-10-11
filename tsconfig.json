@@ -23,12 +23,24 @@
       }
     ],
     "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@payload-config": [
-        "./src/payload.config.ts"
-      ]
+      "@aikit/admin-core": ["./packages/admin-core/src/index.ts"],
+      "@aikit/admin-rbac": ["./packages/admin-rbac/src/index.ts"],
+      "@aikit/admin-rbac/admin": ["./packages/admin-rbac/src/admin.ts"],
+      "@aikit/admin-audit": ["./packages/admin-audit/src/index.ts"],
+      "@aikit/admin-audit/client": ["./packages/admin-audit/src/client.ts"],
+      "@aikit/admin-rls": ["./packages/admin-rls/src/index.ts"],
+      "@aikit/admin-params": ["./packages/admin-params/src/index.ts"],
+      "@aikit/admin-jobs": ["./packages/admin-jobs/src/index.ts"],
+      "@aikit/admin-jobs/admin": ["./packages/admin-jobs/src/admin.ts"],
+      "@aikit/admin-jobs/worker": ["./packages/admin-jobs/src/worker.ts"],
+      "@/audit/*": ["./packages/admin-audit/src/*"],
+      "@/access/*": ["./packages/admin-rbac/src/access/*"],
+      "@/rbac/*": ["./packages/admin-rbac/src/rbac/*"],
+      "@/scope/*": ["./packages/admin-rls/src/*"],
+      "@/system-parameters/*": ["./packages/admin-params/src/*"],
+      "@/jobs/*": ["./packages/admin-jobs/src/*"],
+      "@/*": ["./src/*"],
+      "@payload-config": ["./src/payload.config.ts"]
     },
     "target": "ES2022"
   },

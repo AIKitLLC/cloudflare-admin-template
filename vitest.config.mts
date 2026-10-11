@@ -9,7 +9,7 @@ export default defineConfig({
     // TextEncoder because its Uint8Array is a different realm.
     environment: 'node',
     setupFiles: ['./vitest.setup.ts'],
-    include: ['tests/int/**/*.int.spec.ts'],
+    include: ['tests/int/**/*.int.spec.ts', 'packages/**/*.int.spec.ts'],
     // Local D1 is one SQLite file. Parallel files race on schema push and writes.
     fileParallelism: false,
     maxWorkers: 1,

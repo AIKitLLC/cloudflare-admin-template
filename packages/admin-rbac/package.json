@@ -1,0 +1,16 @@
+{
+  "name": "@aikit/admin-rbac",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./admin": "./src/admin.ts"
+  },
+  "dependencies": {
+    "@aikit/admin-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "payload": "3.82.1"
+  }
+}

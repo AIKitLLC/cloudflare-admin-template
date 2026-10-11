@@ -1,23 +1,22 @@
 import type { CollectionConfig } from 'payload'
 
-import { evaluateCollectionAccess } from '../access/evaluate-collection-access'
-import { isPermissionPayloadCall, permissionDocumentId } from '../access/permission-payload-call'
-import { withRbac } from '../access/with-rbac'
-import { withAuditTrail } from '../audit'
 import {
+  assignSuperAdminToFirstUser,
+  evaluateCollectionAccess,
   guardAuthCredentialOperation,
   guardLastFullAccessDeletion,
   guardUserRoleAssignment,
-} from '../rbac/guards/guard-full-access-assignment'
-import { assignSuperAdminToFirstUser } from '../rbac/hooks/assign-super-admin-to-first-user'
+  isPermissionPayloadCall,
+  permissionDocumentId,
+  withRbac,
+} from '@aikit/admin-rbac'
 import {
   USER_BRANCHES_FIELD,
   USER_DATA_CLASSES_FIELD,
   USER_ORGANIZATIONS_FIELD,
-} from '../scope/constants'
+} from '@aikit/admin-rls'
 
-export const Users: CollectionConfig = withAuditTrail(
-  withRbac(
+export const Users: CollectionConfig = withRbac(
     {
       slug: 'users',
       admin: {
@@ -98,8 +97,4 @@ export const Users: CollectionConfig = withAuditTrail(
         assignments: true,
       },
     },
-  ),
-  {
-    redactFields: ['password', 'hash', 'salt', 'resetPasswordToken', 'sessions'],
-  },
-)
+  )

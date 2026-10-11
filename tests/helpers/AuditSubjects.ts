@@ -1,6 +1,6 @@
 import type { CollectionConfig } from 'payload'
 
-import { withAuditTrail } from '../../src/audit/hooks/withAuditTrail'
+import { withAuditTrail } from '@aikit/admin-audit'
 
 const wideFields = Array.from({ length: 20 }, (_, index) => ({
   name: `field${String(index + 1).padStart(2, '0')}`,

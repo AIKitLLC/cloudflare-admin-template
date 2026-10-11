@@ -8,28 +8,16 @@ import { CloudflareContext, getCloudflareContext } from '@opennextjs/cloudflare'
 import { GetPlatformProxyOptions } from 'wrangler'
 import { r2Storage } from '@payloadcms/storage-r2'
 
-import { coverLiveConfig } from './access/cover-unwrapped'
-import { assertRbacCoverage, ensureRbacCoverage } from './access/ensure-rbac-coverage'
-import { applyFieldAccess } from './access/fields/apply-field-access'
-import { rbacCoveragePlugin } from './access/rbac-coverage-plugin'
-import { AuditLogs, withAuditTrail } from './audit'
+import { adminAudit } from '@aikit/admin-audit'
+import { adminJobs } from '@aikit/admin-jobs'
+import { adminParams } from '@aikit/admin-params'
+import { adminRbac } from '@aikit/admin-rbac'
+import { adminRls } from '@aikit/admin-rls'
+
 import { resolvePublicServerURL } from './config/public-server-url'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
-import { Branches } from './scope/collections/Branches'
-import { DataClasses } from './scope/collections/DataClasses'
-import { Organizations } from './scope/collections/Organizations'
-import { Records } from './scope/collections/Records'
-import { ensureRowScopeRegistered } from './scope/register-row-scope'
-import { SystemParameters } from './system-parameters/collections/SystemParameters'
 import { migrations } from './migrations'
-import { Jobs } from './jobs/collection/Jobs'
-import { retryJobMutation } from './jobs/graphql/retry-job-mutation'
-import { Permissions } from './rbac/collections/Permissions'
-import { RolePermissions } from './rbac/collections/RolePermissions'
-import { Roles } from './rbac/collections/Roles'
-import { grantEndpoint, matrixEndpoint } from './rbac/endpoints/matrix-handlers'
-import { seedRbac } from './rbac/seed/seed-rbac'
 
 /**
  * Vitest setup assigns this before the config module loads. Production and
@@ -94,74 +82,17 @@ const cloudflare =
     ? await getCloudflareContextFromWrangler()
     : await getCloudflareContext({ async: true })
 
-ensureRowScopeRegistered()
-
 export default buildConfig({
   admin: {
     user: Users.slug,
     importMap: {
       baseDir: path.resolve(dirname),
     },
-    components: {
-      afterNavLinks: [
-        '/components/rbac/PermissionMatrixNavLink#PermissionMatrixNavLink',
-        '/components/jobs/JobsNavLink#JobsNavLink',
-      ],
-      views: {
-        permissionMatrix: {
-          Component: '/components/rbac/PermissionMatrixView#PermissionMatrixView',
-          path: '/permission-matrix',
-          exact: true,
-          meta: {
-            title: 'Permission Matrix',
-          },
-        },
-        jobMonitor: {
-          Component: '/components/jobs/JobsDashboardView#JobsDashboardView',
-          path: '/job-monitor',
-          exact: true,
-          meta: {
-            title: 'Job Monitor',
-          },
-        },
-      },
-    },
   },
-  collections: ensureRbacCoverage([
-    Users,
-    Media,
-    Roles,
-    Permissions,
-    RolePermissions,
-    Organizations,
-    Branches,
-    DataClasses,
-    Records,
-    withAuditTrail(SystemParameters),
-    withAuditTrail(Jobs),
-    AuditLogs,
-    ...testOnlyCollections(),
-  ]),
-  endpoints: [matrixEndpoint, grantEndpoint],
-  graphQL: {
-    mutations: retryJobMutation,
-  },
+  collections: [Users, Media, ...testOnlyCollections()],
   serverURL,
   cors: allowedOrigins,
   csrf: allowedOrigins,
-  onInit: async (payload) => {
-    coverLiveConfig(payload)
-    applyFieldAccess(payload)
-    assertRbacCoverage(payload)
-    try {
-      await seedRbac(payload)
-    } catch (error) {
-      payload.logger.error({
-        msg: 'RBAC seed failed. Requests continue with the last successful catalog.',
-        err: error,
-      })
-    }
-  },
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {
@@ -177,7 +108,21 @@ export default buildConfig({
       bucket: cloudflare.env.R2,
       collections: { media: true },
     }),
-    rbacCoveragePlugin,
+    adminRbac(),
+    adminRls(),
+    adminParams(),
+    adminJobs(),
+    adminAudit({
+      trails: [
+        {
+          slug: 'users',
+          redactFields: ['password', 'hash', 'salt', 'resetPasswordToken', 'sessions'],
+        },
+        { slug: 'media' },
+        { slug: 'system-parameters' },
+        { slug: 'jobs' },
+      ],
+    }),
   ],
 })
 
