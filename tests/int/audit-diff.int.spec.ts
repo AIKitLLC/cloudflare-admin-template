@@ -15,6 +15,7 @@ import { SensitiveFieldPolicy } from '@/audit/diff/SensitiveFieldPolicy'
 import { FailOpenAuditLogWriter } from '@/audit/logging/FailOpenAuditLogWriter'
 import { PayloadAuditLogWriter } from '@/audit/logging/PayloadAuditLogWriter'
 import { runAuditChange } from '@/audit/logging/runAuditRecord'
+import type { RequestAuditMetadata } from '@/audit/types'
 import { normalizeRelations } from '@/audit/diff/normalizeRelations'
 import { droppedAuditWriteCount } from '@/audit/logging/droppedAuditWrites'
 import {
@@ -498,7 +499,7 @@ describe('custom.audit.redact whenSensitive', () => {
     { name: 'sensitive', type: 'checkbox' },
     { name: 'key', type: 'text' },
   ]
-  const metadata = {
+  const metadata: RequestAuditMetadata = {
     actorId: null,
     actorRelationshipId: null,
     actorEmail: null,
