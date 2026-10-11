@@ -21,6 +21,7 @@ import { DataClasses } from './scope/collections/DataClasses'
 import { Organizations } from './scope/collections/Organizations'
 import { Records } from './scope/collections/Records'
 import { ensureRowScopeRegistered } from './scope/register-row-scope'
+import { SystemParameters } from './system-parameters/collections/SystemParameters'
 import { migrations } from './migrations'
 import { Permissions } from './rbac/collections/Permissions'
 import { RolePermissions } from './rbac/collections/RolePermissions'
@@ -123,6 +124,7 @@ export default buildConfig({
     Branches,
     DataClasses,
     Records,
+    SystemParameters,
     AuditLogs,
     ...testOnlyCollections(),
   ]),

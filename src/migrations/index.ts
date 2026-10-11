@@ -4,6 +4,7 @@ import * as migration_20261010_080937_payload_kv from './20261010_080937_payload
 import * as migration_20261010_080938_rbac_permission_matrix from './20261010_080938_rbac_permission_matrix'
 import * as migration_20261010_100434_row_level_security from './20261010_100434_row_level_security'
 import * as migration_20261010_110209_scope_path from './20261010_110209_scope_path'
+import * as migration_20261010_143942_system_parameters from './20261010_143942_system_parameters'
 
 export const migrations = [
   {
@@ -35,5 +36,10 @@ export const migrations = [
     up: migration_20261010_110209_scope_path.up,
     down: migration_20261010_110209_scope_path.down,
     name: '20261010_110209_scope_path',
+  },
+  {
+    up: migration_20261010_143942_system_parameters.up,
+    down: migration_20261010_143942_system_parameters.down,
+    name: '20261010_143942_system_parameters',
   },
 ]

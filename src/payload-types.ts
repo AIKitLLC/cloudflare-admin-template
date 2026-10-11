@@ -76,6 +76,7 @@ export interface Config {
     branches: Branch;
     'data-classes': DataClass;
     records: Record;
+    'system-parameters': SystemParameter;
     'audit-logs': AuditLog;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
@@ -93,6 +94,7 @@ export interface Config {
     branches: BranchesSelect<false> | BranchesSelect<true>;
     'data-classes': DataClassesSelect<false> | DataClassesSelect<true>;
     records: RecordsSelect<false> | RecordsSelect<true>;
+    'system-parameters': SystemParametersSelect<false> | SystemParametersSelect<true>;
     'audit-logs': AuditLogsSelect<false> | AuditLogsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -403,6 +405,44 @@ export interface Record {
   createdAt: string;
 }
 /**
+ * Runtime configuration. Credentials belong in Worker secrets. Mark a value sensitive to hide it from the API, export, and audit diffs.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "system-parameters".
+ */
+export interface SystemParameter {
+  id: number;
+  /**
+   * Stable lowercase kebab-case id, for example maintenance-mode. Secret-like keys are rejected.
+   */
+  key: string;
+  /**
+   * Group slug, for example billing, features, or operations.
+   */
+  category: string;
+  label?: string | null;
+  description?: string | null;
+  valueType: 'string' | 'number' | 'boolean' | 'json';
+  /**
+   * Must match the declared type. JSON values must be an object or array. 0, false, and empty strings are valid for their types.
+   */
+  value:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Hides the value on read, list, export, and audit diffs. getParameter still returns it on the server. Do not use this for credentials.
+   */
+  sensitive?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
@@ -461,6 +501,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'records';
         value: number | Record;
+      } | null)
+    | ({
+        relationTo: 'system-parameters';
+        value: number | SystemParameter;
       } | null)
     | ({
         relationTo: 'audit-logs';
@@ -661,6 +705,21 @@ export interface RecordsSelect<T extends boolean = true> {
   organization?: T;
   branch?: T;
   dataClass?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "system-parameters_select".
+ */
+export interface SystemParametersSelect<T extends boolean = true> {
+  key?: T;
+  category?: T;
+  label?: T;
+  description?: T;
+  valueType?: T;
+  value?: T;
+  sensitive?: T;
   updatedAt?: T;
   createdAt?: T;
 }
