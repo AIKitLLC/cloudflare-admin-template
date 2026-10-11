@@ -1,9 +1,14 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare'
+import {
+  decideInternalDispatch,
+  handleQueueBatch,
+  handleScheduled,
+  JOBS_INTERNAL_HEADER,
+  logInternalSkipOnce,
+} from '@aikit/admin-jobs'
+import { getPayload, type Payload } from 'payload'
 
-import { handleQueueBatch } from '@/jobs/runtime/handle-queue-batch'
-import { handleScheduled } from '@/jobs/runtime/handle-scheduled'
-import { decideInternalDispatch, logInternalSkipOnce } from '@/jobs/runtime/internal-secret'
-import { JOBS_INTERNAL_HEADER } from '@/jobs/runtime/worker-dispatch'
+import config from '@payload-config'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,11 +39,11 @@ export async function POST(request: Request): Promise<Response> {
   const body = (await request.json()) as { kind?: string; payload?: unknown }
   if (body.kind === 'queue') {
     const messages = queueMessages(body.payload)
-    const results = await handleQueueBatch({ messages })
+    const results = await handleQueueBatch(await jobPayload(), { messages })
     return Response.json({ results })
   }
   if (body.kind === 'scheduled') {
-    await handleScheduled()
+    await handleScheduled(await jobPayload())
     return Response.json({ ok: true })
   }
   return new Response(null, { status: 404 })
@@ -54,6 +59,13 @@ function queueMessages(payload: unknown) {
     },
     retried: false,
   }))
+}
+
+let payloadPromise: Promise<Payload> | undefined
+
+function jobPayload(): Promise<Payload> {
+  payloadPromise ??= getPayload({ config })
+  return payloadPromise
 }
 
 async function readInternalSecret(): Promise<string | undefined> {

@@ -17,6 +17,14 @@ const nextConfig = {
   // Packages with Cloudflare Workers (workerd) specific code
   // Read more: https://opennext.js.org/cloudflare/howtos/workerd
   serverExternalPackages: ['jose', 'pg-cloudflare'],
+  transpilePackages: [
+    '@aikit/admin-core',
+    '@aikit/admin-rbac',
+    '@aikit/admin-audit',
+    '@aikit/admin-rls',
+    '@aikit/admin-params',
+    '@aikit/admin-jobs',
+  ],
 
   // `next build` on Next 16 defaults to Turbopack. Payload externalizes `drizzle-kit`
   // (a transitive dependency) and Turbopack emits a hashed require that OpenNext's

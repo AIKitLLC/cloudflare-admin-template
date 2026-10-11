@@ -1,0 +1,17 @@
+{
+  "name": "@aikit/admin-audit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts"
+  },
+  "dependencies": {
+    "@aikit/admin-core": "workspace:*",
+    "@aikit/admin-rbac": "workspace:*"
+  },
+  "peerDependencies": {
+    "payload": "3.82.1"
+  }
+}

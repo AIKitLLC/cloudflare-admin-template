@@ -27,6 +27,12 @@
     "test:worker": "node --test scripts/worker-build/check-worker-build.mjs"
   },
   "dependencies": {
+    "@aikit/admin-audit": "workspace:*",
+    "@aikit/admin-core": "workspace:*",
+    "@aikit/admin-jobs": "workspace:*",
+    "@aikit/admin-params": "workspace:*",
+    "@aikit/admin-rbac": "workspace:*",
+    "@aikit/admin-rls": "workspace:*",
     "@opennextjs/cloudflare": "1.20.10",
     "@payloadcms/db-d1-sqlite": "3.82.1",
     "@payloadcms/next": "3.82.1",

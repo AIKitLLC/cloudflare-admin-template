@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { spawn, type ChildProcess } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { GRAPHQL_POST, REST_DELETE, REST_GET, REST_PATCH, REST_POST } from '@payloadcms/next/routes'
 import { getPayload, type CollectionSlug, type Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -1011,12 +1012,12 @@ async function expectAdminPage(base: string, path: string, marker: string) {
 
 async function withAdminServer(run: (base: string) => Promise<void>) {
   const port = 3456
-  const child = spawn('pnpm', ['exec', 'next', 'dev', '--port', String(port)], {
-    cwd: '/workspace',
+  const nextBin = createRequire(import.meta.url).resolve('next/dist/bin/next')
+  const child = spawn(process.execPath, [nextBin, 'dev', '--port', String(port)], {
+    cwd: process.cwd(),
     detached: true,
     env: {
       ...process.env,
-      PATH: `${process.env.HOME}/.nvm/versions/node/v24.21.0/bin:${process.env.PATH ?? ''}`,
       PAYLOAD_SECRET: process.env.PAYLOAD_SECRET || 'test-secret-for-local-runs',
       // This server loads the config without the Vitest-only collection. A schema
       // push would drop that table while the test process still queries it.

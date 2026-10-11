@@ -1,0 +1,17 @@
+{
+  "name": "@aikit/admin-jobs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./admin": "./src/admin.ts",
+    "./worker": "./src/worker.ts"
+  },
+  "dependencies": {
+    "@aikit/admin-rbac": "workspace:*"
+  },
+  "peerDependencies": {
+    "payload": "3.82.1"
+  }
+}

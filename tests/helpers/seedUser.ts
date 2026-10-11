@@ -1,7 +1,7 @@
 import { getPayload, type CollectionSlug } from 'payload'
 import config from '../../src/payload.config.js'
 
-import { SUPER_ADMIN_SLUG } from '../../src/access/constants'
+import { SUPER_ADMIN_SLUG } from '@aikit/admin-rbac'
 
 export const testUser = {
   email: 'dev@payloadcms.com',

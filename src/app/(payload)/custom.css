@@ -1,2 +1,2 @@
-@import '../../components/rbac/permission-matrix.css';
-@import '../../components/jobs/jobs-dashboard.css';
+@import '../../../packages/admin-rbac/src/admin/permission-matrix.css';
+@import '../../../packages/admin-jobs/src/admin/jobs-dashboard.css';

@@ -70,18 +70,18 @@ Open [http://localhost:3000/admin](http://localhost:3000/admin) to access the ad
 ## 🛠️ Project Structure
 
 ```text
+├── packages/                # Payload plugins. See docs/MODULES.md
+│   ├── admin-core/
+│   ├── admin-rbac/
+│   ├── admin-rls/
+│   ├── admin-params/
+│   ├── admin-jobs/
+│   └── admin-audit/
 ├── src/
 │   ├── app/                 # Next.js App Router (Admin & API endpoints)
-│   ├── access/              # RBAC decision pipeline and collection/field helpers
-│   ├── audit/               # Opt-in field-level audit trail (see src/audit/README.md)
-│   ├── scope/               # Organizational row scope, hierarchy, and assignment guards
-│   ├── collections/         # Payload Collection definitions
-│   │   ├── Users.ts         # User authentication collection
-│   │   └── Media.ts         # Asset upload collection (R2)
-│   ├── components/rbac/     # Permission matrix admin view
-│   ├── rbac/                # Roles, permissions, seeding, and matrix API
-│   ├── migrations/          # D1 database migrations
-│   ├── payload.config.ts    # Main Payload CMS configuration & bindings
+│   ├── collections/         # Users and Media. Feature collections come from the plugins
+│   ├── migrations/          # App-owned D1 migrations
+│   ├── payload.config.ts    # Composition root
 │   └── payload-types.ts     # Auto-generated TypeScript types
 ├── tests/                   # Integration and E2E test suites
 ├── wrangler.jsonc           # Cloudflare Workers, D1 & R2 configuration
@@ -97,7 +97,7 @@ Wrap collections with `withRbac` so they join the permission matrix. Startup syn
 
 ```typescript
 import type { CollectionConfig } from 'payload'
-import { withRbac } from '../access/with-rbac'
+import { withRbac } from '@aikit/admin-rbac'
 
 export const Customers: CollectionConfig = withRbac({
   slug: 'customers',
@@ -276,6 +276,6 @@ MIT © [AIKit LLC](https://github.com/AIKitLLC)
 
 ## Audit trail
 
-`Users` and `Media` record an append-only, field-level audit row on create, update, and delete. Opt another collection in with `withAuditTrail` from `src/audit`. Passwords, tokens, hashes, salts, sessions, and similar secrets are stored as `[REDACTED]`. A failed audit write is counted, logged, and does not fail the user's change.
+`Users` and `Media` record an append-only, field-level audit row on create, update, and delete. Opt another collection in by listing its slug in `adminAudit({ trails })`. Passwords, tokens, hashes, salts, sessions, and similar secrets are stored as `[REDACTED]`. A failed audit write is counted, logged, and does not fail the user's change.
 
-`untrustedClientIp` is personal data visible to anyone who can read the trail. Reads use the `audit-logs:read` grant. Full access still passes. The collection is not wrapped in `withRbac`, so create, update, delete, and export are not matrix cells. The D1 migration `src/migrations/20261010_080422_audit_logs.ts` creates only `audit_logs` and `audit_logs_changes`. It does not create `payload_kv`. See [src/audit/README.md](src/audit/README.md).
+`untrustedClientIp` is personal data visible to anyone who can read the trail. Reads use the `audit-logs:read` grant. Full access still passes. The collection is not wrapped in `withRbac`, so create, update, delete, and export are not matrix cells. The D1 migration `src/migrations/20261010_080422_audit_logs.ts` creates only `audit_logs` and `audit_logs_changes`. It does not create `payload_kv`. See [packages/admin-audit/src/README.md](packages/admin-audit/src/README.md) and [docs/MODULES.md](docs/MODULES.md).

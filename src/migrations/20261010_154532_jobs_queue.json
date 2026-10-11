@@ -218,6 +218,27 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "organizations_id": {
+          "name": "organizations_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "branches_id": {
+          "name": "branches_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "data_classes_id": {
+          "name": "data_classes_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -248,6 +269,27 @@
             "roles_id"
           ],
           "isUnique": false
+        },
+        "users_rels_organizations_id_idx": {
+          "name": "users_rels_organizations_id_idx",
+          "columns": [
+            "organizations_id"
+          ],
+          "isUnique": false
+        },
+        "users_rels_branches_id_idx": {
+          "name": "users_rels_branches_id_idx",
+          "columns": [
+            "branches_id"
+          ],
+          "isUnique": false
+        },
+        "users_rels_data_classes_id_idx": {
+          "name": "users_rels_data_classes_id_idx",
+          "columns": [
+            "data_classes_id"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
@@ -270,6 +312,45 @@
           "tableTo": "roles",
           "columnsFrom": [
             "roles_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "users_rels_organizations_fk": {
+          "name": "users_rels_organizations_fk",
+          "tableFrom": "users_rels",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organizations_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "users_rels_branches_fk": {
+          "name": "users_rels_branches_fk",
+          "tableFrom": "users_rels",
+          "tableTo": "branches",
+          "columnsFrom": [
+            "branches_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "users_rels_data_classes_fk": {
+          "name": "users_rels_data_classes_fk",
+          "tableFrom": "users_rels",
+          "tableTo": "data_classes",
+          "columnsFrom": [
+            "data_classes_id"
           ],
           "columnsTo": [
             "id"
@@ -708,6 +789,615 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "organizations": {
+      "name": "organizations",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "scope_path": {
+          "name": "scope_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        }
+      },
+      "indexes": {
+        "organizations_slug_idx": {
+          "name": "organizations_slug_idx",
+          "columns": [
+            "slug"
+          ],
+          "isUnique": true
+        },
+        "organizations_parent_idx": {
+          "name": "organizations_parent_idx",
+          "columns": [
+            "parent_id"
+          ],
+          "isUnique": false
+        },
+        "organizations_scope_path_idx": {
+          "name": "organizations_scope_path_idx",
+          "columns": [
+            "scope_path"
+          ],
+          "isUnique": false
+        },
+        "organizations_updated_at_idx": {
+          "name": "organizations_updated_at_idx",
+          "columns": [
+            "updated_at"
+          ],
+          "isUnique": false
+        },
+        "organizations_created_at_idx": {
+          "name": "organizations_created_at_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "organizations_parent_id_organizations_id_fk": {
+          "name": "organizations_parent_id_organizations_id_fk",
+          "tableFrom": "organizations",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "branches": {
+      "name": "branches",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "scope_path": {
+          "name": "scope_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        }
+      },
+      "indexes": {
+        "branches_slug_idx": {
+          "name": "branches_slug_idx",
+          "columns": [
+            "slug"
+          ],
+          "isUnique": true
+        },
+        "branches_organization_idx": {
+          "name": "branches_organization_idx",
+          "columns": [
+            "organization_id"
+          ],
+          "isUnique": false
+        },
+        "branches_parent_idx": {
+          "name": "branches_parent_idx",
+          "columns": [
+            "parent_id"
+          ],
+          "isUnique": false
+        },
+        "branches_scope_path_idx": {
+          "name": "branches_scope_path_idx",
+          "columns": [
+            "scope_path"
+          ],
+          "isUnique": false
+        },
+        "branches_updated_at_idx": {
+          "name": "branches_updated_at_idx",
+          "columns": [
+            "updated_at"
+          ],
+          "isUnique": false
+        },
+        "branches_created_at_idx": {
+          "name": "branches_created_at_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "branches_organization_id_organizations_id_fk": {
+          "name": "branches_organization_id_organizations_id_fk",
+          "tableFrom": "branches",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "branches_parent_id_branches_id_fk": {
+          "name": "branches_parent_id_branches_id_fk",
+          "tableFrom": "branches",
+          "tableTo": "branches",
+          "columnsFrom": [
+            "parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "data_classes": {
+      "name": "data_classes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "scope_path": {
+          "name": "scope_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        }
+      },
+      "indexes": {
+        "data_classes_slug_idx": {
+          "name": "data_classes_slug_idx",
+          "columns": [
+            "slug"
+          ],
+          "isUnique": true
+        },
+        "data_classes_parent_idx": {
+          "name": "data_classes_parent_idx",
+          "columns": [
+            "parent_id"
+          ],
+          "isUnique": false
+        },
+        "data_classes_scope_path_idx": {
+          "name": "data_classes_scope_path_idx",
+          "columns": [
+            "scope_path"
+          ],
+          "isUnique": false
+        },
+        "data_classes_updated_at_idx": {
+          "name": "data_classes_updated_at_idx",
+          "columns": [
+            "updated_at"
+          ],
+          "isUnique": false
+        },
+        "data_classes_created_at_idx": {
+          "name": "data_classes_created_at_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "data_classes_parent_id_data_classes_id_fk": {
+          "name": "data_classes_parent_id_data_classes_id_fk",
+          "tableFrom": "data_classes",
+          "tableTo": "data_classes",
+          "columnsFrom": [
+            "parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "records": {
+      "name": "records",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "branch_id": {
+          "name": "branch_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "data_class_id": {
+          "name": "data_class_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        }
+      },
+      "indexes": {
+        "records_organization_idx": {
+          "name": "records_organization_idx",
+          "columns": [
+            "organization_id"
+          ],
+          "isUnique": false
+        },
+        "records_branch_idx": {
+          "name": "records_branch_idx",
+          "columns": [
+            "branch_id"
+          ],
+          "isUnique": false
+        },
+        "records_data_class_idx": {
+          "name": "records_data_class_idx",
+          "columns": [
+            "data_class_id"
+          ],
+          "isUnique": false
+        },
+        "records_updated_at_idx": {
+          "name": "records_updated_at_idx",
+          "columns": [
+            "updated_at"
+          ],
+          "isUnique": false
+        },
+        "records_created_at_idx": {
+          "name": "records_created_at_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "records_organization_id_organizations_id_fk": {
+          "name": "records_organization_id_organizations_id_fk",
+          "tableFrom": "records",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "records_branch_id_branches_id_fk": {
+          "name": "records_branch_id_branches_id_fk",
+          "tableFrom": "records",
+          "tableTo": "branches",
+          "columnsFrom": [
+            "branch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "records_data_class_id_data_classes_id_fk": {
+          "name": "records_data_class_id_data_classes_id_fk",
+          "tableFrom": "records",
+          "tableTo": "data_classes",
+          "columnsFrom": [
+            "data_class_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "system_parameters": {
+      "name": "system_parameters",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "value_type": {
+          "name": "value_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sensitive": {
+          "name": "sensitive",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        }
+      },
+      "indexes": {
+        "system_parameters_key_idx": {
+          "name": "system_parameters_key_idx",
+          "columns": [
+            "key"
+          ],
+          "isUnique": true
+        },
+        "system_parameters_category_idx": {
+          "name": "system_parameters_category_idx",
+          "columns": [
+            "category"
+          ],
+          "isUnique": false
+        },
+        "system_parameters_updated_at_idx": {
+          "name": "system_parameters_updated_at_idx",
+          "columns": [
+            "updated_at"
+          ],
+          "isUnique": false
+        },
+        "system_parameters_created_at_idx": {
+          "name": "system_parameters_created_at_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "jobs": {
       "name": "jobs",
       "columns": {
@@ -887,6 +1577,283 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "audit_logs_changes": {
+      "name": "audit_logs_changes",
+      "columns": {
+        "_order": {
+          "name": "_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "_parent_id": {
+          "name": "_parent_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "path": {
+          "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "old_value": {
+          "name": "old_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "new_value": {
+          "name": "new_value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "audit_logs_changes_order_idx": {
+          "name": "audit_logs_changes_order_idx",
+          "columns": [
+            "_order"
+          ],
+          "isUnique": false
+        },
+        "audit_logs_changes_parent_id_idx": {
+          "name": "audit_logs_changes_parent_id_idx",
+          "columns": [
+            "_parent_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "audit_logs_changes_parent_id_fk": {
+          "name": "audit_logs_changes_parent_id_fk",
+          "tableFrom": "audit_logs_changes",
+          "tableTo": "audit_logs",
+          "columnsFrom": [
+            "_parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "audit_logs": {
+      "name": "audit_logs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "collection_slug": {
+          "name": "collection_slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "document_id": {
+          "name": "document_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "operator_id": {
+          "name": "operator_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actor_email": {
+          "name": "actor_email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ip_address": {
+          "name": "ip_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "untrusted_client_ip": {
+          "name": "untrusted_client_ip",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+        }
+      },
+      "indexes": {
+        "audit_logs_action_idx": {
+          "name": "audit_logs_action_idx",
+          "columns": [
+            "action"
+          ],
+          "isUnique": false
+        },
+        "audit_logs_collection_slug_idx": {
+          "name": "audit_logs_collection_slug_idx",
+          "columns": [
+            "collection_slug"
+          ],
+          "isUnique": false
+        },
+        "audit_logs_document_id_idx": {
+          "name": "audit_logs_document_id_idx",
+          "columns": [
+            "document_id"
+          ],
+          "isUnique": false
+        },
+        "audit_logs_actor_idx": {
+          "name": "audit_logs_actor_idx",
+          "columns": [
+            "actor_id"
+          ],
+          "isUnique": false
+        },
+        "audit_logs_operator_id_idx": {
+          "name": "audit_logs_operator_id_idx",
+          "columns": [
+            "operator_id"
+          ],
+          "isUnique": false
+        },
+        "audit_logs_actor_email_idx": {
+          "name": "audit_logs_actor_email_idx",
+          "columns": [
+            "actor_email"
+          ],
+          "isUnique": false
+        },
+        "audit_logs_occurred_at_idx": {
+          "name": "audit_logs_occurred_at_idx",
+          "columns": [
+            "occurred_at"
+          ],
+          "isUnique": false
+        },
+        "audit_logs_updated_at_idx": {
+          "name": "audit_logs_updated_at_idx",
+          "columns": [
+            "updated_at"
+          ],
+          "isUnique": false
+        },
+        "audit_logs_created_at_idx": {
+          "name": "audit_logs_created_at_idx",
+          "columns": [
+            "created_at"
+          ],
+          "isUnique": false
+        },
+        "collectionSlug_documentId_idx": {
+          "name": "collectionSlug_documentId_idx",
+          "columns": [
+            "collection_slug",
+            "document_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "audit_logs_actor_id_users_id_fk": {
+          "name": "audit_logs_actor_id_users_id_fk",
+          "tableFrom": "audit_logs",
+          "tableTo": "users",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "payload_kv": {
       "name": "payload_kv",
       "columns": {
@@ -1053,6 +2020,41 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "organizations_id": {
+          "name": "organizations_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "branches_id": {
+          "name": "branches_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "data_classes_id": {
+          "name": "data_classes_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "records_id": {
+          "name": "records_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "system_parameters_id": {
+          "name": "system_parameters_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
@@ -1109,6 +2111,41 @@
           "name": "payload_locked_documents_rels_role_permissions_id_idx",
           "columns": [
             "role_permissions_id"
+          ],
+          "isUnique": false
+        },
+        "payload_locked_documents_rels_organizations_id_idx": {
+          "name": "payload_locked_documents_rels_organizations_id_idx",
+          "columns": [
+            "organizations_id"
+          ],
+          "isUnique": false
+        },
+        "payload_locked_documents_rels_branches_id_idx": {
+          "name": "payload_locked_documents_rels_branches_id_idx",
+          "columns": [
+            "branches_id"
+          ],
+          "isUnique": false
+        },
+        "payload_locked_documents_rels_data_classes_id_idx": {
+          "name": "payload_locked_documents_rels_data_classes_id_idx",
+          "columns": [
+            "data_classes_id"
+          ],
+          "isUnique": false
+        },
+        "payload_locked_documents_rels_records_id_idx": {
+          "name": "payload_locked_documents_rels_records_id_idx",
+          "columns": [
+            "records_id"
+          ],
+          "isUnique": false
+        },
+        "payload_locked_documents_rels_system_parameters_id_idx": {
+          "name": "payload_locked_documents_rels_system_parameters_id_idx",
+          "columns": [
+            "system_parameters_id"
           ],
           "isUnique": false
         }
@@ -1185,6 +2222,71 @@
           "tableTo": "role_permissions",
           "columnsFrom": [
             "role_permissions_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "payload_locked_documents_rels_organizations_fk": {
+          "name": "payload_locked_documents_rels_organizations_fk",
+          "tableFrom": "payload_locked_documents_rels",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organizations_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "payload_locked_documents_rels_branches_fk": {
+          "name": "payload_locked_documents_rels_branches_fk",
+          "tableFrom": "payload_locked_documents_rels",
+          "tableTo": "branches",
+          "columnsFrom": [
+            "branches_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "payload_locked_documents_rels_data_classes_fk": {
+          "name": "payload_locked_documents_rels_data_classes_fk",
+          "tableFrom": "payload_locked_documents_rels",
+          "tableTo": "data_classes",
+          "columnsFrom": [
+            "data_classes_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "payload_locked_documents_rels_records_fk": {
+          "name": "payload_locked_documents_rels_records_fk",
+          "tableFrom": "payload_locked_documents_rels",
+          "tableTo": "records",
+          "columnsFrom": [
+            "records_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "payload_locked_documents_rels_system_parameters_fk": {
+          "name": "payload_locked_documents_rels_system_parameters_fk",
+          "tableFrom": "payload_locked_documents_rels",
+          "tableTo": "system_parameters",
+          "columnsFrom": [
+            "system_parameters_id"
           ],
           "columnsTo": [
             "id"
@@ -1439,6 +2541,6 @@
   "internal": {
     "indexes": {}
   },
-  "id": "ab95334a-4bf2-4353-af7c-a8b7760d9a13",
+  "id": "39d66b6d-27f2-4c5c-b820-17b6a58afb10",
   "prevId": "00000000-0000-0000-0000-000000000000"
 }

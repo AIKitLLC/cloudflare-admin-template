@@ -1,10 +1,8 @@
 import type { CollectionConfig } from 'payload'
 
-import { withRbac } from '../access/with-rbac'
-import { withAuditTrail } from '../audit'
+import { withRbac } from '@aikit/admin-rbac'
 
-export const Media: CollectionConfig = withAuditTrail(
-  withRbac(
+export const Media: CollectionConfig = withRbac(
     {
       slug: 'media',
       fields: [
@@ -22,5 +20,4 @@ export const Media: CollectionConfig = withAuditTrail(
     {
       anonymousRead: true,
     },
-  ),
-)
+  )
