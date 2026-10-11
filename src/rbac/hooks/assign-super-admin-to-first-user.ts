@@ -1,7 +1,7 @@
 import type { CollectionAfterChangeHook } from 'payload'
 
 import { USERS_SLUG } from '../../access/constants'
-import { SKIP_RBAC_PRIVILEGE_CHECKS } from '../guards/privilege-context'
+import { SKIP_RBAC_PRIVILEGE_CHECKS, skipsPrivilegeChecks } from '../guards/privilege-context'
 import { ensureSuperAdminRole } from '../seed/ensure-super-admin-role'
 import { hasAssignedRoles, shouldAssignSuperAdminOnCreate } from '../seed/promotion-policy'
 
@@ -33,7 +33,9 @@ export const assignSuperAdminToFirstUser: CollectionAfterChangeHook = async ({
     return doc
   }
   const superAdmin = await ensureSuperAdminRole(req.payload)
-  return req.payload.update({
+  const alreadySkipped = skipsPrivilegeChecks(req.context)
+  const alreadyBootstrapping = req.context?.skipRbacBootstrap === true
+  const updated = await req.payload.update({
     collection: USERS_SLUG,
     id: doc.id,
     data: { roles: [Number(superAdmin.id)] },
@@ -45,4 +47,22 @@ export const assignSuperAdminToFirstUser: CollectionAfterChangeHook = async ({
       [SKIP_RBAC_PRIVILEGE_CHECKS]: true,
     },
   })
+  clearBootstrapSkip(req, alreadySkipped, alreadyBootstrapping)
+  return updated
+}
+
+function clearBootstrapSkip(
+  req: { context?: Record<string, unknown> | null },
+  alreadySkipped: boolean,
+  alreadyBootstrapping: boolean,
+): void {
+  if (!req.context) {
+    return
+  }
+  if (!alreadySkipped) {
+    delete req.context[SKIP_RBAC_PRIVILEGE_CHECKS]
+  }
+  if (!alreadyBootstrapping) {
+    delete req.context.skipRbacBootstrap
+  }
 }

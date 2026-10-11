@@ -25,5 +25,7 @@ export type {
   CollectionAction,
   PermissionAction,
   RbacCollectionOptions,
+  RowScopeBinding,
   RowScopeContributor,
+  ScopeDimension,
 } from './types'

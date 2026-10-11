@@ -10,7 +10,8 @@ import { evaluateCollectionAccess } from '../evaluate-collection-access'
 import { isAccessGranted, isWhereConstraint } from '../result'
 import { toCsv } from './to-csv'
 
-const PAGE_SIZE = 200
+/** D1 allows 100 bound parameters. Payload hydrates each page with one bound id per row. */
+const PAGE_SIZE = 80
 const MAX_ROWS = 2000
 const AUTH_EXPORT_FIELDS = new Set([
   'hash',

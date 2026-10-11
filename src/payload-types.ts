@@ -72,6 +72,10 @@ export interface Config {
     roles: Role;
     permissions: Permission;
     'role-permissions': RolePermission;
+    organizations: Organization;
+    branches: Branch;
+    'data-classes': DataClass;
+    records: Record;
     'audit-logs': AuditLog;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
@@ -85,6 +89,10 @@ export interface Config {
     roles: RolesSelect<false> | RolesSelect<true>;
     permissions: PermissionsSelect<false> | PermissionsSelect<true>;
     'role-permissions': RolePermissionsSelect<false> | RolePermissionsSelect<true>;
+    organizations: OrganizationsSelect<false> | OrganizationsSelect<true>;
+    branches: BranchesSelect<false> | BranchesSelect<true>;
+    'data-classes': DataClassesSelect<false> | DataClassesSelect<true>;
+    records: RecordsSelect<false> | RecordsSelect<true>;
     'audit-logs': AuditLogsSelect<false> | AuditLogsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -135,6 +143,18 @@ export interface User {
    * Access roles. A user with no roles cannot read or change collections. Self-service edits cannot change roles.
    */
   roles?: (number | Role)[] | null;
+  /**
+   * Organizations this user can access, including descendant organizations and their branches. Users cannot change their own assignments.
+   */
+  organizations?: (number | Organization)[] | null;
+  /**
+   * Branches this user can access, including descendant branches. Organization assignments already include the branches under those organizations.
+   */
+  branches?: (number | Branch)[] | null;
+  /**
+   * Data classes this user can access, including classes nested in an assigned group. A collection that stores a data class denies rows when this is empty.
+   */
+  dataClasses?: (number | DataClass)[] | null;
   updatedAt: string;
   createdAt: string;
   email: string;
@@ -172,6 +192,70 @@ export interface Role {
    * Bypasses every collection, action, and field check. Reserved for super-admin.
    */
   grantsFullAccess?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Organizational units. Access assigned here includes child organizations.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "organizations".
+ */
+export interface Organization {
+  id: number;
+  name: string;
+  slug: string;
+  /**
+   * Parent organization. Assignment to an organization includes every descendant. A parent cannot be this organization or one of its descendants.
+   */
+  parent?: (number | null) | Organization;
+  /**
+   * Ancestor path, including this node. Reads match this column instead of a list of descendant ids.
+   */
+  scopePath?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Branches belong to one organization. Assignment to an organization includes its branches. Assignment to a branch includes child branches.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "branches".
+ */
+export interface Branch {
+  id: number;
+  name: string;
+  slug: string;
+  organization: number | Organization;
+  /**
+   * Parent branch in the same organization. Assignment includes every descendant branch.
+   */
+  parent?: (number | null) | Branch;
+  /**
+   * Ancestor path, including this node. Reads match this column instead of a list of descendant ids.
+   */
+  scopePath?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Data classes form groups. Assignment to a group includes every class nested under it.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "data-classes".
+ */
+export interface DataClass {
+  id: number;
+  name: string;
+  slug: string;
+  /**
+   * Group that contains this class. Nested groups are included in the assignment.
+   */
+  parent?: (number | null) | DataClass;
+  /**
+   * Ancestor path, including this node. Reads match this column instead of a list of descendant ids.
+   */
+  scopePath?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -304,6 +388,21 @@ export interface AuditLog {
   createdAt: string;
 }
 /**
+ * Example scoped collection. Reads, updates, deletes, and exports are limited to the signed-in user organization, branch, and data class.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "records".
+ */
+export interface Record {
+  id: number;
+  title: string;
+  organization: number | Organization;
+  branch: number | Branch;
+  dataClass: number | DataClass;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
@@ -346,6 +445,22 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'role-permissions';
         value: number | RolePermission;
+      } | null)
+    | ({
+        relationTo: 'organizations';
+        value: number | Organization;
+      } | null)
+    | ({
+        relationTo: 'branches';
+        value: number | Branch;
+      } | null)
+    | ({
+        relationTo: 'data-classes';
+        value: number | DataClass;
+      } | null)
+    | ({
+        relationTo: 'records';
+        value: number | Record;
       } | null)
     | ({
         relationTo: 'audit-logs';
@@ -399,6 +514,9 @@ export interface PayloadMigration {
  */
 export interface UsersSelect<T extends boolean = true> {
   roles?: T;
+  organizations?: T;
+  branches?: T;
+  dataClasses?: T;
   updatedAt?: T;
   createdAt?: T;
   email?: T;
@@ -494,6 +612,55 @@ export interface AuditLogsSelect<T extends boolean = true> {
         newValue?: T;
         id?: T;
       };
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "organizations_select".
+ */
+export interface OrganizationsSelect<T extends boolean = true> {
+  name?: T;
+  slug?: T;
+  parent?: T;
+  scopePath?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "branches_select".
+ */
+export interface BranchesSelect<T extends boolean = true> {
+  name?: T;
+  slug?: T;
+  organization?: T;
+  parent?: T;
+  scopePath?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "data-classes_select".
+ */
+export interface DataClassesSelect<T extends boolean = true> {
+  name?: T;
+  slug?: T;
+  parent?: T;
+  scopePath?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "records_select".
+ */
+export interface RecordsSelect<T extends boolean = true> {
+  title?: T;
+  organization?: T;
+  branch?: T;
+  dataClass?: T;
   updatedAt?: T;
   createdAt?: T;
 }

@@ -10,6 +10,21 @@ export type FieldAccessMode = 'read' | 'write'
 
 export type AccessConstraint = boolean | Where
 
+export type ScopeDimension = 'organization' | 'branch' | 'data-class'
+
+/**
+ * Opt a collection into row scope. Field names narrow records.
+ * `dimension` scopes the scope-node collection itself.
+ * `assignments` limits user reads, updates, and deletes to accounts inside the actor's scope, and enforces who may edit those assignments.
+ */
+export type RowScopeBinding = {
+  organizationField?: string
+  branchField?: string
+  dataClassField?: string
+  dimension?: ScopeDimension
+  assignments?: boolean
+}
+
 export type RbacCollectionOptions = {
   enabled?: boolean
   /**
@@ -20,6 +35,7 @@ export type RbacCollectionOptions = {
   anonymousRead?: boolean
   selfService?: boolean
   selfServiceFields?: string[]
+  rowScope?: RowScopeBinding
 }
 
 export type UserGrants = {
@@ -35,6 +51,14 @@ export type AccessEvaluationContext = {
   action: CollectionAction
   grants: UserGrants | undefined
   options: RbacCollectionOptions
+  /**
+   * True when Payload is copying access onto `/api/access` or admin permission
+   * props. User visibility then checks one id, or returns a self-only Where.
+   * Queries leave this unset and still receive the id list.
+   */
+  permissionProbe?: boolean
+  /** Set only for a permission-payload call that names one document. */
+  documentId?: number | string
 }
 
 /**
@@ -48,4 +72,4 @@ export type AccessGate = {
 
 export type RowScopeContributor = (
   context: AccessEvaluationContext,
-) => Promise<Where | undefined> | Where | undefined
+) => Promise<AccessConstraint | undefined> | AccessConstraint | undefined

@@ -89,13 +89,23 @@ describe('RBAC coverage and production URL', () => {
 
   it('creates the super-admin role when the first user arrives before seed', async () => {
     const updates: Array<{ data?: { roles?: unknown }; context?: Record<string, unknown> }> = []
-    const payload = {
-      find: async () => ({ docs: [] as Array<{ id: number }> }),
-      create: async () => ({ id: 42, slug: 'super-admin', grantsFullAccess: true }),
-      count: async () => ({ totalDocs: 1 }),
-      update: async (args: { data?: { roles?: unknown }; context?: Record<string, unknown> }) => {
-        updates.push(args)
-        return { id: 7, roles: args.data?.roles }
+    const req = {
+      context: {} as Record<string, unknown>,
+      payload: {
+        find: async () => ({ docs: [] as Array<{ id: number }> }),
+        create: async () => ({ id: 42, slug: 'super-admin', grantsFullAccess: true }),
+        count: async () => ({ totalDocs: 1 }),
+        update: async (args: {
+          data?: { roles?: unknown }
+          context?: Record<string, unknown>
+          req?: { context?: Record<string, unknown> }
+        }) => {
+          updates.push(args)
+          if (args.req) {
+            args.req.context = { ...(args.req.context ?? {}), ...(args.context ?? {}) }
+          }
+          return { id: 7, roles: args.data?.roles }
+        },
       },
     }
     const doc = await assignSuperAdminToFirstUser({
@@ -104,12 +114,14 @@ describe('RBAC coverage and production URL', () => {
       doc: { id: 7, roles: [] },
       operation: 'create',
       previousDoc: {} as never,
-      req: { payload } as never,
+      req: req as never,
     } as unknown as Parameters<typeof assignSuperAdminToFirstUser>[0])
     expect(updates).toHaveLength(1)
     expect(updates[0]?.data?.roles).toEqual([42])
     expect(updates[0]?.context?.[SKIP_RBAC_PRIVILEGE_CHECKS]).toBe(true)
     expect(updates[0]?.context?.skipRbacBootstrap).toBe(true)
+    expect(req.context[SKIP_RBAC_PRIVILEGE_CHECKS]).toBeUndefined()
+    expect(req.context.skipRbacBootstrap).toBeUndefined()
     expect(doc).toMatchObject({ roles: [42] })
   })
 })

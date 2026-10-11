@@ -74,6 +74,7 @@ Open [http://localhost:3000/admin](http://localhost:3000/admin) to access the ad
 │   ├── app/                 # Next.js App Router (Admin & API endpoints)
 │   ├── access/              # RBAC decision pipeline and collection/field helpers
 │   ├── audit/               # Opt-in field-level audit trail (see src/audit/README.md)
+│   ├── scope/               # Organizational row scope, hierarchy, and assignment guards
 │   ├── collections/         # Payload Collection definitions
 │   │   ├── Users.ts         # User authentication collection
 │   │   └── Media.ts         # Asset upload collection (R2)
@@ -147,6 +148,35 @@ pnpm payload migrate
 ```
 
 `src/migrations/20261010_080938_rbac_permission_matrix.ts` creates `roles`, `permissions`, `role_permissions`, and the user-role join. It is registered in `src/migrations/index.ts` and passed to the D1 adapter as `prodMigrations`, so a production Worker also applies it on connect. See [docs/rbac.md](docs/rbac.md) for the access pipeline and the extension points used by later features.
+
+## Organizational row scope
+
+Users can be assigned organizations, branches, and data classes. Organizations and branches form trees. A data class parent is a group: assignment includes every nested class. Non-full-access reads, updates, deletes, and `GET /api/{collection}/export` on a scoped collection are limited to that effective scope. Creating or retagging a row outside it is refused.
+
+A limited user can assign only scope values they already hold, including inherited ones, and cannot edit their own assignments or see user accounts outside that scope. Adding scope to someone else also requires that their permission keys are already within the actor's. Granting a permission is refused when a holder of that role can see rows outside the granter's scope. See [docs/row-scope.md](docs/row-scope.md).
+
+Opt in from `withRbac`:
+
+```typescript
+export const Customers = withRbac(
+  {
+    slug: 'customers',
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'organization', type: 'relationship', relationTo: 'organizations', required: true },
+      { name: 'branch', type: 'relationship', relationTo: 'branches', required: true },
+      { name: 'dataClass', type: 'relationship', relationTo: 'data-classes', required: true },
+    ],
+  },
+  {
+    rowScope: {
+      organizationField: 'organization',
+      branchField: 'branch',
+      dataClassField: 'dataClass',
+    },
+  },
+)
+```
 
 ---
 

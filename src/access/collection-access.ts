@@ -1,11 +1,18 @@
-import type { CollectionConfig } from 'payload'
+import type { Access, CollectionConfig } from 'payload'
 
 import { evaluateCollectionAccess } from './evaluate-collection-access'
+import { isPermissionPayloadCall, permissionDocumentId } from './permission-payload-call'
 import type { CollectionAction } from './types'
 
-function operation(collectionSlug: string, action: CollectionAction) {
-  return ({ req }: { req: Parameters<typeof evaluateCollectionAccess>[0]['req'] }) =>
-    evaluateCollectionAccess({ req, collectionSlug, action })
+function operation(collectionSlug: string, action: CollectionAction): Access {
+  return (args) =>
+    evaluateCollectionAccess({
+      req: args.req,
+      collectionSlug,
+      action,
+      permissionProbe: isPermissionPayloadCall(args),
+      documentId: permissionDocumentId(args),
+    })
 }
 
 export function collectionAccess(collectionSlug: string): CollectionConfig['access'] {

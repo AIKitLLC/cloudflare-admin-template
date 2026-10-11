@@ -12,6 +12,8 @@ export async function evaluateCollectionAccess(args: {
   req: PayloadRequest
   collectionSlug: string
   action: CollectionAction
+  permissionProbe?: boolean
+  documentId?: number | string
 }): Promise<AccessConstraint> {
   const options = readRbacCollectionOptions(args.req, args.collectionSlug)
   const grants = await loadUserGrants(args.req)
@@ -21,6 +23,8 @@ export async function evaluateCollectionAccess(args: {
     action: args.action,
     grants,
     options,
+    permissionProbe: args.permissionProbe,
+    documentId: args.documentId,
   })
 }
 

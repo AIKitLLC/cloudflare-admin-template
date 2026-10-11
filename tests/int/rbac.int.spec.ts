@@ -19,6 +19,7 @@ let payload: Payload
 const stamp = Date.now()
 const createdUserIds: Array<number | string> = []
 const createdRoleIds: Array<number | string> = []
+const createdOrganizationIds: Array<number | string> = []
 
 describe('RBAC access', () => {
   beforeAll(async () => {
@@ -44,6 +45,13 @@ describe('RBAC access', () => {
       await payload.delete({
         collection: 'roles' as CollectionSlug,
         where: { id: { in: createdRoleIds } },
+        overrideAccess: true,
+      })
+    }
+    if (createdOrganizationIds.length > 0) {
+      await payload.delete({
+        collection: 'organizations' as CollectionSlug,
+        where: { id: { in: createdOrganizationIds } },
         overrideAccess: true,
       })
     }
@@ -120,9 +128,18 @@ describe('RBAC access', () => {
     await grant(editorRole.id, 'users:readField:email')
     await grant(editorRole.id, 'users:writeField:email')
 
-    const subject = await createUser(`rbac-subject-${stamp}@example.com`, [])
-    const reader = await createUser(`rbac-reader-${stamp}@example.com`, [readerRole.id])
-    const editor = await createUser(`rbac-editor-${stamp}@example.com`, [editorRole.id])
+    const organizationId = await createOrganization(`rbac-shared-${stamp}`)
+    const subject = await createUser(`rbac-subject-${stamp}@example.com`, [], organizationId)
+    const reader = await createUser(
+      `rbac-reader-${stamp}@example.com`,
+      [readerRole.id],
+      organizationId,
+    )
+    const editor = await createUser(
+      `rbac-editor-${stamp}@example.com`,
+      [editorRole.id],
+      organizationId,
+    )
 
     const visible = await payload.findByID({
       collection: 'users',
@@ -186,9 +203,14 @@ describe('RBAC access', () => {
     await grant(role.id, 'users:export')
     await grant(role.id, 'users:read')
     await grant(role.id, 'users:readField:email')
+    const organizationId = await createOrganization(`rbac-export-org-${stamp}`)
     const hiddenRole = await createRole(`hidden-export-${stamp}`)
-    const subject = await createUser(`rbac-export-subject-${stamp}@example.com`, [hiddenRole.id])
-    const user = await createUser(`rbac-export-${stamp}@example.com`, [role.id])
+    const subject = await createUser(
+      `rbac-export-subject-${stamp}@example.com`,
+      [hiddenRole.id],
+      organizationId,
+    )
+    const user = await createUser(`rbac-export-${stamp}@example.com`, [role.id], organizationId)
     const req = await localReq(user)
     const response = await exportCollection(req, 'users')
     expect(response.status).toBe(200)
@@ -336,13 +358,28 @@ async function createRole(slug: string): Promise<{ id: number }> {
   return { id: Number(role.id) }
 }
 
-async function createUser(email: string, roles: number[]): Promise<{ id: number; email: string }> {
+async function createOrganization(slug: string): Promise<number> {
+  const organization = await payload.create({
+    collection: 'organizations' as CollectionSlug,
+    data: { name: slug, slug },
+    overrideAccess: true,
+  })
+  createdOrganizationIds.push(organization.id)
+  return Number(organization.id)
+}
+
+async function createUser(
+  email: string,
+  roles: number[],
+  organizationId?: number,
+): Promise<{ id: number; email: string }> {
   const user = await payload.create({
     collection: 'users',
     data: {
       email,
       password: 'test-password-123',
       roles,
+      ...(organizationId ? { organizations: [organizationId] } : {}),
     },
     overrideAccess: true,
   })
