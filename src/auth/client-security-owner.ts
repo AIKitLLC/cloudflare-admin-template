@@ -91,6 +91,26 @@ function targetWhere(args: unknown): Where | undefined {
   return object(input?.where) as Where | undefined
 }
 
+async function unchangedOrdinaryRole(
+  req: PayloadRequest,
+  input: Record<string, unknown> | undefined,
+  role: unknown,
+): Promise<boolean> {
+  if (!validId(input?.id) || (role !== 'admin' && role !== 'editor')) return false
+  try {
+    const target = await req.payload.findByID({
+      collection: 'users',
+      id: input.id,
+      depth: 0,
+      overrideAccess: true,
+      req,
+    })
+    return String(target.id) === String(input.id) && target.role === role
+  } catch {
+    return false
+  }
+}
+
 /** Runs before access overrides and field stripping, including the default Local API override. */
 export const guardClientSecurityOwnerOperation: CollectionBeforeOperationHook = async ({
   args,
@@ -131,7 +151,10 @@ export const guardClientSecurityOwnerOperation: CollectionBeforeOperationHook = 
     // Collection create access still applies; owner/editor assignment requires an owner.
     if (
       !(operation === 'create' && data.role === 'admin') &&
-      !(await isStoredClientSecurityOwner(req.payload, req.user))
+      !(await isStoredClientSecurityOwner(req.payload, req.user)) &&
+      // Payload's disabled role field is still serialized by ordinary profile forms.
+      // Accept its exact stored value only for one nonowner target; role changes stay protected.
+      !(operation === 'update' && (await unchangedOrdinaryRole(req, input, data.role)))
     )
       denied()
   }

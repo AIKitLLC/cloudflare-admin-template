@@ -863,6 +863,40 @@ describe('client security with isolated real D1 transactions', () => {
     ).toBe(200)
   })
 
+  it('preserves normal REST account updates when the submitted admin role is unchanged', async () => {
+    const admin = (
+      await payload.find({
+        collection: 'users',
+        where: { email: { equals: 'security-admin@fixture.invalid' } },
+        overrideAccess: true,
+      })
+    ).docs[0]
+    const updatedEmail = 'updated-security-admin@fixture.invalid'
+    const response = await patch(
+      new Request(`https://admin.fixture.invalid/api/users/${admin.id}`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: updatedEmail, role: 'admin' }),
+      }),
+      params(['users', String(admin.id)]),
+    )
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      doc: { id: admin.id, email: updatedEmail, role: 'admin' },
+    })
+    expect(await payload.findByID({ collection: 'users', id: admin.id })).toMatchObject({
+      email: updatedEmail,
+      role: 'admin',
+    })
+    expect(
+      (
+        await adminGet(
+          new Request(adminUrl, { headers: { Authorization: `Bearer ${adminToken}` } }),
+        )
+      ).status,
+    ).toBe(403)
+  })
+
   it('keeps direct Payload REST and Local API security table writes blocked even for an owner', async () => {
     const headers = { Authorization: `Bearer ${ownerToken}`, 'Content-Type': 'application/json' }
     const read = await get(

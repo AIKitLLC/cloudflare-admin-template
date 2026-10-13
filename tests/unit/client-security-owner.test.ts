@@ -256,6 +256,33 @@ test('owner can manage roles; nonowners retain ordinary user updates but cannot 
   await assert.rejects(operation(f, 'delete', { id: 2 }), status(403))
 })
 
+test('ordinary exact-ID profile edits accept the unchanged stored role emitted by Payload forms', async () => {
+  const f = fixture([admin(), admin(2, 'owner'), admin(3, 'editor')], {
+    id: 1,
+    collection: 'users',
+  })
+  await operation(f, 'update', { id: 1, data: { role: 'admin', email: 'edited@fixture.invalid' } })
+  await operation(f, 'update', {
+    id: 3,
+    data: { role: 'editor', email: 'editor-edited@fixture.invalid' },
+  })
+  await assert.rejects(
+    operation(f, 'update', { id: 1, data: { role: 'editor', email: 'changed@fixture.invalid' } }),
+    status(403),
+  )
+  await assert.rejects(operation(f, 'update', { id: 3, data: { role: 'admin' } }), status(403))
+  await assert.rejects(
+    operation(f, 'update', { id: 2, data: { role: 'owner', email: 'takeover@fixture.invalid' } }),
+    status(403),
+  )
+  await assert.rejects(
+    operation(f, 'update', { where: { role: { equals: 'admin' } }, data: { role: 'admin' } }),
+    status(403),
+  )
+  f.users.get(1)!.role = 'editor'
+  await assert.rejects(operation(f, 'update', { id: 1, data: { role: 'admin' } }), status(403))
+})
+
 test('last owner demotion/deletion and bulk removal of all owners fail409', async () => {
   const f = fixture([admin(1, 'owner')], { id: 1, collection: 'users' })
   await assert.rejects(operation(f, 'update', { id: 1, data: { role: 'admin' } }), status(409))
