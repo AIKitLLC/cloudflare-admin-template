@@ -1,4 +1,4 @@
-# Public Firebase configuration; obtain exact values from Firebase project settings.
+# Standalone verifier inputs only; managed routes read versioned settings from D1.
 # Keep disabled until every value is provided. No service account key is required.
 FIREBASE_CLIENT_ENABLED="false"
 FIREBASE_PROJECT_ID=""

@@ -1,17 +1,23 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare'
 
-import type { FirebaseClientEnv } from '@/auth/firebase-client'
-import { createFirebaseClientRoute } from '@/auth/firebase-client-route'
+import {
+  cloudflareClientIp,
+  createManagedFirebaseClientRoute,
+} from '@/client-security/client-route'
 
 export const dynamic = 'force-dynamic'
 
 /** Native client example: headers authenticate the caller; there is no body-supplied UID. */
-export const GET = createFirebaseClientRoute(
+export const GET = createManagedFirebaseClientRoute(
   (_request, principal) => Response.json({ principal }),
   {
-    getEnv: async () => {
+    getDatabase: async () => {
       const { env } = await getCloudflareContext({ async: true })
-      return env as CloudflareEnv & FirebaseClientEnv
+      return env.D1
+    },
+    getTrustedIp: async (request) => {
+      const { cf } = await getCloudflareContext({ async: true })
+      return cloudflareClientIp(request, cf)
     },
   },
 )

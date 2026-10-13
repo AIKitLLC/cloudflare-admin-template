@@ -6,6 +6,8 @@ import config from '@/payload.config'
 import { GET as nativeGet } from '@/app/api/client/v1/me/route'
 import initialSchema from '@/migrations/20250929_111647.json'
 import { localIntegrationRuntime, registerIntegrationPayload } from './local-runtime'
+import { initializeClientSecuritySchema } from '@/client-security/initialize'
+import { createClientSecurityStore } from '@/client-security/store'
 
 const get = REST_GET(config)
 const post = REST_POST(config)
@@ -44,7 +46,11 @@ describe('local Payload D1 and client authentication', () => {
   beforeAll(async () => {
     payload = await getPayload({ config })
     registerIntegrationPayload(payload)
-    const admin = await payload.create({ collection: 'users', data: { email, password } })
+    await initializeClientSecuritySchema(runtime.platform.env.D1)
+    const admin = await payload.create({
+      collection: 'users',
+      data: { email, password, role: 'admin' },
+    })
     adminId = admin.id
     adminToken = (await payload.login({ collection: 'users', data: { email, password } })).token!
     await runtime.platform.env.D1.prepare(
@@ -261,6 +267,24 @@ describe('local Payload D1 and client authentication', () => {
     expect(disabled.status).toBe(503)
     expect(await disabled.json()).toEqual({ error: 'firebase_client_disabled' })
     runtime.env.FIREBASE_CLIENT_ENABLED = 'true'
+    const store = createClientSecurityStore(runtime.platform.env.D1)
+    const preview = await store.preview({
+      schemaVersion: 1,
+      firebase: {
+        enabled: true,
+        projectId: runtime.env.FIREBASE_PROJECT_ID,
+        projectNumber: runtime.env.FIREBASE_PROJECT_NUMBER,
+        appIds: [runtime.env.FIREBASE_APP_IDS],
+      },
+      limits: { windowSeconds: 60, uid: 100, ip: 100, global: 100 },
+    })
+    await store.save({
+      expectedRevision: preview.currentRevision,
+      configuration: preview.configuration,
+      reviewedDigest: preview.digest,
+      actor: 'test-operator',
+      operation: 'save',
+    })
     for (const missing of ['Authorization', 'X-Firebase-AppCheck']) {
       const headers = await runtime.fixture.headers()
       headers.delete(missing)
@@ -279,6 +303,7 @@ describe('local Payload D1 and client authentication', () => {
       role: 'admin',
     })
     headers.set('Origin', 'https://spoofed.fixture.invalid')
+    headers.set('CF-Connecting-IP', '192.0.2.1')
     const response = await nativeGet(
       new Request('https://native.fixture.invalid/api/client/v1/me', { headers }),
     )

@@ -17,6 +17,12 @@ const adapterPath = resolve(root, 'src/auth/firebase-client-route.ts')
 const adapterSource = await readFile(adapterPath, 'utf8')
 const routePath = resolve(root, 'src/app/api/client/v1/me/route.ts')
 const routeSource = await readFile(routePath, 'utf8')
+const managedSources = await Promise.all(
+  ['client-route', 'initialize', 'schema', 'store', 'rate-limits'].map(async (name) => {
+    const path = resolve(root, `src/client-security/${name}.ts`)
+    return [path, await readFile(path, 'utf8')]
+  }),
+)
 const cloudflareContextPath = require.resolve('@opennextjs/cloudflare/cloudflare-context')
 const cloudflareContextSource = await readFile(cloudflareContextPath, 'utf8')
 const lockPath = resolve(root, 'pnpm-lock.yaml')
@@ -220,13 +226,30 @@ const script = bundle.outputFiles[0].text
 // OpenNext's installed getCloudflareContext reads its real production context symbol.
 const routeWorkerEntry = `let now=${nowMs};
 Date.now=()=>now;
-let route;
-export default {async fetch(request) {
+let route,prepared;
+export default {async fetch(request,bindings) {
  now=${nowMs}+Number(request.headers.get('X-Test-Clock-Offset')??0);
  const environment=${JSON.stringify(environment)};
- if(request.headers.get('X-Test-Config')==='disabled')environment.FIREBASE_CLIENT_ENABLED='false';
- if(request.headers.get('X-Test-Config')==='incomplete')delete environment.FIREBASE_APP_IDS;
- globalThis[Symbol.for('__cloudflare-context__')]={env:environment};
+ environment.D1=bindings.D1;
+ globalThis[Symbol.for('__cloudflare-context__')]={env:environment,cf:request.headers.has('X-Test-Missing-Cf')?{}:{colo:'LOCAL'}};
+ await(prepared??=(async()=>{
+  const mode=request.headers.get('X-Test-Config');
+  if(mode==='uninitialized')return;
+  const {initializeClientSecuritySchema}=await import('./src/client-security/initialize.ts');
+  const {createClientSecurityStore}=await import('./src/client-security/store.ts');
+  const {digestClientSecurityConfiguration}=await import('./src/client-security/schema.ts');
+  await bindings.D1.prepare("CREATE TABLE users (id integer PRIMARY KEY NOT NULL, role text NOT NULL DEFAULT 'admin')").run();
+  await initializeClientSecuritySchema(bindings.D1);
+  if(mode==='default-disabled')return;
+  const configuration={schemaVersion:1,firebase:{enabled:mode!=='disabled',projectId:${JSON.stringify(projectId)},projectNumber:${JSON.stringify(projectNumber)},appIds:[${JSON.stringify(appId)}]},limits:{windowSeconds:60,uid:1000,ip:1000,global:1000}};
+  const dimension=request.headers.get('X-Test-Limit-Dimension');
+  if(['uid','ip','global'].includes(dimension))configuration.limits[dimension]=1;
+  await createClientSecurityStore(bindings.D1).save({expectedRevision:0,configuration,reviewedDigest:await digestClientSecurityConfiguration(configuration),actor:'synthetic-runtime',operation:'save'});
+  if(mode==='incomplete'){
+   configuration.firebase.projectId='';
+   await bindings.D1.prepare('UPDATE client_security_versions SET configuration = ? WHERE revision = 1').bind(JSON.stringify(configuration)).run();
+  }
+ })());
  const {GET}=await(route??=import('./src/app/api/client/v1/me/route.ts'));
  return GET(request);
 }}`
@@ -237,6 +260,7 @@ const frozenRouteSources = new Map(
       [adapterPath, adapterSource],
       [routePath, routeSource],
       [cloudflareContextPath, cloudflareContextSource],
+      ...managedSources,
     ].map(async ([path, contents]) => [await realpath(path), contents]),
   ),
 )
@@ -543,10 +567,10 @@ const routeCases = [
     requests: [],
   },
   {
-    name: 'actual-me-route-incomplete-config',
+    name: 'actual-me-route-corrupt-managed-config',
     config: 'incomplete',
     status: 503,
-    reason: 'firebase_client_misconfigured',
+    reason: 'client_security_corrupt',
     requests: [],
   },
   {
@@ -646,6 +670,42 @@ const routeCases = [
     reason: 'firebase_credentials_missing',
     requests: [],
   },
+  {
+    name: 'actual-me-route-default-disabled-store-ignores-enabled-environment',
+    config: 'default-disabled',
+    status: 503,
+    reason: 'firebase_client_disabled',
+    requests: [],
+  },
+  {
+    name: 'actual-me-route-uninitialized-store-fails-closed',
+    config: 'uninitialized',
+    status: 503,
+    reason: 'client_security_unavailable',
+    requests: [],
+  },
+  {
+    name: 'actual-me-route-missing-cloudflare-context-rejects-ip-header',
+    missingCf: true,
+    status: 503,
+    reason: 'client_security_unavailable',
+    requests: ['app', 'id'],
+  },
+  ...['uid', 'ip', 'global'].map((dimension) => ({
+    name: `actual-me-route-${dimension}-limit-and-window-reset`,
+    limitDimension: dimension,
+    requests: ['app', 'id'],
+    steps: [
+      { tokens: valid, status: 200 },
+      {
+        tokens: dimension === 'uid' ? valid : tokens({}, { sub: 'synthetic-other-uid' }),
+        ip: dimension === 'ip' ? '203.0.113.10' : '203.0.113.11',
+        status: 429,
+        reason: 'client_security_rate_limited',
+      },
+      { tokens: valid, offset: 60_000, status: 200 },
+    ],
+  })),
 ].map((testCase) => ({ ...testCase, kind: 'route' }))
 const cases = [...verifierCases, ...routeCases]
 
@@ -660,6 +720,7 @@ for (const testCase of cases) {
       modules: true,
       script: testCase.kind === 'route' ? routeScript : script,
       compatibilityDate,
+      d1Databases: testCase.kind === 'route' ? ['D1'] : undefined,
       outboundService: async (request) => {
         try {
           const endpoint =
@@ -718,6 +779,11 @@ for (const testCase of cases) {
       if (step.offset) headers['X-Test-Clock-Offset'] = String(step.offset)
       if (step.origin) headers.Origin = step.origin
       if (step.body) headers['Content-Type'] = 'application/json'
+      if (testCase.kind === 'route') {
+        headers['CF-Connecting-IP'] = step.ip ?? '203.0.113.10'
+        if (step.missingCf) headers['X-Test-Missing-Cf'] = 'true'
+        if (testCase.limitDimension) headers['X-Test-Limit-Dimension'] = testCase.limitDimension
+      }
       const method = step.method ?? (testCase.kind === 'route' ? 'GET' : 'POST')
       const url =
         testCase.kind === 'route'
@@ -775,10 +841,14 @@ for (const testCase of cases) {
         )
         assert.equal(response.headers.has('Access-Control-Allow-Origin'), false)
         assert.equal(response.headers.has('Set-Cookie'), false)
+        const retryAfter = response.headers.get('Retry-After')
+        if (step.status === 429) assert.equal(retryAfter, '60', testCase.name)
+        else assert.equal(retryAfter, null, testCase.name)
         privateHeaders = {
           cacheControl: response.headers.get('Cache-Control'),
           vary: response.headers.get('Vary'),
           wwwAuthenticate: response.headers.get('WWW-Authenticate'),
+          retryAfter,
         }
       }
       results.push({ httpStatus: response.status, result, method, privateHeaders })
@@ -820,6 +890,7 @@ for (const [path, contents] of [
   [adapterPath, adapterSource],
   [routePath, routeSource],
   [cloudflareContextPath, cloudflareContextSource],
+  ...managedSources,
 ]) {
   assert.equal(await readFile(path, 'utf8'), contents, 'runtime-tested route dependency changed')
 }
@@ -836,7 +907,15 @@ const report = {
   compatibilityDate,
   sourceSha256: sha256(source),
   protectedRouteSha256: sha256(routeSource),
-  routeAdapterSha256: sha256(adapterSource),
+  routeAdapterSha256: sha256(
+    managedSources.find(
+      ([path]) => path === resolve(root, 'src/client-security/client-route.ts'),
+    )[1],
+  ),
+  firebaseRouteAdapterSha256: sha256(adapterSource),
+  managedClientSecuritySha256: Object.fromEntries(
+    managedSources.map(([path, contents]) => [path.slice(root.length + 1), sha256(contents)]),
+  ),
   openNextContextSha256: sha256(cloudflareContextSource),
   dependencyLockSha256: sha256(lock),
   workerConfigSha256: sha256(config),
@@ -854,7 +933,7 @@ const report = {
   scope:
     'Actual local workerd Web Crypto and native global fetch, including the real protected GET export, its route adapter, and installed OpenNext context API; every outbound call intercepted by an in-memory synthetic provider.',
   protectedRouteScope:
-    'Direct GET export execution; synthetic clock and Cloudflare context, real auth singleton without injection. Body-bearing POST fixtures call the GET export directly; Next/Payload HTTP routing is checked separately.',
+    'Direct GET export execution; real isolated D1 with schema initialized and reviewed synthetic configuration saved through the real store; synthetic clock and trusted Cloudflare context/IP, real auth singleton without injection. Body-bearing POST fixtures call the GET export directly; Next/Payload HTTP routing is checked separately.',
   realProviderRequests: 0,
   paidAiCalls: 0,
   realFirebaseProviderFlow: 'NOT_RUN',

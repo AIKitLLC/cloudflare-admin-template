@@ -1,192 +1,156 @@
-# Firebase native client authentication
+# Firebase native client authentication and admin controls
 
-`GET /api/client/v1/me` is an example protected client endpoint. It requires both
-`X-Firebase-AppCheck: <App Check JWT>` and `Authorization: Bearer <Firebase ID token>`.
-Both signatures and their claims must pass before the route handler runs. The ID
-token must come from Firebase Anonymous Authentication. The response contains the
-verified `{ uid, appId, projectId }` principal and is private with `no-store`.
-This endpoint has no request body. New service endpoints should accept only their
-business input, never a client-selected UID, quota identity, or administrator role.
+`GET /api/client/v1/me` requires both `X-Firebase-AppCheck: <App Check JWT>` and
+`Authorization: Bearer <Firebase Anonymous Authentication ID token>`. Both signatures
+and claims must pass, followed by atomic UID/IP/global rate admission, before work
+starts. The response contains the verified `{ uid, appId, projectId }` principal,
+uses `private, no-store`, and sets no login cookie. This endpoint has no body. New
+service endpoints should accept only business input, never a client-selected UID,
+quota identity, or administrator role.
 
-This template has no native app, client-owned collection, or persistent quota store.
-The example demonstrates authentication without adding an application domain or
-changing the existing Payload Users, admin login, REST/GraphQL APIs, or public Media
-access. Firebase principals are not Payload users or administrator sessions. In an
-application with Telegram admin roles, keep that separate administrator check too.
+Firebase principals are separate from Payload users and administrator sessions.
+The template has no native app or domain-specific client records. Existing public
+Media and ordinary CMS access are preserved; owner accounts and client security
+settings receive additional protection. Applications with Telegram admin roles
+must retain their separate administrator checks.
 
-## Public configuration required before activation
+## Public configuration and owner management
 
-The route returns `503` until explicitly enabled with complete, valid configuration.
-The real Firebase identifiers are still awaited; no values in this change identify
-a production Firebase project. Supply these server-side Worker bindings from the
-same Firebase project's settings:
+An owner manages trust and quotas at `/admin/client-security`. Public project ID,
+project number, and exact Firebase App IDs must all come from the same Firebase
+project. No production identifiers have been guessed. Quotas are whole numbers
+from 0 to 1,000,000 per window; the window is 10–3,600 seconds. Enabled policies
+require complete valid identifiers and positive UID/IP/global quotas. Revision 0
+starts disabled with blank identifiers and zero quotas.
 
-| Binding                   | Value                                                                 |
-| ------------------------- | --------------------------------------------------------------------- |
-| `FIREBASE_CLIENT_ENABLED` | Exactly `true` after all other values are supplied                    |
-| `FIREBASE_PROJECT_ID`     | Firebase project ID, used by the Authentication issuer and audience   |
-| `FIREBASE_PROJECT_NUMBER` | Numeric Firebase project number, used by App Check                    |
-| `FIREBASE_APP_IDS`        | Comma-separated allowlist of exact Firebase App IDs from that project |
+Configuration is versioned in D1. The panel validates and previews the exact
+change; saving requires its digest and expected revision. Stale saves return `409`.
+Audit entries record the persisted owner ID, operation, time, and previous revision.
+Rollback creates a new revision and retains history and active usage. Readiness
+means the stored configuration is complete; it does not confirm provider setup.
+The endpoint stores no tokens, secrets, private keys, or freeform audit messages.
 
-For local development, copy `.dev.vars.example` to the ignored `.dev.vars` file and
-fill in the public identifiers. For deployment, use the `vars` in `wrangler.jsonc`
-(and repeat them for each environment). These are public configuration, not service
-account credentials. Do not add service account private keys. The verifier fetches
-only Firebase's public signing keys.
+Only the current persisted Payload `owner` can read or write controls. Existing
+users migrate to `admin`; nobody is automatically promoted. Ordinary admins/editors
+and Firebase principals cannot change roles or an owner's credentials. Creating a
+normal default `admin` user retains existing CMS behavior. The final owner cannot
+be deleted or demoted, including concurrent database writes. Payload password
+recovery remains available through its actual recovery operations.
 
-The Android app must be registered for App Check using the
-[Play Integrity provider](https://firebase.google.com/docs/app-check/android/play-integrity-provider)
-and use [Anonymous Authentication](https://firebase.google.com/docs/auth/android/anonymous-auth).
-Provider setup, Anonymous sign-in enablement, Firebase security settings, and production
-deployment are separate operational steps; this change does not perform them.
-An App Check JWT identifies the app and project, but does not expose which attestation
-provider minted it. Configure the intended provider in Firebase and avoid permitting
-debug App Check tokens in production. Server signature verification alone cannot
-prove that Play Integrity was the provider.
+An approved operator establishes the first owner for one exact existing Users ID:
 
-The native client should sign in anonymously once when it has no current user, retain
-the Firebase session, and ask the Firebase SDK for a current ID token and App Check
-token on each backend request. Use HTTPS and send both headers. Let the SDK cache and
-refresh tokens; do not sign in anew for every call, hardcode tokens, log them, or place
-them in URLs. No Origin header is required. An arbitrary Origin cannot bypass either
-verification. This example adds no browser CORS permission or cookie authentication.
+```sh
+pnpm payload run scripts/bootstrap-client-security-owner.mjs -- --user-id <id> --confirm
+```
 
-## Reusing the route adapter
+Run in the explicitly selected environment after migration. This atomic claim
+refuses if any owner exists. It is an operator capability, never an HTTP bootstrap
+endpoint. Running it against a deployment changes security authority and requires
+operator approval; installing this feature does not execute it.
 
-`src/auth/firebase-client.ts` uses `jose` and Web Crypto, with no dependency on the
-Node-only Firebase Admin SDK. `createFirebaseClientRoute` in
-`src/auth/firebase-client-route.ts` supplies the verified, readonly principal as a
-separate handler argument. Follow the `me` route's Worker binding lookup when adding
-a Next.js App Router endpoint:
+Managed routes read only durable D1 configuration. The standalone verifier still
+accepts `FIREBASE_CLIENT_ENABLED`, `FIREBASE_PROJECT_ID`, `FIREBASE_PROJECT_NUMBER`,
+and comma-separated `FIREBASE_APP_IDS`, but those bindings cannot override the
+managed route. Missing/corrupt state or unavailable storage fails closed with `503`.
+Request handlers never initialize or repair state. The idempotent migration
+preserves existing data, counters, and settings. Schema downgrade intentionally
+refuses destructive removal; use the reviewed configuration rollback instead.
+
+## Native app and reusable middleware
+
+Register the Android app with the [Play Integrity provider](https://firebase.google.com/docs/app-check/android/play-integrity-provider)
+and enable [Anonymous Authentication](https://firebase.google.com/docs/auth/android/anonymous-auth).
+These provider/security operations and production activation are separate steps.
+An App Check JWT identifies the app/project without revealing which attestation
+provider minted it. Configure the intended provider and exclude debug providers in
+production; backend signature verification alone cannot prove Play Integrity use.
+
+Sign in anonymously when no user exists, retain that session, and obtain current
+ID and App Check tokens through the SDK for each HTTPS backend request. Let the SDK
+cache/refresh tokens. Do not create a new account each call, hardcode/log tokens,
+or place them in URLs. Native authentication does not require or trust Origin.
+
+`src/auth/firebase-client.ts` uses `jose` and Web Crypto, without the Node-only
+Firebase Admin SDK. Use `createManagedFirebaseClientRoute` from
+`src/client-security/client-route.ts` for automatic policy/authentication/admission:
 
 ```ts
-const handler = createFirebaseClientRoute(
-  async (request, principal) => {
-    // Validate this service's input independently. Identity comes from principal.uid.
-    return Response.json({ uid: principal.uid })
-  },
-  { getEnv: getYourWorkerBindings },
+export const GET = createManagedFirebaseClientRoute(
+  async (request, principal) => Response.json({ uid: principal.uid }),
+  { getDatabase: getYourD1Binding, getTrustedIp: getYourTrustedEdgeClientIp },
 )
 ```
 
-The adapter returns `401` for missing or invalid credentials and `503` for disabled
-or invalid configuration, unavailable keys, or failed binding lookup. Public errors
-contain stable reason codes, never raw tokens or provider errors. Successful and
-failed responses have `Cache-Control: private, no-store` and vary on both auth
-headers. Authentication errors prevent the application handler from running.
+Follow the actual `me` route for OpenNext binding/context lookup. Missing/invalid
+credentials return `401`; key/config/storage failure returns `503`; exhaustion
+returns `429` and `Retry-After`. All auth/admission responses are private/no-store
+and vary on both headers. Public errors contain stable codes, never raw tokens or
+provider errors. Application errors remain the service's responsibility.
 
-## Ownership and quotas when adding service records
+The IP adapter uses `CF-Connecting-IP` only with an incoming Cloudflare context,
+rejects missing edge metadata/IP, and never trusts body or forwarded IP parameters.
+Direct Node hosting requires a trusted proxy adapter. Review [Cloudflare header
+semantics](https://developers.cloudflare.com/fundamentals/reference/http-headers/)
+for same-zone Worker subrequests and Pseudo IPv4 considerations.
 
-Persist both the verified `principal.projectId` and `principal.uid` when creating an
-owned record. Select records using both fields in the database query, even when a
-client supplies a record ID. For example, use a parameterized D1 query scoped with
-`WHERE id = ? AND firebase_project_id = ? AND firebase_uid = ?` and bind only the
-verified principal for the owner fields. `firebaseClientOwnsRecord(principal, record)`
-provides the same exact comparison for a fetched record; a different project or UID
-does not own it. Neither helper grants access through Payload's Local API. Its
-`overrideAccess` defaults must be addressed explicitly when integrating application
-collections; never forward Firebase bearer headers as a Payload login.
+## Rates and ownership
 
-`firebaseClientQuotaKey(principal)` creates a collision-free JSON tuple of the project
-ID and verified UID. Use it as the account key for your application's persistent quota
-counter, with an atomic database increment/check or a Durable Object. For example,
-in an application with a `client_quotas(account_key PRIMARY KEY, used)` table:
+One [D1 batch transaction](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch)
+decides and charges all three counters. Denied requests charge none and cannot
+create fresh UID rows. Stable bucket keys hash verified project/UID or normalized
+edge IP and exclude configuration revisions. Changing limits/rolling back retains
+usage; lower limits apply immediately. New window lengths apply after the existing
+bucket expires. A trust revision changed during verification fails admission.
+Admitted requests remain charged if the handler fails; paid-work refunds belong to
+that service. Counters retain hashed identifiers; establish deployment retention
+according to the service's data policy.
 
-```ts
-const quotaKey = firebaseClientQuotaKey(principal)
-// Use a single atomic statement; zero returned rows means the quota was exhausted.
-const result = await env.D1.prepare(
-  `
-  INSERT INTO client_quotas (account_key, used) VALUES (?, 1)
-  ON CONFLICT(account_key) DO UPDATE SET used = used + 1 WHERE used < ?
-  RETURNING used
-`,
-)
-  .bind(quotaKey, limit)
-  .first()
-if (!result) return Response.json({ error: 'quota_exhausted' }, { status: 429 })
-```
+For future owned records, persist verified `principal.projectId` and `principal.uid`
+and scope reads/writes with both fields. A parameterized query uses
+`WHERE id = ? AND firebase_project_id = ? AND firebase_uid = ?`. The existing
+`firebaseClientOwnsRecord` helper makes the same exact comparison, and
+`firebaseClientQuotaKey` provides a collision-free identity tuple. Neither grants
+Payload access; address Local API `overrideAccess` explicitly and never forward
+Firebase headers as a Payload login.
 
-This is a schema example to adapt when adding a service, not a migration or active
-quota in the starter. Validate a positive limit, define reset windows, and account
-for failures/refunds according to that service's policy. Do not use an in-memory
-Worker counter as a global quota or take a quota key from the request body. Protect
-expensive work with quotas only after both token checks have passed.
+An anonymous UID is an account, not an immutable installation/device. New accounts,
+reinstalls, or cleared data can change it. App Check is not absolute hardware proof.
+The tokens are not cryptographically bound to one another. Local verification
+checks signatures/expiry, not ID-token revocation or App Check replay consumption.
 
-An anonymous UID identifies a Firebase account, not an immutable installation or
-physical device. A caller may create another account; clearing app data or reinstalling
-may change its UID. Account quotas therefore cannot enforce a lifetime device limit.
-App Check also does not provide absolute hardware proof, and these two tokens are
-not cryptographically bound to one another. The local verifier checks signatures
-and expiry, not ID-token revocation or whether an App Check token has already been
-consumed. Replay consumption would require a separate supported Firebase operation.
+## Verification and operational limits
 
-## Verification and key lifecycle
+App Check requires RS256, `typ: JWT`, configured project-number issuer/audience,
+an allowlisted App ID subject, and numeric `iat`/`exp`. ID tokens require RS256,
+exact Secure Token issuer/project-ID audience, a subject of 1–128 characters,
+numeric `iat`/`exp`/`auth_time`, and anonymous provider. Future/expired claims fail.
+Only the independently verified ID-token subject supplies UID.
 
-App Check requires RS256, `typ: JWT`, the issuer containing the configured project
-number, exact project audience membership, an allowlisted App ID subject, and numeric
-`iat`/`exp`. ID tokens require RS256, the exact Secure Token issuer and project ID
-audience, a nonempty subject of at most 128 characters, numeric `iat`/`exp`/`auth_time`,
-and the anonymous sign-in provider. Future issuance/authentication and expired tokens
-are rejected. Only `sub` from the independently verified ID token supplies the UID.
-
-Each trust domain has its own bounded public-key cache and one shared refresh at a
-time. Responses are capped at 128 KiB/20 keys, requests at 5 seconds, and App Check
-cache lifetime at six hours. Provider `max-age`, `Age`, `no-store`, and `no-cache` are
-honored. Unknown key refreshes have a 30-second cooldown and failed refreshes a
-5-second backoff. After a failed refresh, requests retry when that backoff ends;
-only a successful key catalog can establish that an unknown key is invalid. Ongoing
-key outages remain `503`, rather than being treated as invalid credentials (`401`).
-Expired cached keys are never used during an outage. Token-controlled
-key URLs and embedded public keys are rejected; redirects are not followed.
-
-The implementation follows Firebase's official
-[App Check custom backend verification](https://firebase.google.com/docs/app-check/custom-resource-backend)
-and [ID-token verification](https://firebase.google.com/docs/auth/admin/verify-id-tokens)
-requirements. The fixed key sources are
+Separate bounded key caches fetch fixed official URLs, never token-selected URLs:
 `https://firebaseappcheck.googleapis.com/v1/jwks` and
 `https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com`.
-[`jose`](https://github.com/panva/jose) provides Web Crypto signature verification.
-The verifier was reviewed and adapted from
+Requests cap at 5 seconds, responses at 128 KiB/20 keys, lifetime at six hours.
+`max-age`, `Age`, `no-store`, and `no-cache` are honored. Unknown-key refresh cooldown
+is 30 seconds; failed refresh backoff is 5 seconds. Ongoing outages remain `503`;
+expired keys are never reused. Embedded keys and redirects are rejected.
+
+Sources: [Firebase App Check custom backends](https://firebase.google.com/docs/app-check/custom-resource-backend),
+[Firebase ID-token verification](https://firebase.google.com/docs/auth/admin/verify-id-tokens),
+and [`jose`](https://github.com/panva/jose). The verifier was adapted from
 [TRIPP PR #45](https://github.com/AIKitLLC/tripp-chat-demo/pull/45), commit
-`05de5b6c1e684fe5baba66e4eb857e4802767213`, without its service/domain logic.
+`05de5b6c1e684fe5baba66e4eb857e4802767213`, without Tarot/service logic.
 
-Run `pnpm test:unit` for real synthetic RSA signatures, certificate/JWK verification,
-adversarial claims, key rotation/outages/cache behavior, handler gating, and
-ownership/quota identity tests. Run `pnpm test:firebase:runtime` for actual local
-workerd verification with synthetic public-key responses; every outbound request is
-intercepted, with no real Firebase or AI calls. The ignored `.qa/firebase-client/runtime.json`
-records versions and source/lock hashes. Existing checks remain `pnpm lint`,
-`pnpm typecheck`, `pnpm test:int`, and `pnpm build`.
+Use Node >=24.15.0. Run `pnpm test:unit`, `pnpm test:int`, `pnpm typecheck`,
+`pnpm typecheck:firebase`, and `pnpm lint`; then `pnpm build`, `pnpm test:api`,
+`pnpm test:firebase:runtime`, and `pnpm build:worker`. Tests use synthetic signed
+tokens, isolated real D1/R2, and actual workerd/compiled Next handlers. No Firebase
+provider, paid inference, or deployment is invoked. Runtime evidence is written
+under ignored `.qa/firebase-client`. Browser/provider acceptance remains separate.
+Production R2 file download through a Node Miniflare proxy is not confirmed; local
+development-adapter R2 CRUD is checked without claiming deployed storage acceptance.
 
-`pnpm typecheck:firebase` checks the verifier, route adapter, actual Next.js client
-route, and all unit tests with strict null checks independently of the starter's
-other files.
-
-The release also repairs baseline compatibility issues found at the initial
-revision `80cea96eecb34ff78582cc892db1b67c33f96469`. The application builds with
-`next build --webpack`, uses the installed Payload layout exports and an exact
-declaration for its CSS export, and registers the R2 storage adapter through
-Payload's `plugins` option. Next.js's standalone output supports OpenNext packaging.
-Build-time binding inspection uses a local Wrangler proxy; production requests
-continue to use their actual Worker bindings. These repairs do not add a database
-migration or change collection permissions.
-
-Integration tests run in Node with a fresh temporary D1/R2 environment, independent
-of real environment files, deployment accounts, and existing database contents.
-They verify Payload login/access, existing media data and schema preservation,
-local R2 upload/read/update/delete, and the actual native route with separately
-signed synthetic credentials. The local R2 response path uses the installed
-adapter's development shim for Miniflare, rather than claiming production storage
-acceptance. All temporary state is removed after the tests.
-
-After `pnpm build`, run `pnpm test:api` for the compiled Next.js application's actual
-local HTTP dispatch and `pnpm build:worker` to package that build for Cloudflare.
-These are local verification commands; they do not deploy. Synthetic Firebase
-acceptance does not confirm the real Firebase/Play Integrity provider setup.
-
-Payload's optional configured cookie Origin allowlist is tested with an explicit
-fixture. This starter's actual `csrf` configuration remains at its empty default;
-it does not impose that Origin allowlist. Its existing cookie flags and collection
-access checks remain unchanged. Configure a deployment's intended trusted origins
-according to its existing security policy once its public target is known.
+The template's generic Payload `csrf` setting remains its empty default. The new
+owner endpoint independently requires same-origin JSON POSTs with
+`X-Client-Security-Action: manage` and rechecks the persisted owner before commit.
+Deployment account, Worker/D1/R2 targets, real public Firebase configuration, and
+explicit activation approval are still required before production rollout.
