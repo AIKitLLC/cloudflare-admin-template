@@ -170,6 +170,7 @@ pnpm test:int
 # Build the application, exercise its local HTTP APIs, and package the Worker
 pnpm build
 pnpm test:api
+pnpm test:client-security:browser
 pnpm build:worker
 
 # Run end-to-end Playwright tests

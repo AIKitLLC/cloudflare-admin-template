@@ -145,7 +145,12 @@ Use Node >=24.15.0. Run `pnpm test:unit`, `pnpm test:int`, `pnpm typecheck`,
 `pnpm test:firebase:runtime`, and `pnpm build:worker`. Tests use synthetic signed
 tokens, isolated real D1/R2, and actual workerd/compiled Next handlers. No Firebase
 provider, paid inference, or deployment is invoked. Runtime evidence is written
-under ignored `.qa/firebase-client`. Browser/provider acceptance remains separate.
+under ignored `.qa/firebase-client`. After building, run
+`pnpm test:client-security:browser` for headless Chromium checks of the actual
+compiled owner page and settings API in a temporary database. Its synthetic users
+and saved policies stay isolated; trust remains disabled. Browser evidence and
+screenshots are saved under `.qa/client-security/browser`. Real provider and
+production web acceptance remain separate.
 Production R2 file download through a Node Miniflare proxy is not confirmed; local
 development-adapter R2 CRUD is checked without claiming deployed storage acceptance.
 
