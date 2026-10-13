@@ -468,6 +468,94 @@ for (const kind of ['app', 'id'] as const)
       assert.equal(f.calls.length, 3)
     })
   }
+for (const kind of ['app', 'id'] as const) {
+  test(`${kind} cold unknown-key outage remains 503 after failure backoff`, async () => {
+    const endpoint =
+      kind === 'app' ? FIREBASE_APP_CHECK_JWKS_ENDPOINT : FIREBASE_ID_CERTIFICATES_ENDPOINT
+    const f = fixture(async (url) =>
+      url === endpoint
+        ? json({ private: 'provider-detail' }, {}, 503)
+        : url === FIREBASE_APP_CHECK_JWKS_ENDPOINT
+          ? json({ keys: [await jwk()] })
+          : json({ 'key-0': await certificates[0] }),
+    )
+    const unknown = await credentials()
+    unknown[kind] = await signedToken(kind === 'app' ? appClaims() : idClaims(), {}, 1)
+    await rejects(f.authenticate(request(unknown), env), 503, 'firebase_keys_unavailable')
+    await rejects(f.authenticate(request(unknown), env), 503, 'firebase_keys_unavailable')
+    assert.equal(f.calls.filter((call) => call.url === endpoint).length, 1)
+    f.advance(5001)
+    await rejects(f.authenticate(request(unknown), env), 503, 'firebase_keys_unavailable')
+    assert.equal(f.calls.filter((call) => call.url === endpoint).length, 2)
+  })
+
+  test(`${kind} failed warm refresh remains 503 after backoff and recovers only with a successful catalog`, async () => {
+    const endpoint =
+      kind === 'app' ? FIREBASE_APP_CHECK_JWKS_ENDPOINT : FIREBASE_ID_CERTIFICATES_ENDPOINT
+    let outage = false,
+      recovered = false
+    const f = fixture(async (url) => {
+      if (url === endpoint && outage) return json({ private: 'provider-detail' }, {}, 503)
+      const index = url === endpoint && recovered ? 1 : 0
+      return url === FIREBASE_APP_CHECK_JWKS_ENDPOINT
+        ? json(
+            { keys: [await jwk(index)] },
+            { 'Cache-Control': url === endpoint ? 'max-age=1' : 'max-age=3600' },
+          )
+        : json(
+            { [`key-${index}`]: await certificates[index] },
+            { 'Cache-Control': url === endpoint ? 'max-age=1' : 'max-age=3600' },
+          )
+    })
+    const original = await credentials()
+    await f.authenticate(request(original), env)
+    outage = true
+    f.advance(2000)
+    await rejects(f.authenticate(request(original), env), 503, 'firebase_keys_unavailable')
+    const rotated = await credentials()
+    rotated[kind] = await signedToken(kind === 'app' ? appClaims() : idClaims(), {}, 1)
+    await rejects(f.authenticate(request(rotated), env), 503, 'firebase_keys_unavailable')
+    assert.equal(f.calls.filter((call) => call.url === endpoint).length, 2)
+    f.advance(5001)
+    await Promise.all(
+      Array.from({ length: 8 }, () =>
+        rejects(f.authenticate(request(rotated), env), 503, 'firebase_keys_unavailable'),
+      ),
+    )
+    assert.equal(
+      f.calls.filter((call) => call.url === endpoint).length,
+      3,
+      'concurrent retries share one failed refresh and must not establish an unknown-key verdict',
+    )
+    outage = false
+    recovered = true
+    await rejects(f.authenticate(request(rotated), env), 503, 'firebase_keys_unavailable')
+    assert.equal(f.calls.filter((call) => call.url === endpoint).length, 3)
+    f.advance(5001)
+    assert.equal((await f.authenticate(request(rotated), env)).uid, UID)
+    assert.equal(f.calls.filter((call) => call.url === endpoint).length, 4)
+    const absent = await credentials()
+    absent[kind] = await signedToken(
+      kind === 'app' ? appClaims() : idClaims(),
+      { kid: 'absent-after-recovery' },
+      1,
+    )
+    await rejects(f.authenticate(request(absent), env), 401, 'firebase_credentials_invalid')
+    assert.equal(
+      f.calls.filter((call) => call.url === endpoint).length,
+      4,
+      'the successful recovered catalog restores bounded unknown-key rejection',
+    )
+    f.advance(30_001)
+    await rejects(f.authenticate(request(absent), env), 401, 'firebase_credentials_invalid')
+    assert.equal(
+      f.calls.filter((call) => call.url === endpoint).length,
+      5,
+      'a successful catalog missing the requested key establishes 401 even after an outage',
+    )
+  })
+}
+
 test('expired key cache refreshes without accepting stale keys during an outage', async () => {
   let failed = false
   const f = fixture(async (url) =>

@@ -134,7 +134,10 @@ Each trust domain has its own bounded public-key cache and one shared refresh at
 time. Responses are capped at 128 KiB/20 keys, requests at 5 seconds, and App Check
 cache lifetime at six hours. Provider `max-age`, `Age`, `no-store`, and `no-cache` are
 honored. Unknown key refreshes have a 30-second cooldown and failed refreshes a
-5-second backoff. Expired cached keys are never used during an outage. Token-controlled
+5-second backoff. After a failed refresh, requests retry when that backoff ends;
+only a successful key catalog can establish that an unknown key is invalid. Ongoing
+key outages remain `503`, rather than being treated as invalid credentials (`401`).
+Expired cached keys are never used during an outage. Token-controlled
 key URLs and embedded public keys are rejected; redirects are not followed.
 
 The implementation follows Firebase's official

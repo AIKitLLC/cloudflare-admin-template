@@ -420,6 +420,47 @@ const cases = [
       { tokens: valid, offset: 2000, status: 503, reason: 'firebase_keys_unavailable' },
     ],
   },
+  ...['app', 'id'].flatMap((provider) => {
+    const rotatedCredentials =
+      provider === 'app' ? { app: rotated.app, id: valid.id } : { app: valid.app, id: rotated.id }
+    const outageSteps = [
+      { tokens: valid, status: 200 },
+      { tokens: valid, offset: 2000, status: 503, reason: 'firebase_keys_unavailable' },
+      {
+        tokens: rotatedCredentials,
+        offset: 3000,
+        status: 503,
+        reason: 'firebase_keys_unavailable',
+      },
+    ]
+    const shared = {
+      cacheControls: { [provider]: 'max-age=1' },
+      outageAt: { [provider]: 2 },
+      requests: ['app', 'id', provider, provider],
+    }
+    return [
+      {
+        name: `${provider}-warm-outage-after-backoff-remains-unavailable`,
+        ...shared,
+        steps: [
+          ...outageSteps,
+          {
+            tokens: rotatedCredentials,
+            offset: 7001,
+            status: 503,
+            reason: 'firebase_keys_unavailable',
+          },
+        ],
+      },
+      {
+        name: `${provider}-warm-outage-recovers-after-backoff-with-rotation`,
+        ...shared,
+        outageThrough: { [provider]: 2 },
+        rotationAt: { [provider]: 3 },
+        steps: [...outageSteps, { tokens: rotatedCredentials, offset: 7001, status: 200 }],
+      },
+    ]
+  }),
 ]
 
 const observations = [],
@@ -450,11 +491,14 @@ for (const testCase of cases) {
           providerCalls[endpoint]++
           if (
             testCase.outage === endpoint ||
-            providerCalls[endpoint] >= (testCase.outageAt?.[endpoint] ?? Infinity)
+            (providerCalls[endpoint] >= (testCase.outageAt?.[endpoint] ?? Infinity) &&
+              providerCalls[endpoint] <= (testCase.outageThrough?.[endpoint] ?? Infinity))
           ) {
             return Response.json({ private: 'provider-detail' }, { status: 503 })
           }
-          const rotating = testCase.rotation && providerCalls[endpoint] > 1
+          const rotating =
+            (testCase.rotation && providerCalls[endpoint] > 1) ||
+            providerCalls[endpoint] >= (testCase.rotationAt?.[endpoint] ?? Infinity)
           const keys =
             endpoint === 'app'
               ? { keys: [rotating ? rotatedAppJwk : appJwk] }
@@ -462,7 +506,10 @@ for (const testCase of cases) {
                 ? { [rotatedIdKid]: rotatedIdCertificate }
                 : { [idKid]: idCertificate }
           return Response.json(keys, {
-            headers: { 'Cache-Control': testCase.cacheControl ?? 'max-age=3600' },
+            headers: {
+              'Cache-Control':
+                testCase.cacheControls?.[endpoint] ?? testCase.cacheControl ?? 'max-age=3600',
+            },
           })
         } catch (error) {
           outboundFailure = error

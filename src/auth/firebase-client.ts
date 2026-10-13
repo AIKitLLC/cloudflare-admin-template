@@ -318,8 +318,10 @@ function keyProvider(
     if (!cache.inFlight) {
       if (cache.failureUntil > now) unavailable()
       // An unknown kid cannot bypass the refresh cooldown with an uncacheable key response.
+      // Only a successful catalog establishes absence; a failed refresh must retry after backoff.
       // Known keys still revalidate after max-age/no-store requires it.
       if (
+        cache.failureUntil === 0 &&
         cache.keys.size &&
         !cache.keys.has(kid) &&
         now - cache.lastAttemptAt < UNKNOWN_KEY_COOLDOWN_MS
