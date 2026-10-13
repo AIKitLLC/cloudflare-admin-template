@@ -52,3 +52,8 @@ node_modules/
 # OpenNext
 .open-next
 .wrangler
+# Local auth verification reports and Wrangler dev bindings
+.qa/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example

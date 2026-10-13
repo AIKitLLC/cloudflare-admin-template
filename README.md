@@ -133,11 +133,13 @@ pnpm generate:types
 ### 1. Create Cloudflare Resources
 
 Create your D1 Database:
+
 ```bash
 pnpm wrangler d1 create <YOUR_DATABASE_NAME>
 ```
 
 Create your R2 Bucket:
+
 ```bash
 pnpm wrangler r2 bucket create <YOUR_BUCKET_NAME>
 ```
@@ -156,12 +158,32 @@ pnpm run deploy
 ## 🧪 Testing
 
 ```bash
+# Firebase client authentication and route/ownership/quota identity tests
+pnpm test:unit
+
+# Actual local Cloudflare runtime using synthetic signed tokens (no external calls)
+pnpm test:firebase:runtime
+
 # Run unit & integration tests
 pnpm test:int
 
 # Run end-to-end Playwright tests
 pnpm test:e2e
 ```
+
+---
+
+## Firebase Native Clients
+
+The protected `GET /api/client/v1/me` example requires both a Firebase App Check token
+and a Firebase Anonymous Authentication ID token. It derives the client UID from the
+verified ID token and keeps Firebase clients separate from Payload administrator
+sessions. Client routes stay disabled until the real public Firebase project ID,
+project number, and allowed App IDs are supplied.
+
+See [Firebase client authentication](docs/firebase-client-auth.md) for setup, Play
+Integrity requirements, the reusable route adapter, ownership/quota examples, and
+verification limits.
 
 ---
 

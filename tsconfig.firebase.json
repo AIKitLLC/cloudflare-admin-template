@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strictNullChecks": true,
+    "types": ["node"]
+  },
+  "include": [
+    "cloudflare-env.d.ts",
+    "src/auth/**/*.ts",
+    "src/app/api/client/**/*.ts",
+    "tests/unit/**/*.test.ts"
+  ]
+}

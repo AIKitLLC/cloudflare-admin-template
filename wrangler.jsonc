@@ -11,6 +11,13 @@
     // see https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public
     "global_fetch_strictly_public",
   ],
+  // Native Firebase client routes remain fail-closed until public project/app IDs are supplied.
+  "vars": {
+    "FIREBASE_CLIENT_ENABLED": "false",
+    "FIREBASE_PROJECT_ID": "",
+    "FIREBASE_PROJECT_NUMBER": "",
+    "FIREBASE_APP_IDS": "",
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS",
