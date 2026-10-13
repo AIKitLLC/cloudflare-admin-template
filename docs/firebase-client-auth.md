@@ -163,12 +163,30 @@ records versions and source/lock hashes. Existing checks remain `pnpm lint`,
 route, and all unit tests with strict null checks independently of the starter's
 other files.
 
-At the initial template revision `80cea96eecb34ff78582cc892db1b67c33f96469`, full
-TypeScript checking fails on three Payload CSS imports, `generatePayloadViewport`,
-and `Config.storage`. The existing integration suite fails before running tests
-because its jsdom environment breaks the `TextEncoder`/`Uint8Array` invariant used
-by Wrangler's esbuild. The existing `payload build` script fails because Payload
-does not have a `build` command. Each failure was reproduced on an untouched archive
-of that revision using supported Node 24.15.0 and the same resolved dependencies.
-These baseline issues remain separate from the Firebase implementation and prevent
-claiming a full application build or integration-suite pass.
+The release also repairs baseline compatibility issues found at the initial
+revision `80cea96eecb34ff78582cc892db1b67c33f96469`. The application builds with
+`next build --webpack`, uses the installed Payload layout exports and an exact
+declaration for its CSS export, and registers the R2 storage adapter through
+Payload's `plugins` option. Next.js's standalone output supports OpenNext packaging.
+Build-time binding inspection uses a local Wrangler proxy; production requests
+continue to use their actual Worker bindings. These repairs do not add a database
+migration or change collection permissions.
+
+Integration tests run in Node with a fresh temporary D1/R2 environment, independent
+of real environment files, deployment accounts, and existing database contents.
+They verify Payload login/access, existing media data and schema preservation,
+local R2 upload/read/update/delete, and the actual native route with separately
+signed synthetic credentials. The local R2 response path uses the installed
+adapter's development shim for Miniflare, rather than claiming production storage
+acceptance. All temporary state is removed after the tests.
+
+After `pnpm build`, run `pnpm test:api` for the compiled Next.js application's actual
+local HTTP dispatch and `pnpm build:worker` to package that build for Cloudflare.
+These are local verification commands; they do not deploy. Synthetic Firebase
+acceptance does not confirm the real Firebase/Play Integrity provider setup.
+
+Payload's optional configured cookie Origin allowlist is tested with an explicit
+fixture. This starter's actual `csrf` configuration remains at its empty default;
+it does not impose that Origin allowlist. Its existing cookie flags and collection
+access checks remain unchanged. Configure a deployment's intended trusted origins
+according to its existing security policy once its public target is known.

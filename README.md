@@ -164,8 +164,13 @@ pnpm test:unit
 # Actual local Cloudflare runtime using synthetic signed tokens (no external calls)
 pnpm test:firebase:runtime
 
-# Run unit & integration tests
+# Run isolated Payload D1/R2 and native route integration tests
 pnpm test:int
+
+# Build the application, exercise its local HTTP APIs, and package the Worker
+pnpm build
+pnpm test:api
+pnpm build:worker
 
 # Run end-to-end Playwright tests
 pnpm test:e2e

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash, generateKeyPairSync, sign } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,8 +10,15 @@ import { Miniflare, convertV4MiniflareOptions } from 'miniflare'
 // All signing material and Firebase identifiers below are local synthetic fixtures.
 // Every Worker outbound request is intercepted; this script never contacts Firebase.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const require = createRequire(import.meta.url)
 const sourcePath = resolve(root, 'src/auth/firebase-client.ts')
 const source = await readFile(sourcePath, 'utf8')
+const adapterPath = resolve(root, 'src/auth/firebase-client-route.ts')
+const adapterSource = await readFile(adapterPath, 'utf8')
+const routePath = resolve(root, 'src/app/api/client/v1/me/route.ts')
+const routeSource = await readFile(routePath, 'utf8')
+const cloudflareContextPath = require.resolve('@opennextjs/cloudflare/cloudflare-context')
+const cloudflareContextSource = await readFile(cloudflareContextPath, 'utf8')
 const lockPath = resolve(root, 'pnpm-lock.yaml')
 const lock = await readFile(lockPath, 'utf8')
 const configPath = resolve(root, 'wrangler.jsonc')
@@ -207,7 +214,64 @@ const bundle = await build({
   ],
 })
 const script = bundle.outputFiles[0].text
-const cases = [
+
+// Import the real GET only after the synthetic clock is installed: the application
+// authenticator captures Date.now when its module's singleton is initialized.
+// OpenNext's installed getCloudflareContext reads its real production context symbol.
+const routeWorkerEntry = `let now=${nowMs};
+Date.now=()=>now;
+let route;
+export default {async fetch(request) {
+ now=${nowMs}+Number(request.headers.get('X-Test-Clock-Offset')??0);
+ const environment=${JSON.stringify(environment)};
+ if(request.headers.get('X-Test-Config')==='disabled')environment.FIREBASE_CLIENT_ENABLED='false';
+ if(request.headers.get('X-Test-Config')==='incomplete')delete environment.FIREBASE_APP_IDS;
+ globalThis[Symbol.for('__cloudflare-context__')]={env:environment};
+ const {GET}=await(route??=import('./src/app/api/client/v1/me/route.ts'));
+ return GET(request);
+}}`
+const frozenRouteSources = new Map(
+  await Promise.all(
+    [
+      [sourcePath, source],
+      [adapterPath, adapterSource],
+      [routePath, routeSource],
+      [cloudflareContextPath, cloudflareContextSource],
+    ].map(async ([path, contents]) => [await realpath(path), contents]),
+  ),
+)
+const routeBundle = await build({
+  stdin: {
+    contents: routeWorkerEntry,
+    resolveDir: root,
+    sourcefile: 'synthetic-firebase-protected-route-runtime.ts',
+    loader: 'ts',
+  },
+  alias: { '@': resolve(root, 'src') },
+  bundle: true,
+  format: 'esm',
+  platform: 'browser',
+  write: false,
+  logLevel: 'silent',
+  plugins: [
+    {
+      name: 'freeze-firebase-route-sources',
+      setup(builder) {
+        builder.onLoad({ filter: /\.[jt]s$/ }, ({ path }) => {
+          const contents = frozenRouteSources.get(path)
+          if (contents !== undefined)
+            return {
+              contents,
+              loader: path.endsWith('.ts') ? 'ts' : 'js',
+              resolveDir: dirname(path),
+            }
+        })
+      },
+    },
+  ],
+})
+const routeScript = routeBundle.outputFiles[0].text
+const verifierCases = [
   {
     name: 'signed-anonymous-principal-and-cache',
     tokens: valid,
@@ -463,6 +527,128 @@ const cases = [
   }),
 ]
 
+const routeCases = [
+  {
+    name: 'actual-me-route-signed-anonymous-principal-and-cache',
+    tokens: valid,
+    repeat: 2,
+    status: 200,
+    requests: ['app', 'id'],
+  },
+  {
+    name: 'actual-me-route-disabled-config',
+    config: 'disabled',
+    status: 503,
+    reason: 'firebase_client_disabled',
+    requests: [],
+  },
+  {
+    name: 'actual-me-route-incomplete-config',
+    config: 'incomplete',
+    status: 503,
+    reason: 'firebase_client_misconfigured',
+    requests: [],
+  },
+  {
+    name: 'actual-me-route-missing-credentials',
+    missing: 'both',
+    status: 401,
+    reason: 'firebase_credentials_missing',
+    requests: [],
+  },
+  {
+    name: 'actual-me-route-missing-app-check',
+    missing: 'app',
+    status: 401,
+    reason: 'firebase_credentials_missing',
+    requests: [],
+  },
+  {
+    name: 'actual-me-route-missing-id-token',
+    missing: 'id',
+    status: 401,
+    reason: 'firebase_credentials_missing',
+    requests: [],
+  },
+  {
+    name: 'actual-me-route-wrong-app-project',
+    tokens: tokens({ iss: 'https://firebaseappcheck.googleapis.com/987654321' }),
+    status: 401,
+    requests: ['app'],
+  },
+  {
+    name: 'actual-me-route-wrong-id-project',
+    tokens: tokens({}, { aud: 'another-project' }),
+    status: 401,
+    requests: ['app', 'id'],
+  },
+  {
+    name: 'actual-me-route-invalid-app-signature',
+    tokens: wrongSignature,
+    status: 401,
+    requests: ['app'],
+  },
+  {
+    name: 'actual-me-route-invalid-id-signature',
+    tokens: wrongIdSignature,
+    status: 401,
+    requests: ['app', 'id'],
+  },
+  {
+    name: 'actual-me-route-app-provider-outage',
+    outage: 'app',
+    status: 503,
+    reason: 'firebase_keys_unavailable',
+    requests: ['app'],
+  },
+  {
+    name: 'actual-me-route-id-provider-outage',
+    outage: 'id',
+    status: 503,
+    reason: 'firebase_keys_unavailable',
+    requests: ['app', 'id'],
+  },
+  {
+    name: 'actual-me-route-spoofed-origin-without-credentials',
+    missing: 'both',
+    origin: 'https://admin.synthetic.invalid',
+    status: 401,
+    reason: 'firebase_credentials_missing',
+    requests: [],
+  },
+  {
+    name: 'actual-me-route-spoofed-origin-with-valid-credentials',
+    origin: 'https://admin.synthetic.invalid',
+    status: 200,
+    requests: ['app', 'id'],
+  },
+  {
+    name: 'actual-me-route-query-uid-and-role-ignored',
+    query: '?uid=forged-owner&role=admin',
+    status: 200,
+    requests: ['app', 'id'],
+  },
+  {
+    // This calls the actual GET export with a body-bearing Request. Next's HTTP
+    // method routing is outside this direct-export check and rejects POST itself.
+    name: 'actual-me-get-export-body-uid-and-role-ignored',
+    method: 'POST',
+    body: JSON.stringify({ uid: 'forged-owner', role: 'admin' }),
+    status: 200,
+    requests: ['app', 'id'],
+  },
+  {
+    name: 'actual-me-get-export-forged-body-cannot-bypass-auth',
+    method: 'POST',
+    body: JSON.stringify({ uid: 'forged-owner', role: 'admin' }),
+    missing: 'both',
+    status: 401,
+    reason: 'firebase_credentials_missing',
+    requests: [],
+  },
+].map((testCase) => ({ ...testCase, kind: 'route' }))
+const cases = [...verifierCases, ...routeCases]
+
 const observations = [],
   start = performance.now()
 for (const testCase of cases) {
@@ -472,7 +658,7 @@ for (const testCase of cases) {
   const mf = new Miniflare(
     convertV4MiniflareOptions({
       modules: true,
-      script,
+      script: testCase.kind === 'route' ? routeScript : script,
       compatibilityDate,
       outboundService: async (request) => {
         try {
@@ -530,9 +716,16 @@ for (const testCase of cases) {
         headers.Authorization = `Bearer ${credentials.id}`
       if (step.config) headers['X-Test-Config'] = step.config
       if (step.offset) headers['X-Test-Clock-Offset'] = String(step.offset)
+      if (step.origin) headers.Origin = step.origin
+      if (step.body) headers['Content-Type'] = 'application/json'
+      const method = step.method ?? (testCase.kind === 'route' ? 'GET' : 'POST')
+      const url =
+        testCase.kind === 'route'
+          ? `https://worker.synthetic.invalid/api/client/v1/me${step.query ?? ''}`
+          : 'https://worker.synthetic.invalid/'
       let timeout
       const response = await Promise.race([
-        mf.dispatchFetch('https://worker.synthetic.invalid/', { method: 'POST', headers }),
+        mf.dispatchFetch(url, { method, headers, body: step.body }),
         new Promise((_resolve, reject) => {
           timeout = setTimeout(
             () => reject(new Error('local Worker fixture exceeded 10 seconds')),
@@ -544,7 +737,9 @@ for (const testCase of cases) {
       assert.equal(response.status, step.status, testCase.name)
       const result = await response.json()
       const serialized = JSON.stringify(result)
-      for (const canary of [credentials.app, credentials.id, uid, 'provider-detail']) {
+      const canaries = [credentials.app, credentials.id, 'provider-detail', 'forged-owner']
+      if (testCase.kind !== 'route' || step.status !== 200) canaries.push(uid)
+      for (const canary of canaries) {
         assert.equal(
           serialized.includes(canary),
           false,
@@ -553,12 +748,40 @@ for (const testCase of cases) {
       }
       assert.deepEqual(
         result,
-        step.status === 200
-          ? { ok: true, principalMatches: true }
-          : { ok: false, reason: step.reason ?? 'firebase_credentials_invalid' },
+        testCase.kind === 'route'
+          ? step.status === 200
+            ? { principal: { uid, appId, projectId } }
+            : { error: step.reason ?? 'firebase_credentials_invalid' }
+          : step.status === 200
+            ? { ok: true, principalMatches: true }
+            : { ok: false, reason: step.reason ?? 'firebase_credentials_invalid' },
         testCase.name,
       )
-      results.push({ httpStatus: response.status, result })
+      let privateHeaders
+      if (testCase.kind === 'route') {
+        assert.equal(response.headers.get('Cache-Control'), 'private, no-store', testCase.name)
+        assert.deepEqual(
+          response.headers
+            .get('Vary')
+            ?.split(',')
+            .map((value) => value.trim().toLowerCase())
+            .sort(),
+          ['authorization', 'x-firebase-appcheck'],
+          testCase.name,
+        )
+        assert.equal(
+          response.headers.get('WWW-Authenticate'),
+          step.status === 401 ? 'Bearer' : null,
+        )
+        assert.equal(response.headers.has('Access-Control-Allow-Origin'), false)
+        assert.equal(response.headers.has('Set-Cookie'), false)
+        privateHeaders = {
+          cacheControl: response.headers.get('Cache-Control'),
+          vary: response.headers.get('Vary'),
+          wwwAuthenticate: response.headers.get('WWW-Authenticate'),
+        }
+      }
+      results.push({ httpStatus: response.status, result, method, privateHeaders })
     }
     assert.deepEqual(
       requests,
@@ -570,6 +793,7 @@ for (const testCase of cases) {
   }
   observations.push({
     name: testCase.name,
+    kind: testCase.kind ?? 'verifier',
     status: 'PASS',
     requests,
     verifiedRequests: steps.length,
@@ -592,7 +816,13 @@ assert.equal(
   config,
   'runtime-tested Worker configuration changed during verification',
 )
-const require = createRequire(import.meta.url)
+for (const [path, contents] of [
+  [adapterPath, adapterSource],
+  [routePath, routeSource],
+  [cloudflareContextPath, cloudflareContextSource],
+]) {
+  assert.equal(await readFile(path, 'utf8'), contents, 'runtime-tested route dependency changed')
+}
 const packageVersion = async (name, resolver = require) =>
   JSON.parse(await readFile(resolver.resolve(`${name}/package.json`), 'utf8')).version
 // pnpm need not hoist Miniflare's workerd dependency into the root node_modules.
@@ -600,18 +830,31 @@ const miniflareRequire = createRequire(require.resolve('miniflare'))
 const report = {
   status: 'PASS',
   checks: observations.length,
+  verifierChecks: verifierCases.length,
+  protectedRouteChecks: routeCases.length,
   verifiedRequests: observations.reduce((count, item) => count + item.verifiedRequests, 0),
   compatibilityDate,
   sourceSha256: sha256(source),
+  protectedRouteSha256: sha256(routeSource),
+  routeAdapterSha256: sha256(adapterSource),
+  openNextContextSha256: sha256(cloudflareContextSource),
   dependencyLockSha256: sha256(lock),
   workerConfigSha256: sha256(config),
   joseVersion: await packageVersion('jose'),
   esbuildVersion: await packageVersion('esbuild'),
   miniflareVersion: await packageVersion('miniflare'),
   workerdVersion: await packageVersion('workerd', miniflareRequire),
+  openNextVersion: JSON.parse(
+    await readFile(
+      resolve(dirname(require.resolve('@opennextjs/cloudflare')), '../../package.json'),
+      'utf8',
+    ),
+  ).version,
   elapsedMs: Math.round(performance.now() - start),
   scope:
-    'Actual local workerd Web Crypto and native global fetch; every outbound call intercepted by an in-memory synthetic provider.',
+    'Actual local workerd Web Crypto and native global fetch, including the real protected GET export, its route adapter, and installed OpenNext context API; every outbound call intercepted by an in-memory synthetic provider.',
+  protectedRouteScope:
+    'Direct GET export execution; synthetic clock and Cloudflare context, real auth singleton without injection. Body-bearing POST fixtures call the GET export directly; Next/Payload HTTP routing is checked separately.',
   realProviderRequests: 0,
   paidAiCalls: 0,
   realFirebaseProviderFlow: 'NOT_RUN',

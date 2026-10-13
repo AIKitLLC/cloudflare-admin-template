@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" payload build",
+    "build": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" next build --webpack",
     "deploy": "pnpm run deploy:database && pnpm run deploy:app",
     "deploy:app": "opennextjs-cloudflare build --env=$CLOUDFLARE_ENV && opennextjs-cloudflare deploy --env=$CLOUDFLARE_ENV",
     "deploy:database": "cross-env NODE_ENV=production PAYLOAD_SECRET=ignore payload migrate && wrangler d1 execute D1 --command 'PRAGMA optimize' --env=$CLOUDFLARE_ENV --remote",
@@ -25,6 +25,8 @@
     "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",
     "test:firebase:runtime": "node scripts/firebase-client-runtime.mjs",
+    "test:api": "node --import tsx scripts/local-api-smoke.mjs",
+    "build:worker": "opennextjs-cloudflare build --skipNextBuild",
     "typecheck": "tsc --noEmit",
     "typecheck:firebase": "tsc --project tsconfig.firebase.json"
   },
