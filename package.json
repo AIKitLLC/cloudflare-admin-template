@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "build": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" payload build",
+    "build": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" next build --webpack",
     "deploy": "pnpm run deploy:database && pnpm run deploy:app",
     "deploy:app": "opennextjs-cloudflare build --env=$CLOUDFLARE_ENV && opennextjs-cloudflare deploy --env=$CLOUDFLARE_ENV",
     "deploy:database": "cross-env NODE_ENV=production PAYLOAD_SECRET=ignore payload migrate && wrangler d1 execute D1 --command 'PRAGMA optimize' --env=$CLOUDFLARE_ENV --remote",
@@ -20,9 +20,15 @@
     "payload": "cross-env NODE_OPTIONS=--no-deprecation payload",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview --env=$CLOUDFLARE_ENV",
     "start": "cross-env NODE_OPTIONS=--no-deprecation next start",
-    "test": "pnpm run test:int && pnpm run test:e2e",
+    "test": "pnpm run test:unit && pnpm run test:int && pnpm run test:e2e",
     "test:e2e": "cross-env NODE_OPTIONS=\"--no-deprecation --import=tsx/esm\" playwright test --config=playwright.config.ts",
-    "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts"
+    "test:int": "cross-env NODE_OPTIONS=--no-deprecation vitest run --config ./vitest.config.mts",
+    "test:unit": "node --import tsx --test tests/unit/*.test.ts",
+    "test:firebase:runtime": "node scripts/firebase-client-runtime.mjs",
+    "test:api": "node --import tsx scripts/local-api-smoke.mjs",
+    "build:worker": "opennextjs-cloudflare build --skipNextBuild",
+    "typecheck": "tsc --noEmit",
+    "typecheck:firebase": "tsc --project tsconfig.firebase.json"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.11.0",
@@ -37,7 +43,8 @@
     "next": "16.4.0",
     "payload": "3.82.1",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "jose": "6.2.12"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
@@ -54,7 +61,9 @@
     "typescript": "6.0.3",
     "vite-tsconfig-paths": "6.0.5",
     "vitest": "5.0.1",
-    "wrangler": "~4.116.0"
+    "wrangler": "~4.116.0",
+    "esbuild": "0.28.2",
+    "miniflare": "5.20261001.0-alpha"
   },
   "engines": {
     "node": ">=24.15.0",
