@@ -26,6 +26,7 @@
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",
     "test:firebase:runtime": "node scripts/firebase-client-runtime.mjs",
     "test:api": "node --import tsx scripts/local-api-smoke.mjs",
+    "test:client-security:browser": "node scripts/client-security-browser-qa.mjs",
     "build:worker": "opennextjs-cloudflare build --skipNextBuild",
     "typecheck": "tsc --noEmit",
     "typecheck:firebase": "tsc --project tsconfig.firebase.json"

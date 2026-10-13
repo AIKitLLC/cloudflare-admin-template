@@ -19,7 +19,7 @@ let platform: PlatformProxy<CloudflareEnv> | undefined
 let directory: string | undefined
 let payload: Payload | undefined
 let fixture: Awaited<ReturnType<typeof createFirebaseFixture>>
-let context: { env: CloudflareEnv & typeof firebaseFixtureEnv }
+let context: { env: CloudflareEnv & typeof firebaseFixtureEnv; cf: { colo: string } }
 
 export async function startLocalIntegrationRuntime(): Promise<void> {
   try {
@@ -64,7 +64,12 @@ export async function startLocalIntegrationRuntime(): Promise<void> {
       remoteBindings: false,
       persist: { path: join(directory, 'state') },
     })
-    context = { ...platform, env: { ...platform.env, ...firebaseFixtureEnv } }
+    // Synthetic trusted edge metadata for this isolated adapter test, never a deployment setting.
+    context = {
+      ...platform,
+      env: { ...platform.env, ...firebaseFixtureEnv },
+      cf: { colo: 'LOCAL' },
+    }
     scope[contextSymbol] = context
     // The real native authenticator captures this fetch before the app module imports.
     // Public-key requests receive ephemeral fixtures; no Firebase provider is contacted.

@@ -10,6 +10,7 @@ import { r2Storage } from '@payloadcms/storage-r2'
 
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
+import { ClientSecurityCollections } from './collections/ClientSecurity'
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -54,8 +55,17 @@ export default buildConfig({
     importMap: {
       baseDir: path.resolve(dirname),
     },
+    components: {
+      afterNavLinks: ['@/components/ClientSecurityNav#ClientSecurityNav'],
+      views: {
+        clientSecurity: {
+          Component: '@/components/ClientSecurityView#ClientSecurityView',
+          path: '/client-security',
+        },
+      },
+    },
   },
-  collections: [Users, Media],
+  collections: [Users, Media, ...ClientSecurityCollections],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {
@@ -83,7 +93,7 @@ function getCloudflareContextFromWrangler(): Promise<CloudflareContext> {
         // Build-time inspection must not contact the configured production D1 database.
         remoteBindings: isTest ? false : isProduction && !isNextProductionBuild,
         ...(isTest
-          ? { persist: { path: process.env.PAYLOAD_TEST_STORAGE_DIR }, envFiles: [] }
+          ? { persist: { path: process.env.PAYLOAD_TEST_STORAGE_DIR! }, envFiles: [] }
           : {}),
       } satisfies GetPlatformProxyOptions),
   )

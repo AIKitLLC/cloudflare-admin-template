@@ -170,6 +170,7 @@ pnpm test:int
 # Build the application, exercise its local HTTP APIs, and package the Worker
 pnpm build
 pnpm test:api
+pnpm test:client-security:browser
 pnpm build:worker
 
 # Run end-to-end Playwright tests
@@ -183,8 +184,11 @@ pnpm test:e2e
 The protected `GET /api/client/v1/me` example requires both a Firebase App Check token
 and a Firebase Anonymous Authentication ID token. It derives the client UID from the
 verified ID token and keeps Firebase clients separate from Payload administrator
-sessions. Client routes stay disabled until the real public Firebase project ID,
-project number, and allowed App IDs are supplied.
+sessions. Owners manage public Firebase trust and persistent UID/IP/global quotas
+at `/admin/client-security`. Defaults remain disabled with zero quotas; activation
+requires the real project ID/number, allowed App IDs, and reviewed limits. Existing
+admins are not automatically promoted to owner. Audited revisions and rollback
+preserve active usage and reject stale saves.
 
 See [Firebase client authentication](docs/firebase-client-auth.md) for setup, Play
 Integrity requirements, the reusable route adapter, ownership/quota examples, and

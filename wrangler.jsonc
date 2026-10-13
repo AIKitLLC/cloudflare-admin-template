@@ -11,7 +11,7 @@
     // see https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public
     "global_fetch_strictly_public",
   ],
-  // Native Firebase client routes remain fail-closed until public project/app IDs are supplied.
+  // Standalone verifier inputs. Managed client routes use owner-reviewed D1 configuration.
   "vars": {
     "FIREBASE_CLIENT_ENABLED": "false",
     "FIREBASE_PROJECT_ID": "",

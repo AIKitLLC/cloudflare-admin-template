@@ -30,6 +30,18 @@ const sourceFiles = [
   'tests/int/firebase-fixture.ts',
   'src/auth/firebase-client.ts',
   'src/auth/firebase-client-route.ts',
+  'src/auth/client-security-owner.ts',
+  'src/client-security/admin-route.ts',
+  'src/client-security/client-route.ts',
+  'src/client-security/initialize.ts',
+  'src/client-security/schema.ts',
+  'src/client-security/store.ts',
+  'src/client-security/rate-limits.ts',
+  'src/components/ClientSecurityView.tsx',
+  'src/components/ClientSecurityPanel.tsx',
+  'src/components/ClientSecurityNav.tsx',
+  'src/collections/ClientSecurity.ts',
+  'src/app/api/admin/client-security/route.ts',
   'src/app/api/client/v1/me/route.ts',
   'src/app/(payload)/api/[...slug]/route.ts',
   'src/payload.config.ts',
@@ -82,12 +94,20 @@ const mediaBody = 'Synthetic public media fixture. No user data.\n'
 const adminEmail = 'http-smoke-admin@fixture.invalid'
 const adminPassword = 'synthetic-http-smoke-password-never-used-for-deployment'
 let appPair
+let securityStore
+let digestSecurityConfiguration
+let enabledConfiguration
 const appKid = 'http-smoke-app-key'
 
 async function request(path, { method = 'GET', headers, body } = {}) {
+  const requestHeaders = new Headers(headers)
+  // This loopback Node server simulates the trusted header populated by Cloudflare.
+  // The matching synthetic incoming-request context is set explicitly below.
+  if (path.startsWith('/api/client/v1/me') && !requestHeaders.has('CF-Connecting-IP'))
+    requestHeaders.set('CF-Connecting-IP', '203.0.113.10')
   const response = await originalFetch(`${baseUrl}${path}`, {
     method,
-    headers,
+    headers: requestHeaders,
     body,
     redirect: 'manual',
     signal: AbortSignal.timeout(15_000),
@@ -176,6 +196,7 @@ const principal = () => ({
 async function expectClient(name, expectedStatus, options = {}, expectedReason) {
   await test(name, async (send) => {
     const credentials = options.headers ?? (await headers(options))
+    if (options.ip) credentials.set('CF-Connecting-IP', options.ip)
     const result = await send(options.path ?? '/api/client/v1/me', {
       method: options.method,
       headers: credentials,
@@ -183,6 +204,11 @@ async function expectClient(name, expectedStatus, options = {}, expectedReason) 
     })
     assert.equal(result.response.status, expectedStatus)
     privateHeaders(result.response, expectedStatus)
+    const retryAfter = result.response.headers.get('Retry-After')
+    if (expectedStatus === 429) {
+      assert.match(retryAfter ?? '', /^[1-9][0-9]*$/)
+      assert.ok(Number(retryAfter) <= 60)
+    } else assert.equal(retryAfter, null)
     if (options.method !== 'HEAD') {
       assert.deepEqual(
         result.json,
@@ -197,8 +223,29 @@ async function expectClient(name, expectedStatus, options = {}, expectedReason) 
     ]) {
       if (credential) assert.equal(result.text.includes(credential), false)
     }
-    return { cacheControl: result.response.headers.get('Cache-Control') }
+    return { cacheControl: result.response.headers.get('Cache-Control'), retryAfter }
   })
+}
+
+async function saveSecurityConfiguration(configuration) {
+  const snapshot = await securityStore.read()
+  return securityStore.save({
+    expectedRevision: snapshot.revision,
+    configuration,
+    reviewedDigest: await digestSecurityConfiguration(configuration),
+    actor: 'synthetic-http-smoke',
+    operation: 'save',
+  })
+}
+
+function ownerHeaders(response) {
+  assert.equal(response.headers.get('Cache-Control'), 'private, no-store')
+  const vary = response.headers
+    .get('Vary')
+    ?.split(',')
+    .map((value) => value.trim().toLowerCase())
+  assert.ok(vary?.includes('authorization'))
+  assert.ok(vary?.includes('cookie'))
 }
 
 try {
@@ -285,6 +332,23 @@ try {
     },
   })
   mediaFilename = media.filename
+  const { initializeClientSecuritySchema } = await import('../src/client-security/initialize.ts')
+  const { createClientSecurityStore } = await import('../src/client-security/store.ts')
+  const { digestClientSecurityConfiguration } = await import('../src/client-security/schema.ts')
+  await initializeClientSecuritySchema(runtime.platform.env.D1)
+  securityStore = createClientSecurityStore(runtime.platform.env.D1)
+  digestSecurityConfiguration = digestClientSecurityConfiguration
+  enabledConfiguration = {
+    schemaVersion: 1,
+    firebase: {
+      enabled: true,
+      projectId: runtime.env.FIREBASE_PROJECT_ID,
+      projectNumber: runtime.env.FIREBASE_PROJECT_NUMBER,
+      appIds: runtime.env.FIREBASE_APP_IDS.split(','),
+    },
+    limits: { windowSeconds: 60, uid: 1000, ip: 1000, global: 1000 },
+  }
+  globalThis[Symbol.for('__cloudflare-context__')].cf = { colo: 'LOCAL' }
   await seedPayload.destroy()
   seedPayload = undefined
 
@@ -295,6 +359,7 @@ try {
   app = next({ customServer: false, dev: false, dir: root, conf: builtConfig })
   await app.prepare()
   assert.equal(globalThis[Symbol.for('__cloudflare-context__')].env, runtime.env)
+  assert.equal(globalThis[Symbol.for('__cloudflare-context__')].cf.colo, 'LOCAL')
   const handler = app.getRequestHandler()
   server = createServer((req, res) => {
     void handler(req, res).catch(() => {
@@ -308,6 +373,13 @@ try {
   })
   baseUrl = `http://127.0.0.1:${server.address().port}`
 
+  await expectClient(
+    'real-http-default-disabled-store-ignores-enabled-environment',
+    503,
+    {},
+    'firebase_client_disabled',
+  )
+  await saveSecurityConfiguration(enabledConfiguration)
   await expectClient('real-http-valid-signed-client', 200)
   for (const provider of ['app', 'id']) {
     await test(`real-http-${provider}-unknown-kid-cooldown-with-no-store`, async (send) => {
@@ -421,20 +493,35 @@ try {
     })
   }
 
-  const enabled = runtime.env.FIREBASE_CLIENT_ENABLED
+  const disabledConfiguration = {
+    ...enabledConfiguration,
+    firebase: { ...enabledConfiguration.firebase, enabled: false },
+  }
   try {
-    runtime.env.FIREBASE_CLIENT_ENABLED = 'false'
+    await saveSecurityConfiguration(disabledConfiguration)
     await expectClient('real-http-disabled-config', 503, {}, 'firebase_client_disabled')
-    runtime.env.FIREBASE_CLIENT_ENABLED = enabled
-    const projectId = runtime.env.FIREBASE_PROJECT_ID
+    await saveSecurityConfiguration(enabledConfiguration)
+    const snapshot = await securityStore.read()
+    const corruptConfiguration = {
+      ...enabledConfiguration,
+      firebase: { ...enabledConfiguration.firebase, projectId: '' },
+    }
     try {
-      delete runtime.env.FIREBASE_PROJECT_ID
-      await expectClient('real-http-incomplete-config', 503, {}, 'firebase_client_misconfigured')
+      await runtime.platform.env.D1.prepare(
+        'UPDATE client_security_versions SET configuration = ? WHERE revision = ?',
+      )
+        .bind(JSON.stringify(corruptConfiguration), snapshot.revision)
+        .run()
+      await expectClient('real-http-corrupt-managed-config', 503, {}, 'client_security_corrupt')
     } finally {
-      runtime.env.FIREBASE_PROJECT_ID = projectId
+      await runtime.platform.env.D1.prepare(
+        'UPDATE client_security_versions SET configuration = ? WHERE revision = ?',
+      )
+        .bind(JSON.stringify(enabledConfiguration), snapshot.revision)
+        .run()
     }
   } finally {
-    runtime.env.FIREBASE_CLIENT_ENABLED = enabled
+    await saveSecurityConfiguration(enabledConfiguration)
   }
   for (const provider of ['app-check', 'id-token']) {
     try {
@@ -452,6 +539,38 @@ try {
     await delay(5100)
     await expectClient(`real-http-${provider}-key-outage-recovers`, 200)
   }
+  const environmentEnabled = runtime.env.FIREBASE_CLIENT_ENABLED
+  try {
+    runtime.env.FIREBASE_CLIENT_ENABLED = 'false'
+    await expectClient('real-http-managed-store-remains-authoritative-over-environment', 200)
+  } finally {
+    runtime.env.FIREBASE_CLIENT_ENABLED = environmentEnabled
+  }
+  await expectClient(
+    'real-http-invalid-trusted-ip-fails-closed',
+    503,
+    { ip: 'forged-ip' },
+    'client_security_unavailable',
+  )
+  for (const dimension of ['uid', 'ip', 'global']) {
+    await saveSecurityConfiguration({
+      ...enabledConfiguration,
+      limits: { ...enabledConfiguration.limits, [dimension]: 1 },
+    })
+    await runtime.platform.env.D1.prepare('DELETE FROM client_security_counters').run()
+    await expectClient(`real-http-${dimension}-rate-limit-first-request-admitted`, 200)
+    await expectClient(
+      `real-http-${dimension}-rate-limit-second-request-denied`,
+      429,
+      {
+        idClaims: dimension === 'uid' ? {} : { sub: 'http-smoke-other-anonymous-uid' },
+        ip: dimension === 'ip' ? '203.0.113.10' : '203.0.113.11',
+      },
+      'client_security_rate_limited',
+    )
+  }
+  await runtime.platform.env.D1.prepare('DELETE FROM client_security_counters').run()
+  await saveSecurityConfiguration(enabledConfiguration)
   await test('real-http-post-cannot-call-get-or-supply-owner', async (send) => {
     for (const value of [new Headers(), await headers()]) {
       value.set('Content-Type', 'application/json')
@@ -576,6 +695,32 @@ try {
     assert.equal(list.json.docs[0].id, seededAdminId)
     return { cookieFlags: { httpOnly: true, sameSite: 'Lax' } }
   })
+  await test('real-http-settings-read-denies-ordinary-admin', async (send) => {
+    for (const value of [{ Authorization: `Bearer ${adminToken}` }, { Cookie: adminCookie }]) {
+      const result = await send('/api/admin/client-security', { headers: value })
+      assert.equal(result.response.status, 403)
+      assert.deepEqual(result.json, { error: 'client_security_owner_required' })
+      ownerHeaders(result.response)
+    }
+  })
+  await test('real-http-settings-read-denies-anonymous-and-firebase', async (send) => {
+    for (const value of [
+      new Headers(),
+      await headers({ idClaims: { role: 'owner', id: seededAdminId, collection: 'users' } }),
+    ]) {
+      const result = await send('/api/admin/client-security', { headers: value })
+      assert.equal(result.response.status, 403)
+      assert.deepEqual(result.json, { error: 'client_security_owner_required' })
+      ownerHeaders(result.response)
+    }
+  })
+  await test('real-http-custom-admin-page-denies-ordinary-admin', async (send) => {
+    const result = await send('/admin/client-security', { headers: { Cookie: adminCookie } })
+    assert.equal(result.response.status, 200)
+    assert.match(result.text, /<h1[^>]*>Access denied<\/h1>/)
+    assert.equal(/<h1[^>]*>Client security<\/h1>/.test(result.text), false)
+    return { scope: 'Compiled server-rendered owner boundary; no browser interaction exercised.' }
+  })
   const adminOnNative = await headers()
   adminOnNative.set('Authorization', `Bearer ${adminToken}`)
   await expectClient('real-http-payload-hs-session-cannot-authenticate-native-client', 401, {
@@ -604,6 +749,35 @@ try {
       scope:
         'Template csrf list is empty; Payload accepts signed cookies with arbitrary Origin. No origin allowlist was added. Firebase bearer tokens still do not grant admin access.',
       untrustedOriginCookieStatus: list.response.status,
+    }
+  })
+
+  // Ephemeral SQL bootstrap creates the first owner without weakening production role hooks.
+  const bootstrap = await runtime.platform.env.D1.prepare(
+    "UPDATE users SET role = 'owner' WHERE id = ? AND role = 'admin' AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'owner')",
+  )
+    .bind(seededAdminId)
+    .run()
+  assert.equal(bootstrap.meta.changes, 1)
+  await test('real-http-settings-read-allows-stored-owner-with-existing-session', async (send) => {
+    const result = await send('/api/admin/client-security', { headers: { Cookie: adminCookie } })
+    assert.equal(result.response.status, 200)
+    assert.deepEqual(result.json.snapshot.configuration, enabledConfiguration)
+    assert.equal(result.json.readiness.ready, true)
+    assert.ok(result.json.history.length > 0)
+    ownerHeaders(result.response)
+    return {
+      scope: 'Actual Payload session plus current D1 role; no injected owner authenticator.',
+    }
+  })
+  await test('real-http-custom-admin-page-renders-for-stored-owner', async (send) => {
+    const result = await send('/admin/client-security', { headers: { Cookie: adminCookie } })
+    assert.equal(result.response.status, 200)
+    assert.match(result.text, /<h1[^>]*>Client security<\/h1>/)
+    assert.match(result.text, /Loading saved settings/)
+    assert.equal(/<h1[^>]*>Access denied<\/h1>/.test(result.text), false)
+    return {
+      scope: 'Compiled custom admin route and server render; no browser UI interaction exercised.',
     }
   })
 
@@ -665,7 +839,9 @@ const report = {
   elapsedMs: Math.round(performance.now() - start),
   server: 'compiled Next.js production HTTP server, ephemeral loopback port',
   storage:
-    'real isolated local D1 and R2, seeded under NODE_ENV=test; production REST initializes a separate Payload instance',
+    'real isolated local D1 and R2, seeded under NODE_ENV=test; production REST initializes a separate Payload instance; managed client schema initialized and reviewed synthetic configuration saved through the real store',
+  trustedRequestScope:
+    'Loopback Node server simulates genuine Cloudflare cf.colo metadata as colo LOCAL and a CF-Connecting-IP header; deployed edge header provenance is not exercised here.',
   publicConfig: 'synthetic fixture project/app identifiers only; no environment files loaded',
   realProviderRequests: 0,
   paidAiCalls: 0,
