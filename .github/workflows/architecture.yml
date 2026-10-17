@@ -7,8 +7,8 @@ name: Architecture
 on:
   pull_request:
 
-permissions:
-  contents: read
+# No default token scopes; the job below grants only what it needs.
+permissions: {}
 
 jobs:
   analyze:
@@ -16,6 +16,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     continue-on-error: true
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -45,3 +50,6 @@ jobs:
           "$bin/arcade-log-analysis-summary" "$out/acdc.json"
           echo "== WCA (exploratory) =="
           "$bin/arcade-log-analysis-summary" "$out/wca.json"
+      - name: Report analysis failure
+        if: failure()
+        run: echo "::warning title=Architecture analysis failed::arcade-agent did not finish. The job is report-only and does not block this pull request. See the failed step log above."
