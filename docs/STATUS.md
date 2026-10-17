@@ -97,4 +97,4 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Pull request #17 (draft, `cursor/agent-standards-94c6`, closes #16) adds `AGENTS.md`, vendored ponytail and i-have-adhd skills, Cursor rules, `.cursor/mcp.json`, this file, `docs/ARCHITECTURE.md`, and `.github/workflows/architecture.yml`. It does not change product behavior.
+Pull request #17 (ready for review, `cursor/agent-standards-94c6`, closes #16) adds `AGENTS.md`, vendored ponytail and i-have-adhd skills, Cursor rules, `.cursor/mcp.json`, this file, `docs/ARCHITECTURE.md`, and `.github/workflows/architecture.yml`. It does not change product behavior.
