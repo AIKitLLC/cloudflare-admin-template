@@ -31,7 +31,8 @@
     "build:worker": "node scripts/worker-build/build-cloudflare-worker.mjs --skipNextBuild",
     "typecheck": "tsc --noEmit",
     "typecheck:firebase": "tsc --project tsconfig.firebase.json",
-    "ci:local": "bash scripts/ci-local.sh"
+    "ci:local": "bash scripts/ci-local.sh",
+    "admin:create": "cross-env NODE_OPTIONS=--no-deprecation payload run scripts/create-first-admin.mjs --"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "1.20.11",

@@ -14,9 +14,11 @@ import { applyFieldAccess } from './access/fields/apply-field-access'
 import { rbacCoveragePlugin } from './access/rbac-coverage-plugin'
 import { AuditLogs, withAuditTrail } from './audit'
 import { resolvePublicServerURL } from './config/public-server-url'
+import { testRuntimeStorageDir, testRuntimeWranglerConfig } from './config/test-runtime'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
 import { ClientSecurityCollections } from './collections/ClientSecurity'
+import { LoginThrottle } from './collections/LoginThrottle'
 import { Branches } from './scope/collections/Branches'
 import { DataClasses } from './scope/collections/DataClasses'
 import { Organizations } from './scope/collections/Organizations'
@@ -59,7 +61,14 @@ const isTest = process.env.NODE_ENV === 'test'
 const isNextProductionBuild = process.env.NEXT_PHASE === 'phase-production-build'
 // Set only by integration tests that start `next dev` against their isolated local
 // D1/R2 runtime. Next.js inlines NODE_ENV=development there, so it is not `isTest`.
-const testWranglerConfig = isProduction ? undefined : process.env.PAYLOAD_TEST_WRANGLER_CONFIG
+const testWranglerConfig = testRuntimeWranglerConfig({
+  nodeEnv: process.env.NODE_ENV,
+  wranglerConfig: process.env.PAYLOAD_TEST_WRANGLER_CONFIG,
+})
+const testStorageDir = testRuntimeStorageDir({
+  nodeEnv: process.env.NODE_ENV,
+  storageDir: process.env.PAYLOAD_TEST_STORAGE_DIR,
+})
 const serverURL = resolvePublicServerURL({
   configuredURL: process.env.PAYLOAD_PUBLIC_SERVER_URL,
   isCLI,
@@ -142,6 +151,7 @@ export default buildConfig({
     Users,
     Media,
     ...ClientSecurityCollections,
+    LoginThrottle,
     Roles,
     Permissions,
     RolePermissions,
@@ -196,7 +206,7 @@ export default buildConfig({
 // Adapted from https://github.com/opennextjs/opennextjs-cloudflare/blob/d00b3a13e42e65aad76fba41774815726422cc39/packages/cloudflare/src/api/cloudflare-context.ts#L328C36-L328C46
 function getCloudflareContextFromWrangler(): Promise<CloudflareContext> {
   const isTestRuntime = isTest || Boolean(testWranglerConfig)
-  if (isTestRuntime && !process.env.PAYLOAD_TEST_STORAGE_DIR) {
+  if (isTestRuntime && !testStorageDir) {
     throw new Error('Integration tests require isolated PAYLOAD_TEST_STORAGE_DIR')
   }
   return import(/* webpackIgnore: true */ `${'__wrangler'.replaceAll('_', '')}`).then(
@@ -208,7 +218,7 @@ function getCloudflareContextFromWrangler(): Promise<CloudflareContext> {
         ...(isTestRuntime
           ? {
               configPath: testWranglerConfig,
-              persist: { path: process.env.PAYLOAD_TEST_STORAGE_DIR! },
+              persist: { path: testStorageDir! },
               envFiles: [],
             }
           : {}),

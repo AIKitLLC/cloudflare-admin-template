@@ -130,7 +130,11 @@ const status = (expected: number) => (error: unknown) =>
   !!error && (error as { status?: number }).status === expected
 
 test('Users adds explicit owner/admin/editor with admin default; collection access comes from RBAC', () => {
-  assert.equal(Users.auth, true)
+  assert.equal(typeof Users.auth, 'object')
+  assert.equal(
+    Users.auth && typeof Users.auth === 'object' ? Users.auth.disableLocalStrategy : undefined,
+    undefined,
+  )
   assert.equal(typeof Users.access?.read, 'function')
   assert.equal(typeof Users.access?.update, 'function')
   const role = Users.fields.find((field) => 'name' in field && field.name === 'role')

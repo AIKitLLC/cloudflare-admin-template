@@ -7,6 +7,9 @@ import {
   isStoredClientSecurityOwner,
 } from '../auth/client-security-owner'
 
+import { guardPublicUserCreation } from '../auth/first-admin'
+import { releaseLoginAttempt, throttleAuthOperation } from '../auth/login-throttle'
+import { usersAuthOptions } from '../auth/users-auth'
 import { evaluateCollectionAccess } from '../access/evaluate-collection-access'
 import { isPermissionPayloadCall, permissionDocumentId } from '../access/permission-payload-call'
 import { withRbac } from '../access/with-rbac'
@@ -30,7 +33,7 @@ export const Users: CollectionConfig = withAuditTrail(
       admin: {
         useAsTitle: 'email',
       },
-      auth: true,
+      auth: usersAuthOptions(),
       access: {
         admin: ({ req }) => Boolean(req.user),
         // Payload writes unlock directly, so collection beforeChange never sees it.
@@ -110,7 +113,13 @@ export const Users: CollectionConfig = withAuditTrail(
         },
       ],
       hooks: {
-        beforeOperation: [guardClientSecurityOwnerOperation, guardAuthCredentialOperation],
+        beforeOperation: [
+          throttleAuthOperation,
+          guardPublicUserCreation,
+          guardClientSecurityOwnerOperation,
+          guardAuthCredentialOperation,
+        ],
+        afterLogin: [releaseLoginAttempt],
         beforeChange: [guardClientSecurityOwnerChange, guardUserRoleAssignment],
         beforeDelete: [guardClientSecurityOwnerDelete, guardLastFullAccessDeletion],
         afterChange: [assignSuperAdminToFirstUser],
