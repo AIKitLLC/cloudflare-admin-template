@@ -56,7 +56,7 @@ The current map and the target boundaries are in `docs/ARCHITECTURE.md`. Ponytai
 Use the local MCP server before a change that moves a public entry point or touches more than one module. The server is `arcade-mcp` from PyPI `arcade-agent` `0.4.1` (https://github.com/arcade-agent/arcade-agent, docs https://arcade-agent.dev/docs/getting-started/). `.cursor/mcp.json` starts it with:
 
 ```bash
-uvx --from "arcade-agent[mcp,languages]==0.4.1" arcade-mcp
+uvx --exclude-newer 2026-10-16T00:00:00Z --from "arcade-agent[mcp,languages]==0.4.1" arcade-mcp
 ```
 
 The `[languages]` extra supplies the TypeScript parser. `uv` has to be installed on the machine that runs Cursor. Do not add that install to GitHub Actions. The workflow below installs the pinned package itself.
@@ -69,6 +69,6 @@ The `[languages]` extra supplies the TypeScript parser. `uv` has to be installed
 
 ## Architecture CI
 
-TypeScript is a supported arcade-agent language (Java, Python, C, TypeScript/JS, Go, Kotlin, Rust). `.github/workflows/architecture.yml` runs `arcade-agent/arcade-agent/actions/analyze` at commit `2fde72bcf6cd1f861b8f25b09c0a1d7bc83b820d` on `pull_request`. The package pin is `arcade-agent[languages]==0.4.1`.
+TypeScript is a supported arcade-agent language (Java, Python, C, TypeScript/JS, Go, Kotlin, Rust). `.github/workflows/architecture.yml` runs arcade-agent as an inline job on `pull_request`: `actions/checkout` and `actions/setup-python` pinned to release-tag commits, `persist-credentials: false`, and `pip install --require-hashes` from `.github/arcade-agent/requirements.txt` (`arcade-agent[languages]==0.4.1` and its dependencies, regenerated from `requirements.in` with the command in that file). `--exclude-newer` in `.cursor/mcp.json` keeps the local `uvx` resolution to packages published before that date.
 
-The job is report-only: `continue-on-error: true`, runner `ubuntu-24.04`, and read-only `contents` and `actions` permissions. `post-pr-comment` and artifact upload are off so the job does not need a write token. The report is the Actions log. A failed analysis does not block the pull request.
+The job is report-only: `continue-on-error: true`, runner `ubuntu-24.04`, and read-only `contents` permission. It posts no comment and uploads no artifacts, so it does not need a write token. The report is the Actions log. A failed analysis does not block the pull request.
