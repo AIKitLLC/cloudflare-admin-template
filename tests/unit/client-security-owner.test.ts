@@ -6,6 +6,7 @@ import {
   forgotPasswordOperation,
   resetPasswordOperation,
   JWTAuthentication,
+  JWT_AUTH_VERSION,
   updateByIDOperation,
   type Payload,
   type PayloadRequest,
@@ -177,7 +178,7 @@ test('actual Payload JWT strategy reloads a stored admin despite forged owner JW
     sid: 'fixture-session',
     role: 'owner',
   })
-    .setProtectedHeader({ alg: 'HS256' })
+    .setProtectedHeader({ alg: 'HS256', authVersion: JWT_AUTH_VERSION, typ: 'JWT' })
     .setIssuedAt()
     .setExpirationTime('1h')
     .sign(new TextEncoder().encode(f.payload.secret))

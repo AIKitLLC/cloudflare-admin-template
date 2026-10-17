@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { generateKeyPair, SignJWT } from 'jose'
-import { JWTAuthentication, type Payload } from 'payload'
+import { JWTAuthentication, JWT_AUTH_VERSION, type Payload } from 'payload'
 
 const secret = 'synthetic-payload-secret-for-auth-boundary-tests'
 
@@ -54,7 +54,7 @@ test('Firebase RS256 bearer tokens cannot authenticate a Payload admin, even wit
 
 async function payloadToken() {
   return new SignJWT({ collection: 'users', id: 7, sid: 'synthetic-session' })
-    .setProtectedHeader({ alg: 'HS256' })
+    .setProtectedHeader({ alg: 'HS256', authVersion: JWT_AUTH_VERSION, typ: 'JWT' })
     .setIssuedAt()
     .setExpirationTime('1h')
     .sign(new TextEncoder().encode(secret))

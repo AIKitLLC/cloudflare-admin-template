@@ -23,8 +23,8 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 ## Toolchain and CI
 
-- Node 22 (`.nvmrc`). `package.json` `engines`: Node `>=22.14.0`, pnpm `^9 || ^10 || ^11`.
-- Pinned stack in `pnpm-lock.yaml`: Payload `3.82.1`, Next.js `16.4.0`, React `19.3.0`, `@opennextjs/cloudflare` `1.20.11`, Wrangler `4.116.0`, TypeScript `6.0.3`, Vitest `5.0.1`, Playwright `1.63.0`.
+- Node 22 (`.nvmrc`). `package.json` `engines`: Node `>=22.14.0`, pnpm `^9 || ^10 || ^11`. `packageManager` is `pnpm@10.33.4`, and the `ci` workflow installs the same release.
+- Pinned stack in `pnpm-lock.yaml`: Payload `3.91.0`, Next.js `16.4.1`, React `19.3.0`, `@opennextjs/cloudflare` `1.20.11`, Wrangler `4.116.0`, TypeScript `6.0.3`, Vitest `5.0.1`, Playwright `1.63.0`. `pnpm.overrides` resolves every `sharp` to `0.35.5` or later and every `undici` 7.x below `7.29.1` to `7.29.1`.
 - `pnpm ci:local` runs `scripts/ci-local.sh`: frozen install, `typecheck`, `typecheck:firebase`, `lint`, unit tests (`tests/unit`), integration tests (`tests/int`), `next build`, and the OpenNext Worker bundle. `--maxWorkers N` caps test parallelism. It needs no secrets and no Cloudflare account, and it deploys nothing.
 - `.github/workflows/ci.yml` runs the same script in job `verify` on every pull request and on pushes to `main`. Runner `ubuntu-24.04`, Node from `.nvmrc`, actions pinned by commit SHA, `contents: read`.
 - `.github/workflows/architecture.yml` (added by #27, tightened by #28) runs a report-only architecture analysis on pull requests as an inline, hash-locked job. See `AGENTS.md`.

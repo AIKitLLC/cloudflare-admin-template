@@ -16,18 +16,19 @@ type AccessInvoker = (
 ) => Promise<unknown>
 
 /**
- * Payload 3.82.1 calls collection access with two shapes. The permission-payload
- * shortcut treats exactly `{ id, data, req }` as a permission prop and every other
- * shape as a query. An upgrade that changes either call would flip that shortcut,
- * so this test is pinned to 3.82.1 and invokes the real functions.
+ * Payload 3.91 calls collection access with two shapes. The permission-payload
+ * shortcut treats exactly `{ id, collectionConfig, data, req }` as a permission
+ * prop and every other shape as a query. An upgrade that changes either call
+ * would flip that shortcut, so this test is pinned to 3.91.0 and invokes the
+ * real functions.
  */
-describe('Payload 3.82.1 access call shapes', () => {
+describe('Payload 3.91.0 access call shapes', () => {
   it('keeps executeAccess and getEntityPermissions on the shapes this branch expects', async () => {
     const payloadRoot = dirname(dirname(require.resolve('payload')))
     const payloadPackage = JSON.parse(readFileSync(join(payloadRoot, 'package.json'), 'utf8')) as {
       version: string
     }
-    expect(payloadPackage.version).toBe('3.82.1')
+    expect(payloadPackage.version).toBe('3.91.0')
     const { executeAccess } = (await import(
       pathToFileURL(join(payloadRoot, 'dist/auth/executeAccess.js')).href
     )) as { executeAccess: AccessInvoker }
@@ -40,7 +41,7 @@ describe('Payload 3.82.1 access call shapes', () => {
         return true
       },
     )
-    expect(queryKeys).toEqual(['data', 'id', 'isReadingStaticFile', 'req'])
+    expect(queryKeys).toEqual(['collectionConfig', 'data', 'id', 'isReadingStaticFile', 'req'])
     expect(isPermissionPayloadCall(keysToArgs(queryKeys))).toBe(false)
 
     let permissionKeys: string[] = []
@@ -60,7 +61,7 @@ describe('Payload 3.82.1 access call shapes', () => {
       operations: ['read'],
       req: { user: { id: 1 } },
     } as never)
-    expect(permissionKeys).toEqual(['data', 'id', 'req'])
+    expect(permissionKeys).toEqual(['collectionConfig', 'data', 'id', 'req'])
     expect(isPermissionPayloadCall(keysToArgs(permissionKeys))).toBe(true)
   })
 })

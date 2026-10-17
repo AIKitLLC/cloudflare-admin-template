@@ -4,9 +4,9 @@ Last reviewed against `main` at `336277d` (2026-10-17). This is the map of the c
 
 ## What this repository is
 
-A Payload CMS 3.82.1 admin template on Next.js 16.4 (App Router, webpack build) and React 19.3, deployed to Cloudflare Workers with `@opennextjs/cloudflare` 1.20.11. The database is Cloudflare D1 through `@payloadcms/db-d1-sqlite`. Uploads go to Cloudflare R2 through `@payloadcms/storage-r2`. The editor is Lexical. Firebase native clients (App Check plus Anonymous Authentication ID tokens) are verified with `jose`, separately from Payload admin sessions. License: MIT.
+A Payload CMS 3.91.0 admin template on Next.js 16.4 (App Router, webpack build) and React 19.3, deployed to Cloudflare Workers with `@opennextjs/cloudflare` 1.20.11. The database is Cloudflare D1 through `@payloadcms/db-d1-sqlite`. Uploads go to Cloudflare R2 through `@payloadcms/storage-r2`. The editor is Lexical. Firebase native clients (App Check plus Anonymous Authentication ID tokens) are verified with `jose`, separately from Payload admin sessions. License: MIT.
 
-Node 22 (`.nvmrc`), `engines.node` `>=22.14.0`. Package manager is pnpm 9, 10, or 11. Wrangler is `~4.116.0` (4.116.0 in the lockfile). Exact versions are in `pnpm-lock.yaml`.
+Node 22 (`.nvmrc`), `engines.node` `>=22.14.0`. Package manager is pnpm 10.33.4 (`packageManager`); `engines` accepts pnpm 9, 10, or 11. Wrangler is `~4.116.0` (4.116.0 in the lockfile). Exact versions are in `pnpm-lock.yaml`.
 
 ## Current modules
 
