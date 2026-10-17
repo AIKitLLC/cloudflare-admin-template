@@ -29,7 +29,8 @@
     "test:client-security:browser": "node scripts/client-security-browser-qa.mjs",
     "build:worker": "opennextjs-cloudflare build --skipNextBuild",
     "typecheck": "tsc --noEmit",
-    "typecheck:firebase": "tsc --project tsconfig.firebase.json"
+    "typecheck:firebase": "tsc --project tsconfig.firebase.json",
+    "ci:local": "bash scripts/ci-local.sh"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.11.0",
@@ -67,7 +68,7 @@
     "miniflare": "5.20261001.0-alpha"
   },
   "engines": {
-    "node": ">=24.15.0",
+    "node": ">=22.14.0",
     "pnpm": "^9 || ^10 || ^11"
   },
   "pnpm": {
