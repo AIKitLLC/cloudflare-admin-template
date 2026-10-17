@@ -5,6 +5,7 @@ import {
   APIError,
   Forbidden,
   headersWithCors,
+  type CollectionBeforeChangeHook,
   type CollectionSlug,
   type Endpoint,
   type Payload,
@@ -28,6 +29,26 @@ export const FIRST_ADMIN_SETUP_CONTEXT = 'firstAdminSetupClaim'
 export const FIRST_ADMIN_PASSWORD_MIN_LENGTH = 12
 
 export type SetupStateDatabase = LoginThrottleDatabase
+
+/**
+ * Database guard for first-run setup. While a setup claim is live, `users` can hold at most
+ * one row: a second insert is aborted by SQLite, whichever request or process attempts it.
+ * Created by migration `20261017_144000_setup_state` and, idempotently, before each claim
+ * (local development and tests build the schema without migrations).
+ */
+export const SETUP_GUARD_TRIGGER = 'setup_state_single_first_admin'
+const SETUP_GUARD_MESSAGE = 'first-run setup already created a user'
+export const SETUP_GUARD_TRIGGER_SQL = `CREATE TRIGGER IF NOT EXISTS ${SETUP_GUARD_TRIGGER}
+BEFORE INSERT ON users
+WHEN EXISTS (
+  SELECT 1 FROM setup_state
+  WHERE singleton = '${FIRST_ADMIN_SETUP_KEY}'
+    AND claim_token IS NOT NULL
+    AND claimed_at > (CAST(strftime('%s', 'now') AS INTEGER) * 1000 - ${SETUP_CLAIM_TTL_MS})
+) AND EXISTS (SELECT 1 FROM users)
+BEGIN
+  SELECT RAISE(ABORT, '${SETUP_GUARD_MESSAGE}');
+END`
 
 /**
  * Setup row writes. Every method is one SQL statement, so D1 applies each one atomically:
@@ -60,6 +81,26 @@ export function createSetupState(
         .bind(FIRST_ADMIN_SETUP_KEY, token, now, now - claimTtlMs, afterCompletion ? 1 : 0)
         .first<{ claim_token: string | null }>()
       return row?.claim_token === token
+    },
+    /**
+     * Renews a claim this caller still holds and confirms `users` is still empty, in one
+     * statement. False when the claim expired and was taken over, or a user exists.
+     */
+    async hold(token: string): Promise<boolean> {
+      const now = nowMs()
+      const row = await db
+        .prepare(
+          `UPDATE ${SETUP_STATE_TABLE} SET claimed_at = ?3
+           WHERE singleton = ?1 AND claim_token = ?2 AND claimed_at > ?4
+             AND NOT EXISTS (SELECT 1 FROM users)
+           RETURNING claim_token`,
+        )
+        .bind(FIRST_ADMIN_SETUP_KEY, token, now, now - claimTtlMs)
+        .first<{ claim_token: string | null }>()
+      return row?.claim_token === token
+    },
+    async installGuard(): Promise<void> {
+      await db.prepare(SETUP_GUARD_TRIGGER_SQL).bind().run()
     },
     async complete(token: string): Promise<boolean> {
       const row = await db
@@ -101,6 +142,16 @@ export function createSetupState(
   }
 }
 
+/** True when an error, or one of its causes, is the database guard refusing a second user. */
+export function isSetupGuardError(error: unknown): boolean {
+  for (let current = error, depth = 0; current && depth < 5; depth += 1) {
+    const message = (current as { message?: unknown }).message
+    if (typeof message === 'string' && message.includes(SETUP_GUARD_MESSAGE)) return true
+    current = (current as { cause?: unknown }).cause
+  }
+  return false
+}
+
 export function setupStateBinding(payload: Payload): SetupStateDatabase | undefined {
   const binding = (payload.db as unknown as { binding?: SetupStateDatabase }).binding
   return binding && typeof binding.prepare === 'function' ? binding : undefined
@@ -110,6 +161,23 @@ export function setupStateBinding(payload: Payload): SetupStateDatabase | undefi
 export function hasFirstAdminSetupClaim(context: unknown): boolean {
   const value = (context as Record<string, unknown> | null | undefined)?.[FIRST_ADMIN_SETUP_CONTEXT]
   return typeof value === 'string' && value.length > 0
+}
+
+/**
+ * `users` `beforeChange` on create: inside first-run setup, renew the claim once more right
+ * before Payload writes the row, so a request whose claim was taken over stops here.
+ */
+export const holdFirstAdminSetupClaim: CollectionBeforeChangeHook = async ({
+  context,
+  data,
+  operation,
+  req,
+}) => {
+  if (operation !== 'create' || !hasFirstAdminSetupClaim(context)) return data
+  const db = setupStateBinding(req.payload)
+  const token = (context as Record<string, string>)[FIRST_ADMIN_SETUP_CONTEXT]
+  if (!db || !(await createSetupState(db).hold(token))) throw new Forbidden(req.t)
+  return data
 }
 
 export type FirstAdminInput = { email: string; password: string }
@@ -176,17 +244,22 @@ export async function createFirstAdminAccount(
   const db = setupStateBinding(payload)
   if (!db) throw new APIError('First-run admin setup needs the D1 database binding.', 503)
   const state = createSetupState(db)
+  await state.installGuard()
   if (source === 'web') await state.seal()
   const token = randomUUID()
-  if (!(await state.claim(token, { afterCompletion: source === 'cli' }))) {
-    if (source === 'web') throw new Forbidden(req?.t)
-    throw new APIError(
-      'A user already exists or another first-admin setup is running. Create further users from the admin panel.',
-      409,
-    )
-  }
-  let created: { id: number | string; email: string }
+  const refuse = () =>
+    source === 'web'
+      ? new Forbidden(req?.t)
+      : new APIError(
+          'A user already exists or another first-admin setup is running. Create further users from the admin panel.',
+          409,
+        )
+  if (!(await state.claim(token, { afterCompletion: source === 'cli' }))) throw refuse()
+  let created: { id: number | string; email: string } | undefined
   try {
+    // Renew the claim right before the insert. A claim that expired and was taken over by
+    // another caller stops here; the database guard covers the remaining window.
+    if (!(await state.hold(token))) throw refuse()
     const user = await payload.create({
       collection: 'users',
       data: { email: input.email, password: input.password, role: 'admin' },
@@ -201,18 +274,23 @@ export async function createFirstAdminAccount(
     }
   } catch (error) {
     try {
-      await payload.db.deleteMany({
-        collection: USERS_SLUG as CollectionSlug,
-        where: { email: { equals: input.email } },
-        req,
-      })
+      // Remove only the account this call created, by its id.
+      if (created) {
+        await payload.db.deleteMany({
+          collection: USERS_SLUG as CollectionSlug,
+          where: { id: { equals: created.id } },
+          req,
+        })
+      }
     } finally {
       await state.release(token)
     }
+    if (isSetupGuardError(error)) throw refuse()
     throw error
   } finally {
     if (req?.context) delete req.context[FIRST_ADMIN_SETUP_CONTEXT]
   }
+  if (!created) throw refuse()
   payload.logger.info({
     msg: 'First admin created',
     userId: created.id,
@@ -240,13 +318,29 @@ function allowedOrigins(req: PayloadRequest): Set<string> {
   return origins
 }
 
-/** The setup form posts from the admin panel, so browser requests are same-origin. */
+function originOf(value: string | null | undefined): string | undefined {
+  if (!value) return undefined
+  try {
+    return new URL(value).origin
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The setup form posts from the admin panel, so browser requests are same-origin. A request
+ * without `Origin` is accepted only when `Sec-Fetch-Site` is `same-origin` or `Referer` is on
+ * an allowed origin.
+ */
 export function isSameOriginSetupRequest(req: PayloadRequest): boolean {
   const site = req.headers?.get('sec-fetch-site')
   if (site && site !== 'same-origin' && site !== 'none') return false
+  const allowed = allowedOrigins(req)
   const origin = req.headers?.get('origin')
-  if (!origin) return true
-  return allowedOrigins(req).has(origin)
+  if (origin) return allowed.has(origin)
+  if (site === 'same-origin') return true
+  const referer = originOf(req.headers?.get('referer'))
+  return referer !== undefined && allowed.has(referer)
 }
 
 /**

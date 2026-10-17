@@ -8,7 +8,7 @@ import {
 } from '../auth/client-security-owner'
 
 import { guardPublicUserCreation } from '../auth/first-admin'
-import { firstRegisterEndpoint } from '../auth/first-admin-setup'
+import { firstRegisterEndpoint, holdFirstAdminSetupClaim } from '../auth/first-admin-setup'
 import { releaseLoginAttempt, throttleAuthOperation } from '../auth/login-throttle'
 import { usersAuthOptions } from '../auth/users-auth'
 import { evaluateCollectionAccess } from '../access/evaluate-collection-access'
@@ -123,7 +123,11 @@ export const Users: CollectionConfig = withAuditTrail(
           guardAuthCredentialOperation,
         ],
         afterLogin: [releaseLoginAttempt],
-        beforeChange: [guardClientSecurityOwnerChange, guardUserRoleAssignment],
+        beforeChange: [
+          guardClientSecurityOwnerChange,
+          guardUserRoleAssignment,
+          holdFirstAdminSetupClaim,
+        ],
         beforeDelete: [guardClientSecurityOwnerDelete, guardLastFullAccessDeletion],
         afterChange: [assignSuperAdminToFirstUser],
         afterOperation: [clearClientSecurityRecoveryOperation],
