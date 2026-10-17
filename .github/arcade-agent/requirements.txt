@@ -2,6 +2,9 @@
 # Regenerate with:
 #   uv pip compile .github/arcade-agent/requirements.in --generate-hashes --python-version 3.12 \
 #     --python-platform x86_64-manylinux_2_28 --exclude-newer 2026-10-16T00:00:00Z -o .github/arcade-agent/requirements.txt
+# The workflow installs with --no-deps, so this file must list every transitive dependency.
+# After any change to requirements.in or the --exclude-newer date, rerun the command above
+# and commit the whole regenerated file; do not hand-edit single entries.
 arcade-agent==0.4.1 \
     --hash=sha256:633639d3b8efa4772d30c8a330ae3991b993ec1dfae32b0bdb245f2bee548f08 \
     --hash=sha256:8a39ec6f58e1917c1454195c52b8cc72f60ddd2fee9c4339ea9b254840a0ed4d
