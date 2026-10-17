@@ -13,7 +13,7 @@ const originalFetch = globalThis.fetch
 const ownedEnvironmentVariables = [
   'NODE_ENV',
   'PAYLOAD_SECRET',
-  'PAYLOAD_PUBLIC_SERVER_URL',
+  'PAYLOAD_ALLOWED_ORIGINS',
   'CLOUDFLARE_SEND_METRICS',
 ] as const
 // A mutable view permits test-only NODE_ENV changes despite Next's readonly declaration.
@@ -34,8 +34,8 @@ export async function startLocalIntegrationRuntime(): Promise<void> {
     scopedEnvironment.PAYLOAD_SECRET =
       'synthetic-local-integration-secret-never-used-for-deployment'
     scopedEnvironment.CLOUDFLARE_SEND_METRICS = 'false'
-    // Fixture origin used by the integration requests; Payload CORS/CSRF trust this origin.
-    scopedEnvironment.PAYLOAD_PUBLIC_SERVER_URL = 'https://admin.fixture.invalid'
+    // Extra trusted origin for the fixture requests; the server URL stays the local default.
+    scopedEnvironment.PAYLOAD_ALLOWED_ORIGINS = 'https://admin.fixture.invalid'
     directory = await mkdtemp(join(tmpdir(), 'template-payload-int-'))
     fixture = await createFirebaseFixture()
     const configPath = join(directory, 'wrangler.json')
