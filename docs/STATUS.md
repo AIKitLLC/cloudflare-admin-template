@@ -4,7 +4,7 @@ Last updated: 2026-10-17.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for Tony.
 
-The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-17. `main` is `5151642`.
+The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-17. `main` is `cf8414d`.
 
 ## What is on `main`
 
@@ -15,6 +15,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | `d29b5ee` | #22 | Owner-managed Firebase trust settings and per-client rate limits (`src/client-security`, `/admin/client-security`, migration `20261013_120000`). |
 | `b16e98a` | #23 | MIT license (`LICENSE`, `"license": "MIT"` in `package.json`). |
 | `5151642` | #24 | `scripts/ci-local.sh` (`pnpm ci:local`), `.github/workflows/ci.yml` (job `verify`), `.nvmrc` = `22`, `engines.node` = `>=22.14.0`, and the README note on Workers plans. |
+| `cf8414d` | #25 | Lint cleanup; `pnpm lint` reports no warnings. |
 
 ## Toolchain and CI
 
@@ -29,7 +30,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 | PR | Title | Base | State |
 | --- | --- | --- | --- |
-| #25 | chore: clear lint warnings reported in CI | `main` | Ready for review |
+| #26 | chore: remove unused example route | `main` | Ready for review |
 | #20 | feat: split admin features into Payload plugins | `integration/admin-stack` | Draft |
 | #19 | integration: admin stack (reference only, do not merge) | `main` | Draft |
 | #18 | fix: make the OpenNext Cloudflare worker build succeed | `main` | Draft |
@@ -40,7 +41,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | #12 | feat: field-level audit trail for collection changes | `main` | Draft |
 | #11 | Add dynamic RBAC and the permission matrix | `main` | Draft |
 
-#11, #12, #18, and #19 branch from `80cea96`, before #21–#24; #13–#15 stack on #11 and #20 on #19. Each of #11–#15 and #18 changes at least one file that #21/#22 also changed (`src/payload.config.ts`, plus `src/collections/Users.ts`, `src/migrations/index.ts`, `src/payload-types.ts`, or the admin import map). They need to be brought up to date with `main` before review.
+#11, #12, #18, and #19 branch from `80cea96`, before #21–#25; #13–#15 stack on #11 and #20 on #19. Each of #11–#15 and #18 changes at least one file that #21/#22 also changed (`src/payload.config.ts`, plus `src/collections/Users.ts`, `src/migrations/index.ts`, `src/payload-types.ts`, or the admin import map). They need to be brought up to date with `main` before review.
 
 ## Merge order
 
