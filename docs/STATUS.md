@@ -33,7 +33,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 | PR | Title | Base | State |
 | --- | --- | --- | --- |
-| — | feat: admin stack v1 (consolidates #11-#15, #18, #19) | `main` | This change; draft; supersedes #11–#15, #18, #19 |
+| #29 | feat: admin stack v1 (consolidates #11-#15, #18, #19) | `main` | This change; draft; supersedes #11–#15, #18, #19 |
 | #20 | feat: split admin features into Payload plugins | `integration/admin-stack` | Draft |
 | #19 | integration: admin stack (reference only, do not merge) | `main` | Draft |
 | #18 | fix: make the OpenNext Cloudflare worker build succeed | `main` | Draft |
@@ -98,4 +98,4 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-`feat/admin-stack-v1` (draft, base `main`) consolidates #11 (RBAC and the permission matrix), #12 (field-level audit trail), #13 (row-level scope), #14 (system parameters), #15 (background jobs and job monitor), #18 (OpenNext Worker build), and the #19 integration branch into one branch on top of `main` `336277d`, merged rather than rebased. It supersedes those pull requests, which stay open until it lands. The #12 interim audit read rule is replaced by the #11 permission check (`audit-logs:read`). The modules in `docs/ARCHITECTURE.md` "Target boundaries" (`src/access`, `src/rbac`, `src/audit`, `src/scope`, `src/system-parameters`, `src/jobs`) are added by this change. It needs Security review, then CTO review, before Tony decides on merging.
+Pull request #29 (`feat/admin-stack-v1`, draft, base `main`) consolidates #11 (RBAC and the permission matrix), #12 (field-level audit trail), #13 (row-level scope), #14 (system parameters), #15 (background jobs and job monitor), #18 (OpenNext Worker build), and the #19 integration branch into one branch on top of `main` `336277d`, merged rather than rebased. It supersedes those pull requests, which stay open until it lands. The #12 interim audit read rule is replaced by the #11 permission check (`audit-logs:read`). The modules in `docs/ARCHITECTURE.md` "Target boundaries" (`src/access`, `src/rbac`, `src/audit`, `src/scope`, `src/system-parameters`, `src/jobs`) are added by this change. It needs Security review, then CTO review, before Tony decides on merging.
