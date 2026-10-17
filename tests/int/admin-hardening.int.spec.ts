@@ -162,6 +162,40 @@ describe('admin hardening', () => {
     }
   }, 120000)
 
+  it('limits the first-run setup endpoint per IP', async () => {
+    const ip = '203.0.113.88'
+    const attempt = () =>
+      post(
+        jsonRequest(
+          '/api/users/first-register',
+          { email: `setup-${stamp}@example.com`, password },
+          { 'cf-connecting-ip': ip },
+        ),
+        route(['users', 'first-register']),
+      )
+    for (let count = 0; count < AUTH_THROTTLE_LIMITS.registerFirstUser; count += 1) {
+      // Users exist, so setup is closed.
+      expect((await attempt()).status).toBe(403)
+    }
+    expect((await attempt()).status).toBe(429)
+  })
+
+  it('does not count refreshes that carry a valid session', async () => {
+    const ip = '203.0.113.90'
+    const signedIn = await login(email, ip)
+    expect(signedIn.status).toBe(200)
+    const cookie = (signedIn.headers.getSetCookie?.() ?? [])
+      .map((value) => value.split(';')[0])
+      .join('; ')
+    for (let attempt = 0; attempt < AUTH_THROTTLE_LIMITS.refresh + 5; attempt += 1) {
+      const refreshed = await post(
+        jsonRequest('/api/users/refresh-token', {}, { 'cf-connecting-ip': ip, cookie }),
+        route(['users', 'refresh-token']),
+      )
+      expect(refreshed.status, `refresh ${attempt}`).toBe(200)
+    }
+  }, 120000)
+
   it('removes expired throttle rows while writing', async () => {
     const db = binding()
     const expiredKey = `expired-${stamp}`

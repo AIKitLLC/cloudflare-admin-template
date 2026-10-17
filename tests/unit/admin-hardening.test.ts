@@ -16,7 +16,7 @@ import {
 } from '../../src/auth/login-throttle'
 import { usersAuthOptions } from '../../src/auth/users-auth'
 import { testRuntimeStorageDir, testRuntimeWranglerConfig } from '../../src/config/test-runtime'
-import { createFirstAdmin, parseFirstAdminArguments } from '../../scripts/create-first-admin.mjs'
+import { parseFirstAdminArguments } from '../../scripts/create-first-admin.mjs'
 
 test('users creation needs a signed-in user or the Local API', () => {
   assert.equal(allowsUserCreation({ payloadAPI: 'REST', user: null }), false)
@@ -59,26 +59,6 @@ test('admin:create arguments and password source', () => {
       FIRST_ADMIN_PASSWORD: 'short',
     } as unknown as NodeJS.ProcessEnv),
   )
-})
-
-test('admin:create creates only the first user', async () => {
-  const created: unknown[] = []
-  const fake = (totalDocs: number) => ({
-    count: async () => ({ totalDocs }),
-    create: async (args: { data: unknown }) => {
-      created.push(args.data)
-      return { id: 1 }
-    },
-  })
-  assert.deepEqual(await createFirstAdmin(fake(0), { email: 'a@example.com', password: 'x' }), {
-    id: 1,
-  })
-  assert.equal(created.length, 1)
-  await assert.rejects(
-    createFirstAdmin(fake(1), { email: 'b@example.com', password: 'x' }),
-    (error: { status?: number }) => error.status === 409,
-  )
-  assert.equal(created.length, 1)
 })
 
 test('users auth cookies are Secure in production', () => {
@@ -174,11 +154,18 @@ test('login throttle counts attempts per key and gives back successful ones', as
 })
 
 test('auth operations each have a limit and their own counter', () => {
-  for (const operation of ['login', 'forgotPassword', 'resetPassword', 'refresh']) {
+  for (const operation of [
+    'login',
+    'forgotPassword',
+    'resetPassword',
+    'refresh',
+    'registerFirstUser',
+  ]) {
     assert.equal(isThrottledAuthOperation(operation), true)
   }
   assert.equal(isThrottledAuthOperation('create'), false)
   assert.equal(AUTH_THROTTLE_LIMITS.login, 10)
+  assert.equal(AUTH_THROTTLE_LIMITS.registerFirstUser, 5)
   assert.notEqual(loginThrottleKey('192.0.2.1', 'login'), loginThrottleKey('192.0.2.1', 'refresh'))
 })
 

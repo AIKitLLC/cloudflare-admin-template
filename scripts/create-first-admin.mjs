@@ -21,20 +21,14 @@ export function parseFirstAdminArguments(args, env = process.env) {
 }
 
 /**
- * Operator-only first-admin bootstrap through the Payload Local API. Refuses when any user
- * exists. The `users` afterChange hook gives the first user the Super Admin role.
+ * Operator first-admin bootstrap through the Payload Local API. It takes the same single-row
+ * setup claim as the web setup screen, so concurrent runs create at most one user, and that
+ * user holds the Super Admin role. Unlike the web screen it also works after setup has
+ * completed, as long as the `users` table is empty again.
  */
 export async function createFirstAdmin(payload, { email, password }) {
-  const { totalDocs } = await payload.count({ collection: 'users', overrideAccess: true })
-  if (totalDocs > 0) {
-    const { APIError } = await import('payload')
-    throw new APIError('A user already exists. Create further users from the admin panel.', 409)
-  }
-  return payload.create({
-    collection: 'users',
-    data: { email, password },
-    overrideAccess: true,
-  })
+  const { createFirstAdminAccount } = await import('../src/auth/first-admin-setup.ts')
+  return createFirstAdminAccount(payload, { email, password }, { source: 'cli' })
 }
 
 function payloadCLI() {
@@ -45,21 +39,34 @@ function payloadCLI() {
   }
 }
 
+let stage = 'start'
+
 async function main() {
+  // The Payload CLI starts scripts without awaiting them, so a run whose event loop drains
+  // early would otherwise end with exit code 0. Report it as a failure instead.
+  process.once('beforeExit', () => {
+    if (stage === 'done') return
+    console.error(`admin:create stopped before it finished (${stage}). Run it again.`)
+    process.exitCode = 1
+  })
   const input = parseFirstAdminArguments(process.argv.slice(2))
   if (!payloadCLI())
     throw new Error(
       'Use the Payload CLI so the operator selects the configured environment explicitly.',
     )
+  stage = 'loading config'
   const { getPayload } = await import('payload')
   const { default: config } = await import('../src/payload.config.ts')
+  stage = 'starting Payload'
   const payload = await getPayload({ config })
   try {
+    stage = 'creating the first admin'
     const user = await createFirstAdmin(payload, input)
     console.log(`First admin created with user ID ${user.id}.`)
   } finally {
     await payload.destroy()
   }
+  stage = 'done'
 }
 
 const direct = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)

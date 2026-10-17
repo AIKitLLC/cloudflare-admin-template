@@ -51,8 +51,8 @@ On `main` today:
 
 - `wrangler.jsonc` still has the D1 `database_id` placeholder `DATABASE_ID`. Create the D1 database and R2 bucket and fill in the ids first (README, Deployment).
 - `PAYLOAD_SECRET` is a Worker secret (`package.json` `cloudflare.bindings`, `.env.example`), not a var in `wrangler.jsonc`.
-- Apply the migrations in `src/migrations` (listed in `src/migrations/index.ts`, the latest is `20261017_133958_payload_3_91_security`) to the target D1 database with `pnpm run deploy:database` or `pnpm payload migrate`. Local `pnpm dev` is not a substitute.
-- Create the first admin with `pnpm admin:create`. Cloudflare Access in front of `/admin` and `/api/users/*` is required in production. See `docs/admin-access.md`, and add the WAF rate limiting rule described there.
+- Apply the migrations in `src/migrations` (listed in `src/migrations/index.ts`, the latest is `20261017_144000_setup_state`) to the target D1 database with `pnpm run deploy:database` or `pnpm payload migrate`. Local `pnpm dev` is not a substitute.
+- Create the first admin on the `/admin` setup screen right after deploy, or with `pnpm admin:create`; setting up Cloudflare Access first is recommended. Cloudflare Access in front of `/admin` and `/api/users/*` is required in production. See `docs/admin-access.md`, and add the WAF rate limiting rule described there.
 - Firebase native clients are off by default (`FIREBASE_CLIENT_ENABLED` = `"false"`, empty project values in `wrangler.jsonc`). The first owner is set by an operator with `scripts/bootstrap-client-security-owner.mjs`. See `docs/firebase-client-auth.md`.
 - Workers plan: the README note on Workers plans is the source. Worker size is limited to 64 MiB uncompressed on both Free and Paid plans. A local build is about 15.7 MiB uncompressed (about 3.6 MiB gzip; measured 2026-10-17 06:18 CT at commit `b6c8198` with `wrangler deploy --dry-run`), so bundle size alone does not require Workers Paid. CPU time per request and startup time have not been measured yet.
 
@@ -89,13 +89,11 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Pull request #30 (`feat/admin-hardening-1`, draft, base `main` `0180b63`):
+Pull request `feat/first-admin-web-setup` (draft, base `main`, follows #30):
 
-- First-admin bootstrap through the CLI only: `pnpm admin:create` (`scripts/create-first-admin.mjs`) creates the first admin. Requests without a signed-in user cannot create users (`src/auth/first-admin.ts`), so the admin panel's create-first-user screen is intentionally unavailable.
-- Production cookie settings: `users` auth cookies are `Secure` in production, `SameSite=Lax` (`src/auth/users-auth.ts`).
-- Throttling for auth endpoints: per-IP counters in D1 for sign-in, forgot-password, reset-password, and refresh-token (`src/auth/login-throttle.ts`, hidden collection `login-throttle`, migration `20261017_105600_login_throttle`) plus Payload's per-account lockout. Production refuses requests without `CF-Connecting-IP` and refuses auth requests when the D1 binding is missing. Expired rows are deleted during writes.
-- Docs: Cloudflare Access is required in production for `/admin` and `/api/users/*`; the WAF rule in `docs/admin-access.md` covers the same auth paths.
-- Homepage cleanup: the editor file link is gone.
-- `src/config/test-runtime.ts`: production ignores `PAYLOAD_TEST_WRANGLER_CONFIG` and `PAYLOAD_TEST_STORAGE_DIR`.
-- `next.config.ts` sets `agentRules: false`, so `next dev` in tests no longer writes `AGENTS.md`.
-- Bundle-size figures now carry the date and commit they were measured at.
+- First-run admin setup from the web: on a new install the admin panel's create-first-user screen (`/admin/create-first-user` -> `POST /api/users/first-register`) creates the first admin with the Super Admin role and signs them in (`src/auth/first-admin-setup.ts`).
+- Single-row setup state: hidden collection `setup-state`, migration `20261017_144000_setup_state`. One SQL statement claims it while `users` is empty, so concurrent setup requests or `pnpm admin:create` runs create exactly one admin. Completion is stored permanently; the web flow stays closed afterwards, and `pnpm admin:create` can still recover an empty `users` table.
+- The setup endpoint accepts same-origin requests, uses only email and password, has its own per-IP limit, and logs each first admin creation with user ID and email domain.
+- Refresh-token throttling counts only requests without a valid session (limit 20 per 15 minutes).
+- `pnpm admin:create` reports a run that ends early as a failure.
+- Docs: create the admin right after deploy or set up Cloudflare Access first; Access stays required in production.

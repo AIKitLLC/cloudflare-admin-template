@@ -74,6 +74,7 @@ export interface Config {
     'client-security-counters': ClientSecurityCounter;
     'client-security-audit': ClientSecurityAudit;
     'login-throttle': LoginThrottle;
+    'setup-state': SetupState;
     roles: Role;
     permissions: Permission;
     'role-permissions': RolePermission;
@@ -98,6 +99,7 @@ export interface Config {
     'client-security-counters': ClientSecurityCountersSelect<false> | ClientSecurityCountersSelect<true>;
     'client-security-audit': ClientSecurityAuditSelect<false> | ClientSecurityAuditSelect<true>;
     'login-throttle': LoginThrottleSelect<false> | LoginThrottleSelect<true>;
+    'setup-state': SetupStateSelect<false> | SetupStateSelect<true>;
     roles: RolesSelect<false> | RolesSelect<true>;
     permissions: PermissionsSelect<false> | PermissionsSelect<true>;
     'role-permissions': RolePermissionsSelect<false> | RolePermissionsSelect<true>;
@@ -359,6 +361,17 @@ export interface LoginThrottle {
   bucketKey: string;
   used: number;
   resetAt: number;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "setup-state".
+ */
+export interface SetupState {
+  id: number;
+  singleton: string;
+  claimToken?: string | null;
+  claimedAt?: number | null;
+  completedAt?: number | null;
 }
 /**
  * Catalog of collection actions and field permissions. Synced from the Payload config on startup.
@@ -781,6 +794,16 @@ export interface LoginThrottleSelect<T extends boolean = true> {
   bucketKey?: T;
   used?: T;
   resetAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "setup-state_select".
+ */
+export interface SetupStateSelect<T extends boolean = true> {
+  singleton?: T;
+  claimToken?: T;
+  claimedAt?: T;
+  completedAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
