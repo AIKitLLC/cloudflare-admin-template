@@ -1,0 +1,14 @@
+---
+description: GitHub workflow, Tony's approval, and the ban on deploy and secrets.
+alwaysApply: true
+---
+
+# Workflow
+
+The full rules are in `AGENTS.md`. `docs/STATUS.md` is the live tracker.
+
+1. Every change has a GitHub issue. Search first. The pull request body says `Closes #N`.
+2. Update `docs/STATUS.md` in that same pull request.
+3. Do not merge without Tony's approval. Leave the pull request as a draft until he asks.
+4. Do not deploy. Do not run `wrangler login`, `wrangler secret put`, or any other cloud-account or secret command. Do not add a paid service.
+5. Do not edit files owned by open pull requests #11, #12, #13, #14, or #15.

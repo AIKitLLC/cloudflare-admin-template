@@ -1,0 +1,47 @@
+# Report-only architecture drift. TypeScript is a supported arcade-agent language.
+# Inline job: every action is pinned to the commit of a release tag, and the
+# arcade-agent install is hash-locked in .github/arcade-agent/requirements.txt.
+# Read-only permissions: the job logs the report and does not comment or upload artifacts.
+name: Architecture
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: arcade-agent
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install arcade-agent (hash-locked)
+        run: |
+          python -m venv "$RUNNER_TEMP/arcade"
+          "$RUNNER_TEMP/arcade/bin/python" -m pip install \
+            --require-hashes --no-deps --only-binary :all: \
+            -r .github/arcade-agent/requirements.txt
+      - name: Analyze architecture drift
+        run: |
+          bin="$RUNNER_TEMP/arcade/bin"
+          out="$RUNNER_TEMP/arcade-out"
+          mkdir -p "$out"
+          "$bin/arcade-self-analysis" --source . --language typescript --algorithm pkg \
+            --output-json "$out/pkg.json" --output-html "$out/pkg.html"
+          "$bin/arcade-self-analysis" --source . --language typescript --algorithm acdc \
+            --output-json "$out/acdc.json" --output-html "$out/acdc.html"
+          "$bin/arcade-self-analysis" --source . --language typescript --algorithm wca --num-clusters 4 \
+            --output-json "$out/wca.json" --output-html "$out/wca.html"
+          "$bin/arcade-log-analysis-summary" "$out/pkg.json"
+          echo "== ACDC =="
+          "$bin/arcade-log-analysis-summary" "$out/acdc.json"
+          echo "== WCA (exploratory) =="
+          "$bin/arcade-log-analysis-summary" "$out/wca.json"

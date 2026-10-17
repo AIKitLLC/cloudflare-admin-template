@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "arcade-agent": {
+      "command": "uvx",
+      "args": [
+        "--exclude-newer",
+        "2026-10-16T00:00:00Z",
+        "--from",
+        "arcade-agent[mcp,languages]==0.4.1",
+        "arcade-mcp"
+      ]
+    }
+  }
+}
