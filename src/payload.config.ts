@@ -57,6 +57,9 @@ const isTest = process.env.NODE_ENV === 'test'
 // production platform proxy would open a Cloudflare session and the build could
 // not run without an API token. Use the local proxy for that phase only.
 const isNextProductionBuild = process.env.NEXT_PHASE === 'phase-production-build'
+// Set only by integration tests that start `next dev` against their isolated local
+// D1/R2 runtime. Next.js inlines NODE_ENV=development there, so it is not `isTest`.
+const testWranglerConfig = isProduction ? undefined : process.env.PAYLOAD_TEST_WRANGLER_CONFIG
 const serverURL = resolvePublicServerURL({
   configuredURL: process.env.PAYLOAD_PUBLIC_SERVER_URL,
   isCLI,
@@ -192,17 +195,22 @@ export default buildConfig({
 
 // Adapted from https://github.com/opennextjs/opennextjs-cloudflare/blob/d00b3a13e42e65aad76fba41774815726422cc39/packages/cloudflare/src/api/cloudflare-context.ts#L328C36-L328C46
 function getCloudflareContextFromWrangler(): Promise<CloudflareContext> {
-  if (isTest && !process.env.PAYLOAD_TEST_STORAGE_DIR) {
+  const isTestRuntime = isTest || Boolean(testWranglerConfig)
+  if (isTestRuntime && !process.env.PAYLOAD_TEST_STORAGE_DIR) {
     throw new Error('Integration tests require isolated PAYLOAD_TEST_STORAGE_DIR')
   }
   return import(/* webpackIgnore: true */ `${'__wrangler'.replaceAll('_', '')}`).then(
     ({ getPlatformProxy }) =>
       getPlatformProxy({
-        environment: isTest ? undefined : process.env.CLOUDFLARE_ENV,
+        environment: isTestRuntime ? undefined : process.env.CLOUDFLARE_ENV,
         // Build-time inspection must not contact the configured production D1 database.
-        remoteBindings: isTest ? false : isProduction && !isNextProductionBuild,
-        ...(isTest
-          ? { persist: { path: process.env.PAYLOAD_TEST_STORAGE_DIR! }, envFiles: [] }
+        remoteBindings: isTestRuntime ? false : isProduction && !isNextProductionBuild,
+        ...(isTestRuntime
+          ? {
+              configPath: testWranglerConfig,
+              persist: { path: process.env.PAYLOAD_TEST_STORAGE_DIR! },
+              envFiles: [],
+            }
           : {}),
       } satisfies GetPlatformProxyOptions),
   )

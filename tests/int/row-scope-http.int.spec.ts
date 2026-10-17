@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { spawn, type ChildProcess } from 'node:child_process'
+import { join } from 'node:path'
 import { GRAPHQL_POST, REST_DELETE, REST_GET, REST_PATCH, REST_POST } from '@payloadcms/next/routes'
 import { getPayload, type CollectionSlug, type Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -30,6 +31,7 @@ import {
   seedRowScopeFixture,
   type RowScopeFixture,
 } from '../helpers/row-scope-fixture'
+import { localIntegrationRuntime } from './local-runtime'
 
 const ORIGIN = 'http://localhost:3000'
 const post = REST_POST(config)
@@ -1014,16 +1016,19 @@ async function expectAdminPage(base: string, path: string, marker: string) {
 
 async function withAdminServer(run: (base: string) => Promise<void>) {
   const port = 3456
+  const { directory } = localIntegrationRuntime()
   const child = spawn('pnpm', ['exec', 'next', 'dev', '--port', String(port)], {
-    cwd: '/workspace',
+    cwd: process.cwd(),
     detached: true,
     env: {
       ...process.env,
-      PATH: `${process.env.HOME}/.nvm/versions/node/v24.21.0/bin:${process.env.PATH ?? ''}`,
       PAYLOAD_SECRET: process.env.PAYLOAD_SECRET || 'test-secret-for-local-runs',
       // This server loads the config without the Vitest-only collection. A schema
       // push would drop that table while the test process still queries it.
       PAYLOAD_MIGRATING: 'true',
+      // Share the isolated local D1/R2 state that this test process seeded.
+      PAYLOAD_TEST_WRANGLER_CONFIG: join(directory, 'wrangler.json'),
+      PAYLOAD_TEST_STORAGE_DIR: join(directory, 'state'),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
