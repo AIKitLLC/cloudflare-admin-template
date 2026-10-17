@@ -9,7 +9,7 @@ import * as migration_20261010_154532_jobs_queue from './20261010_154532_jobs_qu
 import * as migration_20261013_120000 from './20261013_120000'
 import * as migration_20261017_105600_login_throttle from './20261017_105600_login_throttle'
 import * as migration_20261017_133958_payload_3_91_security from './20261017_133958_payload_3_91_security'
-import * as migration_20261017_130000_setup_state from './20261017_130000_setup_state'
+import * as migration_20261017_144000_setup_state from './20261017_144000_setup_state'
 
 export const migrations = [
   {
@@ -68,8 +68,8 @@ export const migrations = [
     name: '20261017_133958_payload_3_91_security',
   },
   {
-    up: migration_20261017_130000_setup_state.up,
-    down: migration_20261017_130000_setup_state.down,
-    name: '20261017_130000_setup_state',
+    up: migration_20261017_144000_setup_state.up,
+    down: migration_20261017_144000_setup_state.down,
+    name: '20261017_144000_setup_state',
   },
 ]

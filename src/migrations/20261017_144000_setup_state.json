@@ -145,6 +145,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "reset_password_requested_at": {
+          "name": "reset_password_requested_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "login_attempts": {
           "name": "login_attempts",
           "type": "numeric",
@@ -386,6 +393,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "_objectkey": {
+          "name": "_objectkey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "updated_at": {
@@ -729,59 +743,6 @@
           "name": "login_throttle_bucket_key_idx",
           "columns": [
             "bucket_key"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "setup_state": {
-      "name": "setup_state",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "singleton": {
-          "name": "singleton",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "claim_token": {
-          "name": "claim_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "claimed_at": {
-          "name": "claimed_at",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "completed_at": {
-          "name": "completed_at",
-          "type": "numeric",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "setup_state_singleton_idx": {
-          "name": "setup_state_singleton_idx",
-          "columns": [
-            "singleton"
           ],
           "isUnique": true
         }
@@ -2955,6 +2916,59 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
+    },
+    "setup_state": {
+      "name": "setup_state",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "singleton": {
+          "name": "singleton",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "claim_token": {
+          "name": "claim_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "numeric",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "setup_state_singleton_idx": {
+          "name": "setup_state_singleton_idx",
+          "columns": [
+            "singleton"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     }
   },
   "views": {},
@@ -2967,5 +2981,5 @@
     "indexes": {}
   },
   "id": "4a21fb73-a074-4902-ba6e-80ebd8ef8f0f",
-  "prevId": "d51e697c-1db3-4e8a-afc6-6b8c6271c1be"
+  "prevId": "13b329b1-1a55-4fa0-bbf2-57f9a332bbb5"
 }

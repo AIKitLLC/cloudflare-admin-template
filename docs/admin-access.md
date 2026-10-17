@@ -20,7 +20,7 @@ Until the first admin exists, whoever completes the setup screen first becomes t
 
 `src/auth/first-admin-setup.ts` handles `POST /api/users/first-register` in place of Payload's built-in handler:
 
-- **One admin, even with concurrent requests.** The D1 table `setup_state` (migration `20261017_130000_setup_state`) holds one row with a unique key. A single SQL statement claims it, and only while `users` is empty and setup has not completed, so exactly one request or CLI run can proceed. The others get 403 (web) or 409 (CLI). If a step fails, the account is removed and the claim released, so setup can be retried.
+- **One admin, even with concurrent requests.** The D1 table `setup_state` (migration `20261017_144000_setup_state`) holds one row with a unique key. A single SQL statement claims it, and only while `users` is empty and setup has not completed, so exactly one request or CLI run can proceed. The others get 403 (web) or 409 (CLI). If a step fails, the account is removed and the claim released, so setup can be retried.
 - **Super Admin role.** The new account is checked for the Super Admin role before setup is marked complete.
 - **Closes permanently.** On success `setup_state.completed_at` is set. The web flow stays closed after that, even if every user is later deleted; the screen may still render on an empty table, but the form is refused. Installs that already have users are recorded as set up by the migration. Use `pnpm admin:create` to recover an empty `users` table.
 - **Same-origin form.** Requests whose `Origin` is not the Worker's own origin or a configured CSRF origin (`PAYLOAD_PUBLIC_SERVER_URL`, `PAYLOAD_ALLOWED_ORIGINS`), or whose `Sec-Fetch-Site` is not `same-origin`, are refused.
