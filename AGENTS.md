@@ -71,4 +71,4 @@ The `[languages]` extra supplies the TypeScript parser. `uv` has to be installed
 
 TypeScript is a supported arcade-agent language (Java, Python, C, TypeScript/JS, Go, Kotlin, Rust). `.github/workflows/architecture.yml` runs `arcade-agent/arcade-agent/actions/analyze` at commit `2fde72bcf6cd1f861b8f25b09c0a1d7bc83b820d` on `pull_request`. The package pin is `arcade-agent[languages]==0.4.1`.
 
-The job is report-only: `continue-on-error: true`, `ubuntu-latest`, and read-only `contents` and `actions` permissions. `post-pr-comment` and artifact upload are off so the job does not need a write token. The report is the Actions log. A failed analysis does not block the pull request.
+The job is report-only: `continue-on-error: true`, runner `ubuntu-24.04`, and read-only `contents` and `actions` permissions. `post-pr-comment` and artifact upload are off so the job does not need a write token. The report is the Actions log. A failed analysis does not block the pull request.
