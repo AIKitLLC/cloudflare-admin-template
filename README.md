@@ -63,13 +63,13 @@ Start the local development server (Wrangler will emulate D1 and R2 locally):
 pnpm dev
 ```
 
-Create the first administrator from the command line (public sign-up does not create admins):
+Open [http://localhost:3000/admin](http://localhost:3000/admin) and create the first administrator on the setup screen, or from the command line:
 
 ```bash
 FIRST_ADMIN_PASSWORD='<password>' pnpm admin:create --email admin@example.com --confirm
 ```
 
-Then sign in at [http://localhost:3000/admin](http://localhost:3000/admin). See [First admin and admin access](#first-admin-and-admin-access).
+See [First admin and admin access](#first-admin-and-admin-access).
 
 ---
 
@@ -254,7 +254,7 @@ Set `PAYLOAD_SECRET` on the Worker before the first real deploy (`wrangler secre
 pnpm run deploy
 ```
 
-Then create the first admin with `pnpm admin:create` and set up the required Cloudflare Access application for `/admin` and `/api/users/*` before you share the URL. See [First admin and admin access](#first-admin-and-admin-access).
+Then open `/admin` right away and create the first admin, or set up the required Cloudflare Access application for `/admin` and `/api/users/*` first (recommended) and create the admin through Access. See [First admin and admin access](#first-admin-and-admin-access).
 
 For plan limits, see the note on Workers plans at the top of this file.
 
@@ -264,11 +264,11 @@ For plan limits, see the note on Workers plans at the top of this file.
 
 Full steps are in [docs/admin-access.md](docs/admin-access.md).
 
-1. **Create the first admin with the CLI.** `pnpm admin:create --email <email> --confirm` (password from `FIRST_ADMIN_PASSWORD`) is the only way to create the first admin, and it refuses when any user exists. For remote D1, run it with `NODE_ENV=production PAYLOAD_SECRET=ignore` after `pnpm run deploy:database`. The admin panel's "create first user" screen is intentionally unavailable.
-2. **After that,** only a signed-in user with `users:create` can add users. A request without a signed-in user cannot create users.
-3. **Cloudflare Access is required in production** in front of `/admin` and `/api/users/*` (including `/api/users/login`). See [the Access steps](docs/admin-access.md#cloudflare-access-is-required-in-production).
+1. **Create the first admin right after deploy, or enable Cloudflare Access first.** On a new install, `/admin` shows the "create first user" screen; the first account created there gets the Super Admin role and you are signed in. Until then, whoever completes that screen first becomes the admin, so either set up Access before the deploy is reachable (recommended) or create the admin immediately. `pnpm admin:create --email <email> --confirm` (password from `FIRST_ADMIN_PASSWORD`) does the same from the command line. For remote D1, run it with `NODE_ENV=production PAYLOAD_SECRET=ignore` after `pnpm run deploy:database`.
+2. **Setup runs once.** Concurrent setup requests or CLI runs create exactly one admin. After the first admin exists, the setup screen is closed for good, even if all users are later deleted; `pnpm admin:create` can recover an empty `users` table. From then on only a signed-in user with `users:create` can add users.
+3. **Cloudflare Access is required in production** in front of `/admin` and `/api/users/*` (including `/api/users/login` and `/api/users/first-register`). See [the Access steps](docs/admin-access.md#cloudflare-access-is-required-in-production).
 
-Admin session cookies are `Secure` in production (`SameSite=Lax`). Sign-in is limited per account (Payload: 5 failures, 10-minute lock) and per client IP: sign-in, forgot-password, reset-password, and refresh-token each have their own 15-minute limit, then 429. Add the Cloudflare WAF rate limiting rule described in [docs/admin-access.md](docs/admin-access.md#cloudflare-waf-rate-limiting-rule) as well.
+Admin session cookies are `Secure` in production (`SameSite=Lax`). Sign-in is limited per account (Payload: 5 failures, 10-minute lock) and per client IP: sign-in, forgot-password, reset-password, refresh-token (requests without a valid session), and first-run setup each have their own 15-minute limit, then 429. Add the Cloudflare WAF rate limiting rule described in [docs/admin-access.md](docs/admin-access.md#cloudflare-waf-rate-limiting-rule) as well.
 
 ## 🧪 Testing
 
