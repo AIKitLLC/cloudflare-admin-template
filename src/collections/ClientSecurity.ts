@@ -7,6 +7,8 @@ const protectedTable = (slug: string, fields: CollectionConfig['fields']): Colle
   slug,
   timestamps: false,
   admin: { hidden: true },
+  // Access below is owner-only and writes go through the store, so RBAC coverage skips it.
+  custom: { rbac: { ownsAccess: true } },
   access: {
     read: ({ req }) => isClientSecurityOwner(req.user),
     create: () => false,

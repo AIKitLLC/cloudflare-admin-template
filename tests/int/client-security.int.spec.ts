@@ -638,7 +638,15 @@ describe('client security with isolated real D1 transactions', () => {
     for (const headers of cases) {
       const response = await adminPost(adminRequest(body, headers))
       expect(response.status).toBe(403)
-      expect(await response.json()).toEqual({ error: 'client_security_origin_required' })
+      // Payload's CSRF origin list drops a cookie whose Origin is not trusted (including
+      // an empty Origin) before the route runs, so those requests have no owner session.
+      const cookieFromUntrustedOrigin =
+        'Cookie' in headers && headers.Origin !== new URL(adminUrl).origin
+      expect(await response.json()).toEqual({
+        error: cookieFromUntrustedOrigin
+          ? 'client_security_owner_required'
+          : 'client_security_origin_required',
+      })
     }
     const cookieRequest = await adminPost(
       adminRequest(body, { Authorization: '', Cookie: `payload-token=${ownerToken}` }),

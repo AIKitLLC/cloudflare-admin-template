@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       '@opennextjs/cloudflare':
-        specifier: ^1.11.0
+        specifier: 1.20.11
         version: 1.20.11(next@16.4.0(@babel/core@7.29.7)(@playwright/test@1.63.0)(@types/node@24.12.3)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(sass@1.77.4))(wrangler@4.116.0)
       '@payloadcms/db-d1-sqlite':
         specifier: 3.82.1

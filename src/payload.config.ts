@@ -2,15 +2,47 @@ import fs from 'fs'
 import path from 'path'
 import { sqliteD1Adapter } from '@payloadcms/db-d1-sqlite'
 import { lexicalEditor } from '@payloadcms/richtext-lexical'
-import { buildConfig, type PayloadLogger } from 'payload'
+import { buildConfig, type CollectionConfig, type PayloadLogger } from 'payload'
 import { fileURLToPath } from 'url'
 import { CloudflareContext, getCloudflareContext } from '@opennextjs/cloudflare'
 import { GetPlatformProxyOptions } from 'wrangler'
 import { r2Storage } from '@payloadcms/storage-r2'
 
+import { coverLiveConfig } from './access/cover-unwrapped'
+import { assertRbacCoverage, ensureRbacCoverage } from './access/ensure-rbac-coverage'
+import { applyFieldAccess } from './access/fields/apply-field-access'
+import { rbacCoveragePlugin } from './access/rbac-coverage-plugin'
+import { AuditLogs, withAuditTrail } from './audit'
+import { resolvePublicServerURL } from './config/public-server-url'
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
 import { ClientSecurityCollections } from './collections/ClientSecurity'
+import { Branches } from './scope/collections/Branches'
+import { DataClasses } from './scope/collections/DataClasses'
+import { Organizations } from './scope/collections/Organizations'
+import { Records } from './scope/collections/Records'
+import { ensureRowScopeRegistered } from './scope/register-row-scope'
+import { SystemParameters } from './system-parameters/collections/SystemParameters'
+import { migrations } from './migrations'
+import { Jobs } from './jobs/collection/Jobs'
+import { retryJobMutation } from './jobs/graphql/retry-job-mutation'
+import { Permissions } from './rbac/collections/Permissions'
+import { RolePermissions } from './rbac/collections/RolePermissions'
+import { Roles } from './rbac/collections/Roles'
+import { grantEndpoint, matrixEndpoint } from './rbac/endpoints/matrix-handlers'
+import { seedRbac } from './rbac/seed/seed-rbac'
+
+/**
+ * Vitest setup assigns this before the config module loads. Production and
+ * `payload generate:types` leave it unset, so the test collection stays out of
+ * the shipped config and `payload-types.ts`.
+ */
+function testOnlyCollections(): CollectionConfig[] {
+  const holder = globalThis as typeof globalThis & {
+    __payloadTestCollections?: CollectionConfig[]
+  }
+  return holder.__payloadTestCollections ?? []
+}
 
 const filename = fileURLToPath(import.meta.url)
 const dirname = path.dirname(filename)
@@ -21,7 +53,23 @@ const isCLI = process.argv.some((value) =>
 )
 const isProduction = process.env.NODE_ENV === 'production'
 const isTest = process.env.NODE_ENV === 'test'
+// `next build` sets NODE_ENV=production. The D1 binding is marked remote, so a
+// production platform proxy would open a Cloudflare session and the build could
+// not run without an API token. Use the local proxy for that phase only.
 const isNextProductionBuild = process.env.NEXT_PHASE === 'phase-production-build'
+const serverURL = resolvePublicServerURL({
+  configuredURL: process.env.PAYLOAD_PUBLIC_SERVER_URL,
+  isCLI,
+  nextPhase: process.env.NEXT_PHASE,
+  nodeEnv: process.env.NODE_ENV,
+})
+const allowedOrigins = [
+  serverURL,
+  ...(process.env.PAYLOAD_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+]
 
 const createLog =
   (level: string, fn: typeof console.log) => (objOrMsg: object | string, msg?: string) => {
@@ -49,6 +97,8 @@ const cloudflare = isTest
     ? await getCloudflareContextFromWrangler()
     : await getCloudflareContext({ async: true })
 
+ensureRowScopeRegistered()
+
 export default buildConfig({
   admin: {
     user: Users.slug,
@@ -56,28 +106,87 @@ export default buildConfig({
       baseDir: path.resolve(dirname),
     },
     components: {
-      afterNavLinks: ['@/components/ClientSecurityNav#ClientSecurityNav'],
+      afterNavLinks: [
+        '@/components/ClientSecurityNav#ClientSecurityNav',
+        '/components/rbac/PermissionMatrixNavLink#PermissionMatrixNavLink',
+        '/components/jobs/JobsNavLink#JobsNavLink',
+      ],
       views: {
         clientSecurity: {
           Component: '@/components/ClientSecurityView#ClientSecurityView',
           path: '/client-security',
         },
+        permissionMatrix: {
+          Component: '/components/rbac/PermissionMatrixView#PermissionMatrixView',
+          path: '/permission-matrix',
+          exact: true,
+          meta: {
+            title: 'Permission Matrix',
+          },
+        },
+        jobMonitor: {
+          Component: '/components/jobs/JobsDashboardView#JobsDashboardView',
+          path: '/job-monitor',
+          exact: true,
+          meta: {
+            title: 'Job Monitor',
+          },
+        },
       },
     },
   },
-  collections: [Users, Media, ...ClientSecurityCollections],
+  collections: ensureRbacCoverage([
+    Users,
+    Media,
+    ...ClientSecurityCollections,
+    Roles,
+    Permissions,
+    RolePermissions,
+    Organizations,
+    Branches,
+    DataClasses,
+    Records,
+    withAuditTrail(SystemParameters),
+    withAuditTrail(Jobs),
+    AuditLogs,
+    ...testOnlyCollections(),
+  ]),
+  endpoints: [matrixEndpoint, grantEndpoint],
+  graphQL: {
+    mutations: retryJobMutation,
+  },
+  serverURL,
+  cors: allowedOrigins,
+  csrf: allowedOrigins,
+  onInit: async (payload) => {
+    coverLiveConfig(payload)
+    applyFieldAccess(payload)
+    assertRbacCoverage(payload)
+    try {
+      await seedRbac(payload)
+    } catch (error) {
+      payload.logger.error({
+        msg: 'RBAC seed failed. Requests continue with the last successful catalog.',
+        err: error,
+      })
+    }
+  },
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
   typescript: {
     outputFile: path.resolve(dirname, 'payload-types.ts'),
   },
-  db: sqliteD1Adapter({ binding: cloudflare.env.D1 }),
+  db: sqliteD1Adapter({
+    binding: cloudflare.env.D1,
+    prodMigrations: migrations,
+  }),
   logger: isProduction ? cloudflareLogger : undefined,
   plugins: [
     r2Storage({
       bucket: cloudflare.env.R2,
       collections: { media: true },
     }),
+    rbacCoveragePlugin,
   ],
 })
 
