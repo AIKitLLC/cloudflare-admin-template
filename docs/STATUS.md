@@ -4,7 +4,7 @@ Last updated: 2026-10-17.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for Tony.
 
-The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-17. `main` is `cf8414d`.
+The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-17. `main` is `336277d`.
 
 ## What is on `main`
 
@@ -16,6 +16,9 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | `b16e98a` | #23 | MIT license (`LICENSE`, `"license": "MIT"` in `package.json`). |
 | `5151642` | #24 | `scripts/ci-local.sh` (`pnpm ci:local`), `.github/workflows/ci.yml` (job `verify`), `.nvmrc` = `22`, `engines.node` = `>=22.14.0`, and the README note on Workers plans. |
 | `cf8414d` | #25 | Lint cleanup; `pnpm lint` reports no warnings. |
+| `c743610` | #27 | Agent and architecture standards (`AGENTS.md`, `.agents/skills`, `.cursor/rules`, this file, `docs/ARCHITECTURE.md`) and the inline, hash-locked `architecture.yml` job. Supersedes #17. |
+| `5ed74c2` | #26 | Removes the starter template's sample route `src/app/my-route`. |
+| `336277d` | #28 | Tighter `architecture.yml` permissions and failure reporting. |
 
 ## Toolchain and CI
 
@@ -23,26 +26,24 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 - Pinned stack in `pnpm-lock.yaml`: Payload `3.82.1`, Next.js `16.4.0`, React `19.3.0`, `@opennextjs/cloudflare` `1.20.11`, Wrangler `4.116.0`, TypeScript `6.0.3`, Vitest `5.0.1`, Playwright `1.63.0`.
 - `pnpm ci:local` runs `scripts/ci-local.sh`: frozen install, `typecheck`, `typecheck:firebase`, `lint`, unit tests (`tests/unit`), integration tests (`tests/int`), `next build`, and the OpenNext Worker bundle. `--maxWorkers N` caps test parallelism. It needs no secrets and no Cloudflare account, and it deploys nothing.
 - `.github/workflows/ci.yml` runs the same script in job `verify` on every pull request and on pushes to `main`. Runner `ubuntu-24.04`, Node from `.nvmrc`, actions pinned by commit SHA, `contents: read`.
-- `.github/workflows/architecture.yml` (added by #27) runs a report-only architecture analysis on pull requests as an inline, hash-locked job. See `AGENTS.md`.
+- `.github/workflows/architecture.yml` (added by #27, tightened by #28) runs a report-only architecture analysis on pull requests as an inline, hash-locked job. See `AGENTS.md`.
 - Playwright E2E tests (`tests/e2e`) are not part of `ci:local` or CI yet.
 
 ## Open pull requests
 
 | PR | Title | Base | State |
 | --- | --- | --- | --- |
-| #27 | ci: run architecture analysis as an inline, hash-locked job | `main` | This change; supersedes #17 |
-| #26 | chore: remove unused example route | `main` | Ready for review |
+| — | feat: admin stack v1 (consolidates #11-#15, #18, #19) | `main` | This change; draft; supersedes #11–#15, #18, #19 |
 | #20 | feat: split admin features into Payload plugins | `integration/admin-stack` | Draft |
 | #19 | integration: admin stack (reference only, do not merge) | `main` | Draft |
 | #18 | fix: make the OpenNext Cloudflare worker build succeed | `main` | Draft |
-| #17 | chore: adopt agent and architecture standards | `main` | Superseded by #27 |
 | #15 | feat: background jobs, queue consumer, and job monitor | #11 branch | Draft |
 | #14 | feat: centralized system parameters with typed values and isolate cache | #11 branch | Draft |
 | #13 | feat: row-level security and organizational data scoping | #11 branch | Draft |
 | #12 | feat: field-level audit trail for collection changes | `main` | Draft |
 | #11 | Add dynamic RBAC and the permission matrix | `main` | Draft |
 
-#11, #12, #18, and #19 branch from `80cea96`, before #21–#25; #13–#15 stack on #11 and #20 on #19. Each of #11–#15 and #18 changes at least one file that #21/#22 also changed (`src/payload.config.ts`, plus `src/collections/Users.ts`, `src/migrations/index.ts`, `src/payload-types.ts`, or the admin import map). They need to be brought up to date with `main` before review.
+This change consolidates #11–#15, #18, and #19 on top of current `main`; those pull requests stay open as references until it lands. #11, #12, #18, and #19 branch from `80cea96`, before #21–#25; #13–#15 stack on #11 and #20 on #19. Each of #11–#15 and #18 changes at least one file that #21/#22 also changed (`src/payload.config.ts`, plus `src/collections/Users.ts`, `src/migrations/index.ts`, `src/payload-types.ts`, or the admin import map). This change resolves those overlaps against `main`.
 
 ## Merge order
 
@@ -81,7 +82,6 @@ Labels exist (`type:*`, `area:*`, `status:*`, `priority:*`). No milestones exist
 | #8 | Advanced data grid | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
 | #9 | System parameters and configuration | `type:feature`, `area:collections`, `status:in-review`, `priority:p1` | #14 |
 | #10 | Safe script runner | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
-| #16 | chore: adopt agent and architecture standards | `type:chore`, `type:docs`, `status:in-review` | #27 (supersedes #17) |
 
 Proposed milestones, for a person with permission to create them:
 
@@ -98,4 +98,4 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Pull request #27 (`ci/architecture-inline`, base `main`, closes #16) supersedes #17. It contains all of #17 (`AGENTS.md`, vendored ponytail and i-have-adhd skills, Cursor rules, `.cursor/mcp.json`, this file, `docs/ARCHITECTURE.md`) and replaces #17's composite-action `.github/workflows/architecture.yml` with an inline job: actions pinned by commit SHA, `persist-credentials: false`, and a hash-locked arcade-agent install from `.github/arcade-agent/requirements.txt`. It does not change product behavior.
+`feat/admin-stack-v1` (draft, base `main`) consolidates #11 (RBAC and the permission matrix), #12 (field-level audit trail), #13 (row-level scope), #14 (system parameters), #15 (background jobs and job monitor), #18 (OpenNext Worker build), and the #19 integration branch into one branch on top of `main` `336277d`, merged rather than rebased. It supersedes those pull requests, which stay open until it lands. The #12 interim audit read rule is replaced by the #11 permission check (`audit-logs:read`). The modules in `docs/ARCHITECTURE.md` "Target boundaries" (`src/access`, `src/rbac`, `src/audit`, `src/scope`, `src/system-parameters`, `src/jobs`) are added by this change. It needs Security review, then CTO review, before Tony decides on merging.
