@@ -1,55 +1,49 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import type { PayloadRequest } from 'payload'
 
+import { allowsUserCreation, guardPublicUserCreation } from '../../src/auth/first-admin'
 import {
-  ADMIN_SETUP_TOKEN_MIN_LENGTH,
-  decidePublicUserCreation,
-  setupTokenMatches,
-} from '../../src/auth/first-admin'
-import {
+  admitAuthAttempt,
+  AUTH_THROTTLE_LIMITS,
   createLoginThrottle,
+  isThrottledAuthOperation,
   loginThrottleClientIp,
   loginThrottleKey,
+  resetAuthThrottleLogForTests,
   type LoginThrottleDatabase,
 } from '../../src/auth/login-throttle'
 import { usersAuthOptions } from '../../src/auth/users-auth'
 import { testRuntimeStorageDir, testRuntimeWranglerConfig } from '../../src/config/test-runtime'
 import { createFirstAdmin, parseFirstAdminArguments } from '../../scripts/create-first-admin.mjs'
 
-const token = 'a'.repeat(ADMIN_SETUP_TOKEN_MIN_LENGTH)
-
-test('setup token must be configured, long enough, and equal', () => {
-  assert.equal(setupTokenMatches(token, token), true)
-  assert.equal(setupTokenMatches(`${token}b`, token), false)
-  assert.equal(setupTokenMatches('', token), false)
-  assert.equal(setupTokenMatches(null, token), false)
-  assert.equal(setupTokenMatches(token, undefined), false)
-  assert.equal(setupTokenMatches('short', 'short'), false)
+test('users creation needs a signed-in user or the Local API', () => {
+  assert.equal(allowsUserCreation({ payloadAPI: 'REST', user: null }), false)
+  assert.equal(allowsUserCreation({ payloadAPI: 'GraphQL', user: null }), false)
+  assert.equal(
+    allowsUserCreation({ payloadAPI: 'REST', user: { id: 1 } as PayloadRequest['user'] }),
+    true,
+  )
+  assert.equal(allowsUserCreation({ payloadAPI: 'local', user: null }), true)
 })
 
-test('first-admin bootstrap: a request without a user needs the token and an empty users table', () => {
-  const base = { hasUser: false, existingUsers: 0, providedToken: token, expectedToken: token }
-  assert.equal(decidePublicUserCreation({ ...base, payloadAPI: 'REST' }), 'allow')
-  assert.equal(decidePublicUserCreation({ ...base, payloadAPI: 'GraphQL' }), 'allow')
-  assert.equal(
-    decidePublicUserCreation({ ...base, payloadAPI: 'REST', providedToken: undefined }),
-    'deny',
+test('the users create hook refuses requests without a user before any lookup', () => {
+  const req = {
+    payloadAPI: 'REST',
+    user: null,
+    t: ((key: string) => key) as PayloadRequest['t'],
+    // No payload or database: the decision must not depend on how many users exist.
+  } as unknown as PayloadRequest
+  const hookArgs = { args: {}, operation: 'create', req } as unknown as Parameters<
+    typeof guardPublicUserCreation
+  >[0]
+  assert.throws(
+    () => guardPublicUserCreation(hookArgs),
+    (error: { status?: number }) => error.status === 403,
   )
-  assert.equal(
-    decidePublicUserCreation({ ...base, payloadAPI: 'REST', expectedToken: undefined }),
-    'deny',
-  )
-  assert.equal(decidePublicUserCreation({ ...base, payloadAPI: 'REST', existingUsers: 1 }), 'deny')
-  // Signed-in and Local API calls stay with the normal access rules.
-  assert.equal(
-    decidePublicUserCreation({ ...base, payloadAPI: 'REST', hasUser: true, existingUsers: 3 }),
-    'allow',
-  )
-  assert.equal(
-    decidePublicUserCreation({ ...base, payloadAPI: 'local', providedToken: undefined }),
-    'allow',
-  )
+  const read = { ...hookArgs, operation: 'read' } as typeof hookArgs
+  assert.deepEqual(guardPublicUserCreation(read), {})
 })
 
 test('admin:create arguments and password source', () => {
@@ -149,6 +143,12 @@ test('login throttle counts attempts per key and gives back successful ones', as
               return next as T
             },
             async run() {
+              if (query.startsWith('DELETE')) {
+                const [at, keep] = values as [number, string]
+                for (const [key, row] of rows)
+                  if (row.reset_at <= at && key !== keep) rows.delete(key)
+                return {}
+              }
               assert.match(query, /^UPDATE/)
               const [key, at] = values as [string, number]
               const row = rows.get(key)
@@ -168,7 +168,66 @@ test('login throttle counts attempts per key and gives back successful ones', as
   assert.equal((await throttle.record('k')).allowed, false)
   assert.equal((await throttle.record('other')).allowed, true)
   now += 100
+  // The expired 'other' row is removed while 'k' is written.
   assert.equal((await throttle.record('k')).allowed, true)
+  assert.equal(rows.has('other'), false)
+})
+
+test('auth operations each have a limit and their own counter', () => {
+  for (const operation of ['login', 'forgotPassword', 'resetPassword', 'refresh']) {
+    assert.equal(isThrottledAuthOperation(operation), true)
+  }
+  assert.equal(isThrottledAuthOperation('create'), false)
+  assert.equal(AUTH_THROTTLE_LIMITS.login, 10)
+  assert.notEqual(loginThrottleKey('192.0.2.1', 'login'), loginThrottleKey('192.0.2.1', 'refresh'))
+})
+
+function authRequest(headers: Headers, binding?: LoginThrottleDatabase): PayloadRequest {
+  return {
+    payloadAPI: 'REST',
+    headers,
+    payload: { db: binding ? { binding } : {} },
+  } as unknown as PayloadRequest
+}
+
+test('production refuses auth requests when the throttle database is unavailable', async () => {
+  resetAuthThrottleLogForTests()
+  const errors: unknown[] = []
+  const original = console.error
+  console.error = (...args: unknown[]) => errors.push(args)
+  try {
+    const req = authRequest(new Headers({ 'cf-connecting-ip': '192.0.2.1' }))
+    await assert.rejects(
+      admitAuthAttempt(req, 'login', 'production'),
+      (error: { status?: number }) => error.status === 503,
+    )
+    assert.equal(errors.length, 1)
+    // Outside production the throttle is skipped without a database.
+    await admitAuthAttempt(req, 'login', 'development')
+  } finally {
+    console.error = original
+  }
+})
+
+test('production refuses auth requests without CF-Connecting-IP', async () => {
+  const db: LoginThrottleDatabase = {
+    prepare: () => ({
+      bind: () => ({
+        first: async <T>() => ({ used: 1, reset_at: Date.now() + 1000 }) as T,
+        run: async () => ({}),
+      }),
+    }),
+  }
+  await assert.rejects(
+    admitAuthAttempt(authRequest(new Headers(), db), 'login', 'production'),
+    (error: { status?: number }) => error.status === 400,
+  )
+  await admitAuthAttempt(authRequest(new Headers(), db), 'login', 'test')
+  await admitAuthAttempt(
+    authRequest(new Headers({ 'cf-connecting-ip': '192.0.2.9' }), db),
+    'login',
+    'production',
+  )
 })
 
 test('homepage has no editor file links', () => {

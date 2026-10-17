@@ -23,9 +23,6 @@
   // Production refuses a missing value, the .env.example placeholder, or a
   // value shorter than 32 characters. The host check on jobs.internal stays
   // the primary guard.
-  // ADMIN_SETUP_TOKEN is optional and only for the first-admin HTTP setup in
-  // docs/admin-access.md. Set it with `wrangler secret put ADMIN_SETUP_TOKEN`,
-  // never in vars, and delete it once the first admin exists.
   "vars": {
     "FIREBASE_CLIENT_ENABLED": "false",
     "FIREBASE_PROJECT_ID": "",

@@ -8,7 +8,7 @@ import {
 } from '../auth/client-security-owner'
 
 import { guardPublicUserCreation } from '../auth/first-admin'
-import { releaseLoginAttempt, throttleLoginAttempt } from '../auth/login-throttle'
+import { releaseLoginAttempt, throttleAuthOperation } from '../auth/login-throttle'
 import { usersAuthOptions } from '../auth/users-auth'
 import { evaluateCollectionAccess } from '../access/evaluate-collection-access'
 import { isPermissionPayloadCall, permissionDocumentId } from '../access/permission-payload-call'
@@ -114,7 +114,7 @@ export const Users: CollectionConfig = withAuditTrail(
       ],
       hooks: {
         beforeOperation: [
-          throttleLoginAttempt,
+          throttleAuthOperation,
           guardPublicUserCreation,
           guardClientSecurityOwnerOperation,
           guardAuthCredentialOperation,
