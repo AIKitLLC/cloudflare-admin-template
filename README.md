@@ -17,7 +17,7 @@ Designed as an extensible starter kit for building custom back-office portals, i
 - **Storage:** [Cloudflare R2](https://developers.cloudflare.com/r2/) (S3-compatible asset storage via `@payloadcms/storage-r2`)
 - **Testing:** [Vitest](https://vitest.dev) & [Playwright](https://playwright.dev)
 
-> **Note on Workers plans:** Cloudflare limits Worker size to **64 MiB uncompressed on both the Free and Paid plans**, with no compressed size limit ([Workers limits](https://developers.cloudflare.com/workers/platform/limits/#worker-size)). A local build of this template produces about 15.5 MiB uncompressed (about 3.6 MiB gzip), so bundle size alone does not require Workers Paid. CPU time per request (10 ms on Free) and the 1 second startup limit have **not been measured** yet; check them with `wrangler` and Workers Logs before choosing a plan.
+> **Note on Workers plans:** Cloudflare limits Worker size to **64 MiB uncompressed on both the Free and Paid plans**, with no compressed size limit ([Workers limits](https://developers.cloudflare.com/workers/platform/limits/#worker-size)). A local build of this template produces about 15.7 MiB uncompressed (about 3.6 MiB gzip; measured 2026-10-17 06:18 CT at commit `b6c8198` with `wrangler deploy --dry-run`), so bundle size alone does not require Workers Paid. CPU time per request (10 ms on Free) and the 1 second startup limit have **not been measured** yet; check them with `wrangler` and Workers Logs before choosing a plan.
 
 ---
 
@@ -63,7 +63,13 @@ Start the local development server (Wrangler will emulate D1 and R2 locally):
 pnpm dev
 ```
 
-Open [http://localhost:3000/admin](http://localhost:3000/admin) to access the admin panel and create your initial administrator account.
+Create the first administrator from the command line (public sign-up does not create admins):
+
+```bash
+FIRST_ADMIN_PASSWORD='<password>' pnpm admin:create --email admin@example.com --confirm
+```
+
+Then sign in at [http://localhost:3000/admin](http://localhost:3000/admin). See [First admin and admin access](#first-admin-and-admin-access).
 
 ---
 
@@ -248,9 +254,22 @@ Set `PAYLOAD_SECRET` on the Worker before the first real deploy (`wrangler secre
 pnpm run deploy
 ```
 
+Then create the first admin and put `/admin` behind Cloudflare Access before you share the URL. See [First admin and admin access](#first-admin-and-admin-access).
+
 For plan limits, see the note on Workers plans at the top of this file.
 
 ---
+
+## First admin and admin access
+
+Public sign-up does not create admins. Full steps are in [docs/admin-access.md](docs/admin-access.md).
+
+1. **Create the first admin** with `pnpm admin:create --email <email> --confirm` (password from `FIRST_ADMIN_PASSWORD`). It refuses when any user exists. For remote D1, run it with `NODE_ENV=production PAYLOAD_SECRET=ignore` after `pnpm run deploy:database`.
+2. **Or over HTTP, once:** set the Worker secret `ADMIN_SETUP_TOKEN` (`wrangler secret put ADMIN_SETUP_TOKEN`, at least 32 characters) and send `POST /api/users/first-register` with the `x-admin-setup-token` header while the `users` table is empty. Delete the secret afterwards. Without it, a request that is not signed in cannot create users.
+3. **After that,** only a signed-in user with `users:create` can add users.
+4. **Put `/admin` behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/self-hosted-public-app/)** before opening the Worker publicly.
+
+Admin session cookies are `Secure` in production (`SameSite=Lax`). Sign-in is limited per account (Payload: 5 failures, 10-minute lock) and per client IP (10 failed attempts per 15 minutes, then 429). Add the Cloudflare WAF rate limiting rule described in [docs/admin-access.md](docs/admin-access.md#cloudflare-waf-rate-limiting-rule) as well.
 
 ## 🧪 Testing
 

@@ -29,11 +29,13 @@ pnpm test:worker
 
 That rebuilds the Worker, runs `wrangler deploy --dry-run` (it uploads nothing), deletes the local D1 state, applies `pnpm payload migrate`, and serves `/admin` and `/api/users/me` with `wrangler dev --local`. The local serve sets `PAYLOAD_PUBLIC_SERVER_URL` to `http://127.0.0.1:8791`. A production Worker throws on startup without that variable. The local D1 reset drops a dev-mode `payload-migrations` row (`batch` -1) that would otherwise make production startup call `process.exit(0)`.
 
-A dry run of the integrated stack reported:
+A dry run measured 2026-10-17 06:18 CT at commit `b6c8198` (Node 22.14.0, Wrangler 4.116.0) reported:
 
 ```text
-Total Upload: 15840.19 KiB / gzip: 3632.12 KiB
+Total Upload: 16109.77 KiB / gzip: 3695.21 KiB
 ```
+
+Re-measure and update the date and commit here when the bundle changes noticeably.
 
 Cloudflare limits Worker size to 64 MiB uncompressed on both the Free and Paid plans, with no compressed size limit ([Workers limits](https://developers.cloudflare.com/workers/platform/limits/#worker-size)). This bundle is under that, so bundle size alone does not require Workers Paid. CPU time per request (10 ms on Free) and the 1 second startup limit have not been measured yet.
 
