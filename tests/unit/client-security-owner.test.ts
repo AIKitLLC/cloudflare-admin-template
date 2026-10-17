@@ -129,9 +129,10 @@ async function operation(
 const status = (expected: number) => (error: unknown) =>
   !!error && (error as { status?: number }).status === expected
 
-test('Users adds explicit owner/admin/editor with admin default while preserving existing CMS access', () => {
+test('Users adds explicit owner/admin/editor with admin default; collection access comes from RBAC', () => {
   assert.equal(Users.auth, true)
-  assert.equal(Users.access, undefined)
+  assert.equal(typeof Users.access?.read, 'function')
+  assert.equal(typeof Users.access?.update, 'function')
   const role = Users.fields.find((field) => 'name' in field && field.name === 'role')
   assert.equal(role?.type, 'select')
   assert.equal(role && 'defaultValue' in role ? role.defaultValue : undefined, 'admin')

@@ -5,12 +5,15 @@ import tsconfigPaths from 'vite-tsconfig-paths'
 export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   test: {
-    // Server handlers and Wrangler's local D1 runtime need native Node globals.
+    // Node, not jsdom. Booting Payload loads Wrangler, and esbuild rejects jsdom's
+    // TextEncoder because its Uint8Array is a different realm.
     environment: 'node',
     setupFiles: ['./vitest.setup.ts'],
     include: ['tests/int/**/*.int.spec.ts'],
+    // Local D1 is one SQLite file. Parallel files race on schema push and writes.
     fileParallelism: false,
-    testTimeout: 20_000,
-    hookTimeout: 60_000,
+    maxWorkers: 1,
+    hookTimeout: 120_000,
+    testTimeout: 120_000,
   },
 })

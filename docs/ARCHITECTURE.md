@@ -1,6 +1,6 @@
 # Architecture
 
-Last reviewed against `main` at `cf8414d` (2026-10-17). This is the map of the code that is on `main`. Target-state sections are marked and are not directories in this tree.
+Last reviewed against `main` at `336277d` (2026-10-17). This is the map of the code that is on `main`. Target-state sections are marked and are not directories in this tree.
 
 ## What this repository is
 
@@ -15,7 +15,7 @@ These are the real boundaries on `main`. Use the `area:` label in the table. `au
 | Module | Area label | Path | Responsibility |
 | --- | --- | --- | --- |
 | frontend | `area:frontend` | `src/app/(frontend)` | Public homepage. Reads the session with `payload.auth` and links to the admin panel. |
-| admin | `area:admin` | `src/app/(payload)`, `src/components`, `src/app/api/admin/client-security`, `src/app/my-route` | Payload admin UI, REST (`/api/...`), GraphQL (`/api/graphql`), and the GraphQL playground. The custom admin view `/admin/client-security` (`ClientSecurityView`, `ClientSecurityPanel`, nav link `ClientSecurityNav`) and its settings API `/api/admin/client-security`. `src/app/my-route/route.ts` is a sample `GET` from the starter template; #26 removes it. |
+| admin | `area:admin` | `src/app/(payload)`, `src/components`, `src/app/api/admin/client-security` | Payload admin UI, REST (`/api/...`), GraphQL (`/api/graphql`), and the GraphQL playground. The custom admin view `/admin/client-security` (`ClientSecurityView`, `ClientSecurityPanel`, nav link `ClientSecurityNav`) and its settings API `/api/admin/client-security`. The starter template's sample route `src/app/my-route` was removed by #26. |
 | client API | `area:platform` | `src/app/api/client/v1` | Native client routes. `GET /api/client/v1/me` is the example: it runs through the managed Firebase client route and returns the verified principal. |
 | auth | — | `src/auth` | `firebase-client.ts` verifies Firebase App Check and ID tokens. `firebase-client-route.ts` is the reusable route adapter plus ownership and quota-key helpers. `client-security-owner.ts` defines the `owner` / `admin` / `editor` roles and the `Users` hooks that guard owner changes. |
 | client-security | — | `src/client-security` | Owner-managed Firebase trust settings and per-client rate limits: configuration schema and validation, the revisioned D1 store, rate limiting, the admin and client route factories, and the schema initializer used by the migration. |

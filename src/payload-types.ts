@@ -59,385 +59,893 @@ export type SupportedTimezones =
   | 'Pacific/Guam'
   | 'Pacific/Noumea'
   | 'Pacific/Auckland'
-  | 'Pacific/Fiji'
+  | 'Pacific/Fiji';
 
 export interface Config {
   auth: {
-    users: UserAuthOperations
-  }
-  blocks: {}
+    users: UserAuthOperations;
+  };
+  blocks: {};
   collections: {
-    users: User
-    media: Media
-    'client-security-state': ClientSecurityState
-    'client-security-versions': ClientSecurityVersion
-    'client-security-counters': ClientSecurityCounter
-    'client-security-audit': ClientSecurityAudit
-    'payload-kv': PayloadKv
-    'payload-locked-documents': PayloadLockedDocument
-    'payload-preferences': PayloadPreference
-    'payload-migrations': PayloadMigration
-  }
-  collectionsJoins: {}
+    users: User;
+    media: Media;
+    'client-security-state': ClientSecurityState;
+    'client-security-versions': ClientSecurityVersion;
+    'client-security-counters': ClientSecurityCounter;
+    'client-security-audit': ClientSecurityAudit;
+    roles: Role;
+    permissions: Permission;
+    'role-permissions': RolePermission;
+    organizations: Organization;
+    branches: Branch;
+    'data-classes': DataClass;
+    records: Record;
+    'system-parameters': SystemParameter;
+    jobs: Job;
+    'audit-logs': AuditLog;
+    'payload-kv': PayloadKv;
+    'payload-locked-documents': PayloadLockedDocument;
+    'payload-preferences': PayloadPreference;
+    'payload-migrations': PayloadMigration;
+  };
+  collectionsJoins: {};
   collectionsSelect: {
-    users: UsersSelect<false> | UsersSelect<true>
-    media: MediaSelect<false> | MediaSelect<true>
-    'client-security-state': ClientSecurityStateSelect<false> | ClientSecurityStateSelect<true>
-    'client-security-versions':
-      ClientSecurityVersionsSelect<false> | ClientSecurityVersionsSelect<true>
-    'client-security-counters':
-      ClientSecurityCountersSelect<false> | ClientSecurityCountersSelect<true>
-    'client-security-audit': ClientSecurityAuditSelect<false> | ClientSecurityAuditSelect<true>
-    'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>
-    'payload-locked-documents':
-      PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>
-    'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>
-    'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>
-  }
+    users: UsersSelect<false> | UsersSelect<true>;
+    media: MediaSelect<false> | MediaSelect<true>;
+    'client-security-state': ClientSecurityStateSelect<false> | ClientSecurityStateSelect<true>;
+    'client-security-versions': ClientSecurityVersionsSelect<false> | ClientSecurityVersionsSelect<true>;
+    'client-security-counters': ClientSecurityCountersSelect<false> | ClientSecurityCountersSelect<true>;
+    'client-security-audit': ClientSecurityAuditSelect<false> | ClientSecurityAuditSelect<true>;
+    roles: RolesSelect<false> | RolesSelect<true>;
+    permissions: PermissionsSelect<false> | PermissionsSelect<true>;
+    'role-permissions': RolePermissionsSelect<false> | RolePermissionsSelect<true>;
+    organizations: OrganizationsSelect<false> | OrganizationsSelect<true>;
+    branches: BranchesSelect<false> | BranchesSelect<true>;
+    'data-classes': DataClassesSelect<false> | DataClassesSelect<true>;
+    records: RecordsSelect<false> | RecordsSelect<true>;
+    'system-parameters': SystemParametersSelect<false> | SystemParametersSelect<true>;
+    jobs: JobsSelect<false> | JobsSelect<true>;
+    'audit-logs': AuditLogsSelect<false> | AuditLogsSelect<true>;
+    'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
+    'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
+    'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
+    'payload-migrations': PayloadMigrationsSelect<false> | PayloadMigrationsSelect<true>;
+  };
   db: {
-    defaultIDType: number
-  }
-  fallbackLocale: null
-  globals: {}
-  globalsSelect: {}
-  locale: null
+    defaultIDType: number;
+  };
+  fallbackLocale: null;
+  globals: {};
+  globalsSelect: {};
+  locale: null;
   widgets: {
-    collections: CollectionsWidget
-  }
-  user: User
+    collections: CollectionsWidget;
+  };
+  user: User;
   jobs: {
-    tasks: unknown
-    workflows: unknown
-  }
+    tasks: unknown;
+    workflows: unknown;
+  };
 }
 export interface UserAuthOperations {
   forgotPassword: {
-    email: string
-    password: string
-  }
+    email: string;
+    password: string;
+  };
   login: {
-    email: string
-    password: string
-  }
+    email: string;
+    password: string;
+  };
   registerFirstUser: {
-    email: string
-    password: string
-  }
+    email: string;
+    password: string;
+  };
   unlock: {
-    email: string
-    password: string
-  }
+    email: string;
+    password: string;
+  };
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "users".
  */
 export interface User {
-  id: number
+  id: number;
   /**
-   * Only an owner can change roles. Existing CMS access is preserved.
+   * Client security role. Only an owner can change it. Collection access comes from Roles.
    */
-  role: 'owner' | 'admin' | 'editor'
-  updatedAt: string
-  createdAt: string
-  email: string
-  resetPasswordToken?: string | null
-  resetPasswordExpiration?: string | null
-  salt?: string | null
-  hash?: string | null
-  loginAttempts?: number | null
-  lockUntil?: string | null
+  role: 'owner' | 'admin' | 'editor';
+  /**
+   * Access roles. A user with no roles cannot read or change collections. Self-service edits cannot change roles.
+   */
+  roles?: (number | Role)[] | null;
+  /**
+   * Organizations this user can access, including descendant organizations and their branches. Users cannot change their own assignments.
+   */
+  organizations?: (number | Organization)[] | null;
+  /**
+   * Branches this user can access, including descendant branches. Organization assignments already include the branches under those organizations.
+   */
+  branches?: (number | Branch)[] | null;
+  /**
+   * Data classes this user can access, including classes nested in an assigned group. A collection that stores a data class denies rows when this is empty.
+   */
+  dataClasses?: (number | DataClass)[] | null;
+  updatedAt: string;
+  createdAt: string;
+  email: string;
+  resetPasswordToken?: string | null;
+  resetPasswordExpiration?: string | null;
+  salt?: string | null;
+  hash?: string | null;
+  loginAttempts?: number | null;
+  lockUntil?: string | null;
   sessions?:
     | {
-        id: string
-        createdAt?: string | null
-        expiresAt: string
+        id: string;
+        createdAt?: string | null;
+        expiresAt: string;
       }[]
-    | null
-  password?: string | null
-  collection: 'users'
+    | null;
+  password?: string | null;
+  collection: 'users';
+}
+/**
+ * Named access roles. The super-admin role bypasses the permission matrix.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "roles".
+ */
+export interface Role {
+  id: number;
+  name: string;
+  /**
+   * Stable identifier, for example super-admin or support.
+   */
+  slug: string;
+  description?: string | null;
+  /**
+   * Bypasses every collection, action, and field check. Reserved for super-admin.
+   */
+  grantsFullAccess?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Organizational units. Access assigned here includes child organizations.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "organizations".
+ */
+export interface Organization {
+  id: number;
+  name: string;
+  slug: string;
+  /**
+   * Parent organization. Assignment to an organization includes every descendant. A parent cannot be this organization or one of its descendants.
+   */
+  parent?: (number | null) | Organization;
+  /**
+   * Ancestor path, including this node. Reads match this column instead of a list of descendant ids.
+   */
+  scopePath?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Branches belong to one organization. Assignment to an organization includes its branches. Assignment to a branch includes child branches.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "branches".
+ */
+export interface Branch {
+  id: number;
+  name: string;
+  slug: string;
+  organization: number | Organization;
+  /**
+   * Parent branch in the same organization. Assignment includes every descendant branch.
+   */
+  parent?: (number | null) | Branch;
+  /**
+   * Ancestor path, including this node. Reads match this column instead of a list of descendant ids.
+   */
+  scopePath?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Data classes form groups. Assignment to a group includes every class nested under it.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "data-classes".
+ */
+export interface DataClass {
+  id: number;
+  name: string;
+  slug: string;
+  /**
+   * Group that contains this class. Nested groups are included in the assignment.
+   */
+  parent?: (number | null) | DataClass;
+  /**
+   * Ancestor path, including this node. Reads match this column instead of a list of descendant ids.
+   */
+  scopePath?: string | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "media".
  */
 export interface Media {
-  id: number
-  alt: string
-  updatedAt: string
-  createdAt: string
-  url?: string | null
-  thumbnailURL?: string | null
-  filename?: string | null
-  mimeType?: string | null
-  filesize?: number | null
-  width?: number | null
-  height?: number | null
+  id: number;
+  alt: string;
+  updatedAt: string;
+  createdAt: string;
+  url?: string | null;
+  thumbnailURL?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  filesize?: number | null;
+  width?: number | null;
+  height?: number | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "client-security-state".
  */
 export interface ClientSecurityState {
-  id: number
-  revision: number
-  commitNonce?: string | null
-  admissionNonce?: string | null
-  admissionAllowed?: number | null
+  id: number;
+  revision: number;
+  commitNonce?: string | null;
+  admissionNonce?: string | null;
+  admissionAllowed?: number | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "client-security-versions".
  */
 export interface ClientSecurityVersion {
-  id: number
-  revision: number
+  id: number;
+  revision: number;
   configuration:
     | {
-        [k: string]: unknown
+        [k: string]: unknown;
       }
     | unknown[]
     | string
     | number
     | boolean
-    | null
-  digest: string
-  actor: string
-  operation: string
-  createdAt: string
+    | null;
+  digest: string;
+  actor: string;
+  operation: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "client-security-counters".
  */
 export interface ClientSecurityCounter {
-  id: number
-  bucketKey: string
-  used: number
-  resetAt: number
+  id: number;
+  bucketKey: string;
+  used: number;
+  resetAt: number;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "client-security-audit".
  */
 export interface ClientSecurityAudit {
-  id: number
-  revision: number
-  previousRevision: number
-  actor: string
-  operation: string
-  createdAt: string
+  id: number;
+  revision: number;
+  previousRevision: number;
+  actor: string;
+  operation: string;
+  createdAt: string;
+}
+/**
+ * Catalog of collection actions and field permissions. Synced from the Payload config on startup.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "permissions".
+ */
+export interface Permission {
+  id: number;
+  key: string;
+  label: string;
+  description?: string | null;
+  collectionSlug: string;
+  action: 'create' | 'read' | 'update' | 'delete' | 'export' | 'readField' | 'writeField' | 'trigger' | 'retry';
+  /**
+   * Empty for collection actions. Dotted path for field permissions.
+   */
+  fieldPath?: string | null;
+  /**
+   * Inactive permissions belong to collections or fields that are no longer in the config.
+   */
+  active?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Grants joining a role to a permission. The permission matrix edits this collection.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "role-permissions".
+ */
+export interface RolePermission {
+  id: number;
+  role: number | Role;
+  permission: number | Permission;
+  granted?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Example scoped collection. Reads, updates, deletes, and exports are limited to the signed-in user organization, branch, and data class.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "records".
+ */
+export interface Record {
+  id: number;
+  title: string;
+  organization: number | Organization;
+  branch: number | Branch;
+  dataClass: number | DataClass;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Runtime configuration. Credentials belong in Worker secrets. Mark a value sensitive to hide it from the API, export, and audit diffs.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "system-parameters".
+ */
+export interface SystemParameter {
+  id: number;
+  /**
+   * Stable lowercase kebab-case id, for example maintenance-mode. Secret-like keys are rejected.
+   */
+  key: string;
+  /**
+   * Group slug, for example billing, features, or operations.
+   */
+  category: string;
+  label?: string | null;
+  description?: string | null;
+  valueType: 'string' | 'number' | 'boolean' | 'json';
+  /**
+   * Must match the declared type. JSON values must be an object or array. 0, false, and empty strings are valid for their types.
+   */
+  value:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  /**
+   * Hides the value on read, list, export, and audit diffs. getParameter still returns it on the server. Do not use this for credentials.
+   */
+  sensitive?: boolean | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Background jobs. Trigger and retry from the job monitor. Payloads are redacted before they are stored.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "jobs".
+ */
+export interface Job {
+  id: number;
+  name: string;
+  payload:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED';
+  error?: string | null;
+  logs?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  attempt: number;
+  maxAttempts: number;
+  runAt?: string | null;
+  leaseExpiresAt?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  idempotencyKey: string;
+  claimToken?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * Append-only trail of who changed which field. Filter by record ID, collection, or operator. Records cannot be edited or deleted.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-logs".
+ */
+export interface AuditLog {
+  id: number;
+  /**
+   * Short description of the action and the fields that changed.
+   */
+  summary: string;
+  action: 'CREATE' | 'UPDATE' | 'DELETE';
+  /**
+   * Slug of the collection that changed.
+   */
+  collectionSlug: string;
+  /**
+   * Id of the record that changed.
+   */
+  documentId: string;
+  /**
+   * Authenticated user who made the change. Cleared if that user is later deleted; the operator id and email snapshots remain.
+   */
+  actor?: (number | null) | User;
+  /**
+   * Snapshot of the operator id. Kept after the user row is deleted. Stored separately from the operator relationship so the two columns cannot collide.
+   */
+  operatorId?: string | null;
+  /**
+   * Snapshot of the operator email at the time of the change.
+   */
+  actorEmail?: string | null;
+  /**
+   * CF-Connecting-IP only. Forwarded headers are not stored here.
+   */
+  ipAddress?: string | null;
+  /**
+   * First X-Forwarded-For hop, or X-Real-IP. Personal data. Anyone who can read audit logs can see it. Not authenticated. Do not treat this as the client.
+   */
+  untrustedClientIp?: string | null;
+  userAgent?: string | null;
+  occurredAt: string;
+  /**
+   * Old and new value of each changed field. Secrets are redacted.
+   */
+  changes?:
+    | {
+        path: string;
+        oldValue?:
+          | {
+              [k: string]: unknown;
+            }
+          | unknown[]
+          | string
+          | number
+          | boolean
+          | null;
+        newValue?:
+          | {
+              [k: string]: unknown;
+            }
+          | unknown[]
+          | string
+          | number
+          | boolean
+          | null;
+        id?: string | null;
+      }[]
+    | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
-  id: number
-  key: string
+  id: number;
+  key: string;
   data:
     | {
-        [k: string]: unknown
+        [k: string]: unknown;
       }
     | unknown[]
     | string
     | number
     | boolean
-    | null
+    | null;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-locked-documents".
  */
 export interface PayloadLockedDocument {
-  id: number
+  id: number;
   document?:
     | ({
-        relationTo: 'users'
-        value: number | User
+        relationTo: 'users';
+        value: number | User;
       } | null)
     | ({
-        relationTo: 'media'
-        value: number | Media
+        relationTo: 'media';
+        value: number | Media;
       } | null)
     | ({
-        relationTo: 'client-security-state'
-        value: number | ClientSecurityState
+        relationTo: 'client-security-state';
+        value: number | ClientSecurityState;
       } | null)
     | ({
-        relationTo: 'client-security-versions'
-        value: number | ClientSecurityVersion
+        relationTo: 'client-security-versions';
+        value: number | ClientSecurityVersion;
       } | null)
     | ({
-        relationTo: 'client-security-counters'
-        value: number | ClientSecurityCounter
+        relationTo: 'client-security-counters';
+        value: number | ClientSecurityCounter;
       } | null)
     | ({
-        relationTo: 'client-security-audit'
-        value: number | ClientSecurityAudit
+        relationTo: 'client-security-audit';
+        value: number | ClientSecurityAudit;
       } | null)
-  globalSlug?: string | null
+    | ({
+        relationTo: 'roles';
+        value: number | Role;
+      } | null)
+    | ({
+        relationTo: 'permissions';
+        value: number | Permission;
+      } | null)
+    | ({
+        relationTo: 'role-permissions';
+        value: number | RolePermission;
+      } | null)
+    | ({
+        relationTo: 'organizations';
+        value: number | Organization;
+      } | null)
+    | ({
+        relationTo: 'branches';
+        value: number | Branch;
+      } | null)
+    | ({
+        relationTo: 'data-classes';
+        value: number | DataClass;
+      } | null)
+    | ({
+        relationTo: 'records';
+        value: number | Record;
+      } | null)
+    | ({
+        relationTo: 'system-parameters';
+        value: number | SystemParameter;
+      } | null);
+  globalSlug?: string | null;
   user: {
-    relationTo: 'users'
-    value: number | User
-  }
-  updatedAt: string
-  createdAt: string
+    relationTo: 'users';
+    value: number | User;
+  };
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-preferences".
  */
 export interface PayloadPreference {
-  id: number
+  id: number;
   user: {
-    relationTo: 'users'
-    value: number | User
-  }
-  key?: string | null
+    relationTo: 'users';
+    value: number | User;
+  };
+  key?: string | null;
   value?:
     | {
-        [k: string]: unknown
+        [k: string]: unknown;
       }
     | unknown[]
     | string
     | number
     | boolean
-    | null
-  updatedAt: string
-  createdAt: string
+    | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-migrations".
  */
 export interface PayloadMigration {
-  id: number
-  name?: string | null
-  batch?: number | null
-  updatedAt: string
-  createdAt: string
+  id: number;
+  name?: string | null;
+  batch?: number | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "users_select".
  */
 export interface UsersSelect<T extends boolean = true> {
-  role?: T
-  updatedAt?: T
-  createdAt?: T
-  email?: T
-  resetPasswordToken?: T
-  resetPasswordExpiration?: T
-  salt?: T
-  hash?: T
-  loginAttempts?: T
-  lockUntil?: T
+  role?: T;
+  roles?: T;
+  organizations?: T;
+  branches?: T;
+  dataClasses?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  email?: T;
+  resetPasswordToken?: T;
+  resetPasswordExpiration?: T;
+  salt?: T;
+  hash?: T;
+  loginAttempts?: T;
+  lockUntil?: T;
   sessions?:
     | T
     | {
-        id?: T
-        createdAt?: T
-        expiresAt?: T
-      }
+        id?: T;
+        createdAt?: T;
+        expiresAt?: T;
+      };
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "media_select".
  */
 export interface MediaSelect<T extends boolean = true> {
-  alt?: T
-  updatedAt?: T
-  createdAt?: T
-  url?: T
-  thumbnailURL?: T
-  filename?: T
-  mimeType?: T
-  filesize?: T
-  width?: T
-  height?: T
+  alt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  url?: T;
+  thumbnailURL?: T;
+  filename?: T;
+  mimeType?: T;
+  filesize?: T;
+  width?: T;
+  height?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "client-security-state_select".
  */
 export interface ClientSecurityStateSelect<T extends boolean = true> {
-  revision?: T
-  commitNonce?: T
-  admissionNonce?: T
-  admissionAllowed?: T
+  revision?: T;
+  commitNonce?: T;
+  admissionNonce?: T;
+  admissionAllowed?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "client-security-versions_select".
  */
 export interface ClientSecurityVersionsSelect<T extends boolean = true> {
-  revision?: T
-  configuration?: T
-  digest?: T
-  actor?: T
-  operation?: T
-  createdAt?: T
+  revision?: T;
+  configuration?: T;
+  digest?: T;
+  actor?: T;
+  operation?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "client-security-counters_select".
  */
 export interface ClientSecurityCountersSelect<T extends boolean = true> {
-  bucketKey?: T
-  used?: T
-  resetAt?: T
+  bucketKey?: T;
+  used?: T;
+  resetAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "client-security-audit_select".
  */
 export interface ClientSecurityAuditSelect<T extends boolean = true> {
-  revision?: T
-  previousRevision?: T
-  actor?: T
-  operation?: T
-  createdAt?: T
+  revision?: T;
+  previousRevision?: T;
+  actor?: T;
+  operation?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "roles_select".
+ */
+export interface RolesSelect<T extends boolean = true> {
+  name?: T;
+  slug?: T;
+  description?: T;
+  grantsFullAccess?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "permissions_select".
+ */
+export interface PermissionsSelect<T extends boolean = true> {
+  key?: T;
+  label?: T;
+  description?: T;
+  collectionSlug?: T;
+  action?: T;
+  fieldPath?: T;
+  active?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "role-permissions_select".
+ */
+export interface RolePermissionsSelect<T extends boolean = true> {
+  role?: T;
+  permission?: T;
+  granted?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "organizations_select".
+ */
+export interface OrganizationsSelect<T extends boolean = true> {
+  name?: T;
+  slug?: T;
+  parent?: T;
+  scopePath?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "branches_select".
+ */
+export interface BranchesSelect<T extends boolean = true> {
+  name?: T;
+  slug?: T;
+  organization?: T;
+  parent?: T;
+  scopePath?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "data-classes_select".
+ */
+export interface DataClassesSelect<T extends boolean = true> {
+  name?: T;
+  slug?: T;
+  parent?: T;
+  scopePath?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "records_select".
+ */
+export interface RecordsSelect<T extends boolean = true> {
+  title?: T;
+  organization?: T;
+  branch?: T;
+  dataClass?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "system-parameters_select".
+ */
+export interface SystemParametersSelect<T extends boolean = true> {
+  key?: T;
+  category?: T;
+  label?: T;
+  description?: T;
+  valueType?: T;
+  value?: T;
+  sensitive?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "jobs_select".
+ */
+export interface JobsSelect<T extends boolean = true> {
+  name?: T;
+  payload?: T;
+  status?: T;
+  error?: T;
+  logs?: T;
+  attempt?: T;
+  maxAttempts?: T;
+  runAt?: T;
+  leaseExpiresAt?: T;
+  startedAt?: T;
+  finishedAt?: T;
+  idempotencyKey?: T;
+  claimToken?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-logs_select".
+ */
+export interface AuditLogsSelect<T extends boolean = true> {
+  summary?: T;
+  action?: T;
+  collectionSlug?: T;
+  documentId?: T;
+  actor?: T;
+  operatorId?: T;
+  actorEmail?: T;
+  ipAddress?: T;
+  untrustedClientIp?: T;
+  userAgent?: T;
+  occurredAt?: T;
+  changes?:
+    | T
+    | {
+        path?: T;
+        oldValue?: T;
+        newValue?: T;
+        id?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv_select".
  */
 export interface PayloadKvSelect<T extends boolean = true> {
-  key?: T
-  data?: T
+  key?: T;
+  data?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-locked-documents_select".
  */
 export interface PayloadLockedDocumentsSelect<T extends boolean = true> {
-  document?: T
-  globalSlug?: T
-  user?: T
-  updatedAt?: T
-  createdAt?: T
+  document?: T;
+  globalSlug?: T;
+  user?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-preferences_select".
  */
 export interface PayloadPreferencesSelect<T extends boolean = true> {
-  user?: T
-  key?: T
-  value?: T
-  updatedAt?: T
-  createdAt?: T
+  user?: T;
+  key?: T;
+  value?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-migrations_select".
  */
 export interface PayloadMigrationsSelect<T extends boolean = true> {
-  name?: T
-  batch?: T
-  updatedAt?: T
-  createdAt?: T
+  name?: T;
+  batch?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -445,17 +953,18 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
  */
 export interface CollectionsWidget {
   data?: {
-    [k: string]: unknown
-  }
-  width: 'full'
+    [k: string]: unknown;
+  };
+  width: 'full';
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "auth".
  */
 export interface Auth {
-  [k: string]: unknown
+  [k: string]: unknown;
 }
+
 
 declare module 'payload' {
   export interface GeneratedTypes extends Config {}

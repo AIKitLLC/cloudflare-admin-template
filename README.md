@@ -72,9 +72,14 @@ Open [http://localhost:3000/admin](http://localhost:3000/admin) to access the ad
 ```text
 ├── src/
 │   ├── app/                 # Next.js App Router (Admin & API endpoints)
+│   ├── access/              # RBAC decision pipeline and collection/field helpers
+│   ├── audit/               # Opt-in field-level audit trail (see src/audit/README.md)
+│   ├── scope/               # Organizational row scope, hierarchy, and assignment guards
 │   ├── collections/         # Payload Collection definitions
 │   │   ├── Users.ts         # User authentication collection
 │   │   └── Media.ts         # Asset upload collection (R2)
+│   ├── components/rbac/     # Permission matrix admin view
+│   ├── rbac/                # Roles, permissions, seeding, and matrix API
 │   ├── migrations/          # D1 database migrations
 │   ├── payload.config.ts    # Main Payload CMS configuration & bindings
 │   └── payload-types.ts     # Auto-generated TypeScript types
@@ -88,34 +93,32 @@ Open [http://localhost:3000/admin](http://localhost:3000/admin) to access the ad
 
 ## 📦 Adding Custom Service Collections
 
-Define your collections using TypeScript code in `src/collections/`:
+Wrap collections with `withRbac` so they join the permission matrix. Startup sync creates `create`, `read`, `update`, `delete`, and `export` permissions plus field read/write permissions for every data field.
 
 ```typescript
 import type { CollectionConfig } from 'payload'
+import { withRbac } from '../access/with-rbac'
 
-export const Customers: CollectionConfig = {
+export const Customers: CollectionConfig = withRbac({
   slug: 'customers',
   admin: {
     useAsTitle: 'name',
-  },
-  access: {
-    read: ({ req: { user } }) => Boolean(user),
   },
   fields: [
     { name: 'name', type: 'text', required: true },
     { name: 'email', type: 'email', required: true, unique: true },
     { name: 'status', type: 'select', options: ['active', 'suspended'], defaultValue: 'active' },
   ],
-}
+})
 ```
 
-Add your collection to `src/payload.config.ts`:
+Add the collection to `src/payload.config.ts`:
 
 ```typescript
 import { Customers } from './collections/Customers'
 
 export default buildConfig({
-  collections: [Users, Media, Customers],
+  collections: [Users, Media, Roles, Permissions, RolePermissions, Customers],
   // ...
 })
 ```
@@ -126,7 +129,64 @@ Generate updated TypeScript types:
 pnpm generate:types
 ```
 
----
+Restart the app once so the permission catalog picks up the new collection. Grant the new keys from **Permission Matrix** in the admin nav.
+
+## 🔐 Role-Based Access Control
+
+Roles, permissions, and role-permission grants live in D1.
+
+- **Super Admin** (`grantsFullAccess`) bypasses the matrix. The first user on an empty install receives this role. On an upgrade where users already exist and none has a role, only the earliest user (lowest `createdAt`, then lowest id) receives it, and that user's id and email are logged. The promotion runs once.
+- Only a full-access user can turn on `grantsFullAccess` or assign or remove a full-access role. Anyone else can grant only permissions they already hold, and can assign only roles whose grants are a subset of their own. They can update, delete, or unlock another user only when that user's permissions are a subset of theirs, including password and email changes. The last full-access assignment cannot be removed.
+- Other roles start with no grants. Assign actions per collection and read/write per field in `/admin/permission-matrix`. Plugin collections and globals are covered by the same rules. A global's keys are `global:{slug}:read` and `global:{slug}:update`.
+- `GET /api/{collection}/export` returns CSV. It requires the `export` action and still applies read and field permissions.
+- Media keeps anonymous read for public file URLs. Signed-in users still need `media:read`.
+
+Run the committed D1 migration before production deploy:
+
+```bash
+pnpm payload migrate
+```
+
+`src/migrations/20261010_080938_rbac_permission_matrix.ts` creates `roles`, `permissions`, `role_permissions`, and the user-role join. It is registered in `src/migrations/index.ts` and passed to the D1 adapter as `prodMigrations`, so a production Worker also applies it on connect. See [docs/rbac.md](docs/rbac.md) for the access pipeline and the extension points used by later features.
+
+## Organizational row scope
+
+Users can be assigned organizations, branches, and data classes. Organizations and branches form trees. A data class parent is a group: assignment includes every nested class. Non-full-access reads, updates, deletes, and `GET /api/{collection}/export` on a scoped collection are limited to that effective scope. Creating or retagging a row outside it is refused.
+
+A limited user can assign only scope values they already hold, including inherited ones, and cannot edit their own assignments or see user accounts outside that scope. Adding scope to someone else also requires that their permission keys are already within the actor's. Granting a permission is refused when a holder of that role can see rows outside the granter's scope. See [docs/row-scope.md](docs/row-scope.md).
+
+Opt in from `withRbac`:
+
+```typescript
+export const Customers = withRbac(
+  {
+    slug: 'customers',
+    fields: [
+      { name: 'name', type: 'text', required: true },
+      { name: 'organization', type: 'relationship', relationTo: 'organizations', required: true },
+      { name: 'branch', type: 'relationship', relationTo: 'branches', required: true },
+      { name: 'dataClass', type: 'relationship', relationTo: 'data-classes', required: true },
+    ],
+  },
+  {
+    rowScope: {
+      organizationField: 'organization',
+      branchField: 'branch',
+      dataClassField: 'dataClass',
+    },
+  },
+)
+```
+
+## Background jobs
+
+Long-running work is a row in `jobs`, not an HTTP request. Only names registered with `defineJob` can run. The admin **Job Monitor** (`/admin/job-monitor`) lists jobs, shows redacted payloads and logs, and can trigger or retry when the role has `jobs:trigger` or `jobs:retry`. Viewing requires `jobs:read`. Those keys are denied until granted.
+
+The Worker entry is `custom-worker.ts`. Its `queue` and `scheduled` handlers forward to the OpenNext `fetch` handler on an internal route, so Payload is bundled once. `pnpm build:worker` runs `next build --webpack`, then inlines `preview-props.json` and fills a missing `x-forwarded-host` from the request URL so `jobs.internal` survives OpenNext. Webpack does not emit Turbopack's hashed `drizzle-kit` require, so there is no drizzle-kit esbuild stub. Migrations still use the real `drizzle-kit` through `payload migrate`.
+
+Deploying this branch enables a cron of `*/5 * * * *`. It is active in `wrangler.jsonc` and starts firing as soon as the Worker is deployed, every five minutes, with or without a queue. Each run reaps expired leases and executes a bounded set of due jobs inside that invocation. Set `JOBS_INTERNAL_SECRET` with `wrangler secret put JOBS_INTERNAL_SECRET` (at least 32 characters). Do not put it in `wrangler.jsonc` vars.
+
+Cloudflare Queues are optional. The `queues` block in `wrangler.jsonc` is commented out, the same way an optional binding stays commented until the resource exists. Wrangler rejects a deploy that names a queue which does not exist, so leave that block commented until the queues have been created and the placeholder names have been replaced. When `JOB_QUEUE` is absent, jobs stay `PENDING` until the cron runs them. Local `pnpm dev` still runs due jobs in-process. Vitest does not. See [docs/jobs.md](docs/jobs.md).
 
 ## 🚢 Deployment
 
@@ -146,12 +206,49 @@ pnpm wrangler r2 bucket create <YOUR_BUCKET_NAME>
 
 Update `wrangler.jsonc` with your D1 `database_id` and R2 bucket name.
 
-### 2. Run Database Migrations & Deploy
+Set the public origin before the Worker serves traffic. `PAYLOAD_PUBLIC_SERVER_URL` is required in production. Admin login cookies, CSRF, and media URLs all use it. `PAYLOAD_ALLOWED_ORIGINS` is an optional comma-separated list of extra browser origins. Put both in the Worker environment, for example the commented `vars` block in `wrangler.jsonc`. Keep `PAYLOAD_SECRET` as a secret, not a var.
+
+### 2. Apply database migrations
+
+The template includes the initial migration, the audit-log tables, Payload's KV table, and the RBAC tables. Apply them to the local D1 database:
 
 ```bash
-pnpm payload migrate:create
+pnpm payload migrate
+```
+
+Run `pnpm payload migrate:create` only after a schema change, when you need a new migration file. It does not update D1.
+
+`pnpm run deploy` applies those migrations to the remote D1 database (`payload migrate` with `NODE_ENV=production`) and then runs `PRAGMA optimize`.
+
+### 3. Build the Worker and deploy
+
+Build the OpenNext bundle. `pnpm build` only runs Next.js. `pnpm build:worker` runs that build through OpenNext and applies the preview-props patch described in [docs/worker-build.md](docs/worker-build.md).
+
+```bash
+pnpm build:worker
+```
+
+Check the bundle without uploading anything:
+
+```bash
+pnpm exec wrangler deploy --dry-run
+```
+
+Serve that bundle on your machine with local D1 and R2:
+
+```bash
+pnpm exec wrangler dev --local
+```
+
+Open [http://localhost:8787/admin](http://localhost:8787/admin).
+
+Set `PAYLOAD_SECRET` on the Worker before the first real deploy (`wrangler secret put PAYLOAD_SECRET`). Then deploy migrations and the app:
+
+```bash
 pnpm run deploy
 ```
+
+For plan limits, see the note on Workers plans at the top of this file.
 
 ---
 
@@ -184,6 +281,10 @@ pnpm build:worker
 
 # Run end-to-end Playwright tests
 pnpm test:e2e
+
+
+# Rebuild the Worker, dry-run the bundle, and serve /admin locally
+pnpm test:worker
 ```
 
 ---
@@ -208,3 +309,9 @@ verification limits.
 ## 📄 License
 
 MIT © [AI Kit LLC](https://github.com/AIKitLLC)
+
+## Audit trail
+
+`Users` and `Media` record an append-only, field-level audit row on create, update, and delete. Opt another collection in with `withAuditTrail` from `src/audit`. Passwords, tokens, hashes, salts, sessions, and similar secrets are stored as `[REDACTED]`. A failed audit write is counted, logged, and does not fail the user's change.
+
+`untrustedClientIp` is personal data visible to anyone who can read the trail. Reads use the `audit-logs:read` grant. Full access still passes. The collection is not wrapped in `withRbac`, so create, update, delete, and export are not matrix cells. The D1 migration `src/migrations/20261010_080422_audit_logs.ts` creates only `audit_logs` and `audit_logs_changes`. It does not create `payload_kv`. See [src/audit/README.md](src/audit/README.md).
