@@ -18,6 +18,7 @@ const AUTH_EXPORT_FIELDS = new Set([
   'salt',
   'resetPasswordToken',
   'resetPasswordExpiration',
+  'resetPasswordRequestedAt',
   'loginAttempts',
   'lockUntil',
   'sessions',

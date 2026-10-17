@@ -4,7 +4,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 
 import config from '@/payload.config'
 import { GET as nativeGet } from '@/app/api/client/v1/me/route'
-import initialSchema from '@/migrations/20250929_111647.json'
+import currentSchema from '@/migrations/20261017_133958_payload_3_91_security.json'
 import { localIntegrationRuntime, registerIntegrationPayload } from './local-runtime'
 import { initializeClientSecuritySchema } from '@/client-security/initialize'
 import { createClientSecurityStore } from '@/client-security/store'
@@ -170,7 +170,7 @@ describe('local Payload D1 and client authentication', () => {
       name: string
     }>()
     expect(columns.results.map((column) => column.name).sort()).toEqual(
-      Object.keys(initialSchema.tables.media.columns).sort(),
+      Object.keys(currentSchema.tables.media.columns).sort(),
     )
     const response = await get(
       new Request(`https://admin.fixture.invalid/api/media/${legacyMediaId}`),

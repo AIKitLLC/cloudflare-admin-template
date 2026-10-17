@@ -15,12 +15,30 @@ import { whereForBinding } from '@/scope/where/where-for-binding'
 
 describe('row scope rules', () => {
   it('treats only the permission-payload argument shape as a probe', () => {
-    expect(isPermissionPayloadCall({ id: undefined, data: undefined, req: {} })).toBe(true)
-    expect(permissionDocumentId({ id: '4', data: undefined, req: {} })).toBe('4')
-    expect(permissionDocumentId({ id: undefined, data: undefined, req: {} })).toBeUndefined()
     expect(
       isPermissionPayloadCall({
         id: undefined,
+        collectionConfig: undefined,
+        data: undefined,
+        req: {},
+      }),
+    ).toBe(true)
+    expect(
+      permissionDocumentId({ id: '4', collectionConfig: undefined, data: undefined, req: {} }),
+    ).toBe('4')
+    expect(
+      permissionDocumentId({
+        id: undefined,
+        collectionConfig: undefined,
+        data: undefined,
+        req: {},
+      }),
+    ).toBeUndefined()
+    expect(isPermissionPayloadCall({ id: undefined, data: undefined, req: {} })).toBe(false)
+    expect(
+      isPermissionPayloadCall({
+        id: undefined,
+        collectionConfig: undefined,
         data: undefined,
         isReadingStaticFile: false,
         req: {},
@@ -29,6 +47,7 @@ describe('row scope rules', () => {
     expect(
       permissionDocumentId({
         id: 4,
+        collectionConfig: undefined,
         data: undefined,
         isReadingStaticFile: false,
         req: {},
