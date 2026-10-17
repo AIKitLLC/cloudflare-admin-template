@@ -23,18 +23,19 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 - Pinned stack in `pnpm-lock.yaml`: Payload `3.82.1`, Next.js `16.4.0`, React `19.3.0`, `@opennextjs/cloudflare` `1.20.11`, Wrangler `4.116.0`, TypeScript `6.0.3`, Vitest `5.0.1`, Playwright `1.63.0`.
 - `pnpm ci:local` runs `scripts/ci-local.sh`: frozen install, `typecheck`, `typecheck:firebase`, `lint`, unit tests (`tests/unit`), integration tests (`tests/int`), `next build`, and the OpenNext Worker bundle. `--maxWorkers N` caps test parallelism. It needs no secrets and no Cloudflare account, and it deploys nothing.
 - `.github/workflows/ci.yml` runs the same script in job `verify` on every pull request and on pushes to `main`. Runner `ubuntu-24.04`, Node from `.nvmrc`, actions pinned by commit SHA, `contents: read`.
-- `.github/workflows/architecture.yml` (added by #17) runs a report-only architecture analysis on pull requests. See `AGENTS.md`.
+- `.github/workflows/architecture.yml` (added by #27) runs a report-only architecture analysis on pull requests as an inline, hash-locked job. See `AGENTS.md`.
 - Playwright E2E tests (`tests/e2e`) are not part of `ci:local` or CI yet.
 
 ## Open pull requests
 
 | PR | Title | Base | State |
 | --- | --- | --- | --- |
+| #27 | ci: run architecture analysis as an inline, hash-locked job | `main` | This change; supersedes #17 |
 | #26 | chore: remove unused example route | `main` | Ready for review |
 | #20 | feat: split admin features into Payload plugins | `integration/admin-stack` | Draft |
 | #19 | integration: admin stack (reference only, do not merge) | `main` | Draft |
 | #18 | fix: make the OpenNext Cloudflare worker build succeed | `main` | Draft |
-| #17 | chore: adopt agent and architecture standards | `main` | This change |
+| #17 | chore: adopt agent and architecture standards | `main` | Superseded by #27 |
 | #15 | feat: background jobs, queue consumer, and job monitor | #11 branch | Draft |
 | #14 | feat: centralized system parameters with typed values and isolate cache | #11 branch | Draft |
 | #13 | feat: row-level security and organizational data scoping | #11 branch | Draft |
@@ -80,7 +81,7 @@ Labels exist (`type:*`, `area:*`, `status:*`, `priority:*`). No milestones exist
 | #8 | Advanced data grid | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
 | #9 | System parameters and configuration | `type:feature`, `area:collections`, `status:in-review`, `priority:p1` | #14 |
 | #10 | Safe script runner | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
-| #16 | chore: adopt agent and architecture standards | `type:chore`, `type:docs`, `status:in-review` | #17 |
+| #16 | chore: adopt agent and architecture standards | `type:chore`, `type:docs`, `status:in-review` | #27 (supersedes #17) |
 
 Proposed milestones, for a person with permission to create them:
 
@@ -97,4 +98,4 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Pull request #17 (ready for review, `cursor/agent-standards-94c6`, closes #16) adds `AGENTS.md`, vendored ponytail and i-have-adhd skills, Cursor rules, `.cursor/mcp.json`, this file, `docs/ARCHITECTURE.md`, and `.github/workflows/architecture.yml`. It does not change product behavior.
+Pull request #27 (`ci/architecture-inline`, base `main`, closes #16) supersedes #17. It contains all of #17 (`AGENTS.md`, vendored ponytail and i-have-adhd skills, Cursor rules, `.cursor/mcp.json`, this file, `docs/ARCHITECTURE.md`) and replaces #17's composite-action `.github/workflows/architecture.yml` with an inline job: actions pinned by commit SHA, `persist-credentials: false`, and a hash-locked arcade-agent install from `.github/arcade-agent/requirements.txt`. It does not change product behavior.
