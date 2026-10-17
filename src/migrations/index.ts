@@ -7,6 +7,7 @@ import * as migration_20261010_110209_scope_path from './20261010_110209_scope_p
 import * as migration_20261010_143942_system_parameters from './20261010_143942_system_parameters'
 import * as migration_20261010_154532_jobs_queue from './20261010_154532_jobs_queue'
 import * as migration_20261013_120000 from './20261013_120000'
+import * as migration_20261017_105600_login_throttle from './20261017_105600_login_throttle'
 
 export const migrations = [
   {
@@ -53,5 +54,10 @@ export const migrations = [
     up: migration_20261013_120000.up,
     down: migration_20261013_120000.down,
     name: '20261013_120000',
+  },
+  {
+    up: migration_20261017_105600_login_throttle.up,
+    down: migration_20261017_105600_login_throttle.down,
+    name: '20261017_105600_login_throttle',
   },
 ]

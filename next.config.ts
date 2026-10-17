@@ -6,6 +6,8 @@ import type { NextConfig } from 'next'
 initOpenNextCloudflareForDev({ remoteBindings: false })
 
 const nextConfig: NextConfig = {
+  // Integration tests start `next dev`; keep it from writing AGENTS.md.
+  agentRules: false,
   // OpenNext packages the traced standalone server into the Worker bundle.
   output: 'standalone',
   images: {

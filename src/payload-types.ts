@@ -73,6 +73,7 @@ export interface Config {
     'client-security-versions': ClientSecurityVersion;
     'client-security-counters': ClientSecurityCounter;
     'client-security-audit': ClientSecurityAudit;
+    'login-throttle': LoginThrottle;
     roles: Role;
     permissions: Permission;
     'role-permissions': RolePermission;
@@ -96,6 +97,7 @@ export interface Config {
     'client-security-versions': ClientSecurityVersionsSelect<false> | ClientSecurityVersionsSelect<true>;
     'client-security-counters': ClientSecurityCountersSelect<false> | ClientSecurityCountersSelect<true>;
     'client-security-audit': ClientSecurityAuditSelect<false> | ClientSecurityAuditSelect<true>;
+    'login-throttle': LoginThrottleSelect<false> | LoginThrottleSelect<true>;
     roles: RolesSelect<false> | RolesSelect<true>;
     permissions: PermissionsSelect<false> | PermissionsSelect<true>;
     'role-permissions': RolePermissionsSelect<false> | RolePermissionsSelect<true>;
@@ -345,6 +347,16 @@ export interface ClientSecurityAudit {
   actor: string;
   operation: string;
   createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "login-throttle".
+ */
+export interface LoginThrottle {
+  id: number;
+  bucketKey: string;
+  used: number;
+  resetAt: number;
 }
 /**
  * Catalog of collection actions and field permissions. Synced from the Payload config on startup.
@@ -756,6 +768,15 @@ export interface ClientSecurityAuditSelect<T extends boolean = true> {
   actor?: T;
   operation?: T;
   createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "login-throttle_select".
+ */
+export interface LoginThrottleSelect<T extends boolean = true> {
+  bucketKey?: T;
+  used?: T;
+  resetAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
