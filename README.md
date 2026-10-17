@@ -254,7 +254,7 @@ Set `PAYLOAD_SECRET` on the Worker before the first real deploy (`wrangler secre
 pnpm run deploy
 ```
 
-Then create the first admin and put `/admin` behind Cloudflare Access before you share the URL. See [First admin and admin access](#first-admin-and-admin-access).
+Then create the first admin with `pnpm admin:create` and set up the required Cloudflare Access application for `/admin` and `/api/users/*` before you share the URL. See [First admin and admin access](#first-admin-and-admin-access).
 
 For plan limits, see the note on Workers plans at the top of this file.
 
@@ -262,14 +262,13 @@ For plan limits, see the note on Workers plans at the top of this file.
 
 ## First admin and admin access
 
-Public sign-up does not create admins. Full steps are in [docs/admin-access.md](docs/admin-access.md).
+Full steps are in [docs/admin-access.md](docs/admin-access.md).
 
-1. **Create the first admin** with `pnpm admin:create --email <email> --confirm` (password from `FIRST_ADMIN_PASSWORD`). It refuses when any user exists. For remote D1, run it with `NODE_ENV=production PAYLOAD_SECRET=ignore` after `pnpm run deploy:database`.
-2. **Or over HTTP, once:** set the Worker secret `ADMIN_SETUP_TOKEN` (`wrangler secret put ADMIN_SETUP_TOKEN`, at least 32 characters) and send `POST /api/users/first-register` with the `x-admin-setup-token` header while the `users` table is empty. Delete the secret afterwards. Without it, a request that is not signed in cannot create users.
-3. **After that,** only a signed-in user with `users:create` can add users.
-4. **Put `/admin` behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/self-hosted-public-app/)** before opening the Worker publicly.
+1. **Create the first admin with the CLI.** `pnpm admin:create --email <email> --confirm` (password from `FIRST_ADMIN_PASSWORD`) is the only way to create the first admin, and it refuses when any user exists. For remote D1, run it with `NODE_ENV=production PAYLOAD_SECRET=ignore` after `pnpm run deploy:database`. The admin panel's "create first user" screen is intentionally unavailable.
+2. **After that,** only a signed-in user with `users:create` can add users. A request without a signed-in user cannot create users.
+3. **Cloudflare Access is required in production** in front of `/admin` and `/api/users/*` (including `/api/users/login`). See [the Access steps](docs/admin-access.md#cloudflare-access-is-required-in-production).
 
-Admin session cookies are `Secure` in production (`SameSite=Lax`). Sign-in is limited per account (Payload: 5 failures, 10-minute lock) and per client IP (10 failed attempts per 15 minutes, then 429). Add the Cloudflare WAF rate limiting rule described in [docs/admin-access.md](docs/admin-access.md#cloudflare-waf-rate-limiting-rule) as well.
+Admin session cookies are `Secure` in production (`SameSite=Lax`). Sign-in is limited per account (Payload: 5 failures, 10-minute lock) and per client IP: sign-in, forgot-password, reset-password, and refresh-token each have their own 15-minute limit, then 429. Add the Cloudflare WAF rate limiting rule described in [docs/admin-access.md](docs/admin-access.md#cloudflare-waf-rate-limiting-rule) as well.
 
 ## 🧪 Testing
 

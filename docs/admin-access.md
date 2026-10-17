@@ -1,14 +1,14 @@
 # Admin access setup
 
-How the first admin is created, how admin sessions are configured, and how sign-in is rate limited. Do these steps before the admin panel is reachable from the internet.
+How the first admin is created, which Cloudflare Access setup production requires, how admin sessions are configured, and how auth requests are rate limited. Do these steps before the Worker is reachable from the internet.
 
-## First-admin bootstrap
+## First admin: `pnpm admin:create`
 
-Public sign-up does not create admins. A request that is not signed in can create a user only when the `users` table is empty and the request carries the setup token. Once any user exists, new users are created by a signed-in user with the `users:create` permission, from the admin panel or the API. The first user receives the Super Admin role (see the RBAC section of the README).
+`pnpm admin:create` is the only way to create the first admin. Over HTTP, `users` can be created only by a signed-in user with the `users:create` permission, from the admin panel or the API. A request without a signed-in user cannot create users, whether or not users exist.
 
-### Option A: CLI (recommended)
+The admin panel's "create first user" screen (`/admin/create-first-user`) and `POST /api/users/first-register` are intentionally unavailable: on a new install that screen refuses the form. Use `pnpm admin:create`.
 
-`pnpm admin:create` runs `scripts/create-first-admin.mjs` through the Payload CLI. It refuses to run when any user exists. The password comes from the `FIRST_ADMIN_PASSWORD` environment variable (at least 12 characters), so it is not part of the command arguments.
+`pnpm admin:create` runs `scripts/create-first-admin.mjs` through the Payload CLI and refuses to run when any user exists. The password comes from the `FIRST_ADMIN_PASSWORD` environment variable (at least 12 characters), so it is not part of the command arguments. The first user receives the Super Admin role (see the RBAC section of the README).
 
 Local D1 (the database `pnpm dev` uses):
 
@@ -27,49 +27,56 @@ Set `CLOUDFLARE_ENV` as you do for `pnpm run deploy` if you use a Wrangler envir
 
 On a local database that was created with `pnpm payload migrate` instead of `pnpm dev`, the CLI's development-mode schema push can fail on an index that already exists. Run `pnpm admin:create` on a database created by `pnpm dev`, or with `NODE_ENV=production` against migrated D1.
 
-### Option B: HTTP with a setup token
+## Cloudflare Access is required in production
 
-For automated setups, the first admin can be created over HTTP while the `users` table is empty:
+Production deployments must put Cloudflare Access in front of the admin panel and the `users` auth API: `/admin` and `/api/users/*`, which includes `/api/users/login`, `/api/users/forgot-password`, `/api/users/reset-password`, and `/api/users/refresh-token`. Payload's own sign-in still applies behind Access. Access signs people in before a request reaches the Worker, so only your team's identities reach these routes.
 
-1. Set the Worker secret `ADMIN_SETUP_TOKEN` (at least 32 characters) with `wrangler secret put ADMIN_SETUP_TOKEN`. Do not put it in `vars` or in the repository.
-2. Send the request with the token in the `x-admin-setup-token` header:
+Steps, in the Cloudflare dashboard:
 
-   ```bash
-   curl -X POST https://<your-host>/api/users/first-register \
-     -H 'content-type: application/json' \
-     -H "x-admin-setup-token: $ADMIN_SETUP_TOKEN" \
-     --data '{"email":"admin@example.com","password":"<password>","confirm-password":"<password>"}'
-   ```
+1. Go to **Zero Trust** > **Access** > **Applications** and select **Add an application** > **Self-hosted**.
+2. Add the public hostname of the Worker twice, once with path `admin` and once with path `api/users`. Access paths also cover everything under them. If the Worker is also served on its `workers.dev` hostname, add the same two paths for that hostname too, or turn off the `workers.dev` route.
+3. Add an **Allow** policy for your team: specific emails, an email domain, or an identity-provider group.
+4. If scripts or services call `/api/users/*`, create an Access **service token** and add a **Service Auth** policy for it. Those clients send the `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers.
+5. If the GraphQL endpoint (`/api/graphql`) is only used by your team, add path `api/graphql` as well.
+6. Save, then open `https://<your-host>/admin` in a private window and check that Access asks you to sign in first.
 
-3. Delete the secret afterwards with `wrangler secret delete ADMIN_SETUP_TOKEN`.
+See [Cloudflare Access for Workers](https://developers.cloudflare.com/workers/configuration/cloudflare-access/) and [Application paths](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/).
 
-Without the secret, or without the header, the request is refused with 403. The admin panel's "create first user" screen does not send the header, so on a new install use one of the two options above.
+### Account lockout and IP limits
 
-## Put `/admin` behind Cloudflare Access
-
-Before you open the Worker to the public, put the admin panel behind [Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/self-hosted-public-app/). Create a self-hosted application for `<your-host>/admin` (and `/api` if only your team uses the API) with a policy that allows only your team's identities. Access then signs users in before any request reaches the Worker. Payload's own login still applies behind it.
+The Worker applies two independent limits to sign-in (below). The per-account lockout counts failed sign-ins for one account from any address. The per-IP limit counts requests from one address across all accounts. With Access in front of `/api/users/*`, only your team's requests reach either limit, which is why Access is required in production.
 
 ## Admin session cookies
 
 `src/auth/users-auth.ts` sets the `users` auth cookies to `Secure` when `NODE_ENV` is `production`, with `SameSite=Lax`. Local development over `http://localhost` keeps non-`Secure` cookies so sign-in works there.
 
-## Sign-in throttling
+## Auth request throttling
 
-Two limits apply in the Worker:
+Limits applied in the Worker:
 
 - **Per account:** Payload locks an account for 10 minutes after 5 failed sign-ins (`maxLoginAttempts`, `lockTime`).
-- **Per client IP:** `src/auth/login-throttle.ts` counts sign-in attempts per `CF-Connecting-IP` in the D1 table `login_throttle` (migration `20261017_105600_login_throttle`). After 10 failed attempts in 15 minutes, `POST /api/users/login` and the GraphQL `loginUser` mutation answer 429 until the window ends. A successful sign-in does not count. Local API calls (`payload.login` in scripts and tests) are not counted.
+- **Per client IP:** `src/auth/login-throttle.ts` counts requests per `CF-Connecting-IP` and operation in the D1 table `login_throttle` (migration `20261017_105600_login_throttle`). Within 15 minutes, each IP gets:
+
+  | Operation | Routes | Limit |
+  | --- | --- | --- |
+  | Sign-in | `POST /api/users/login`, GraphQL `loginUser` | 10 failed attempts (successful sign-ins are not counted) |
+  | Forgot password | `POST /api/users/forgot-password`, GraphQL `forgotPasswordUser` | 5 requests |
+  | Reset password | `POST /api/users/reset-password`, GraphQL `resetPasswordUser` | 10 requests |
+  | Refresh token | `POST /api/users/refresh-token`, GraphQL `refreshTokenUser` | 60 requests |
+
+  Over the limit, the route answers 429 until the window ends. Expired rows are deleted during later writes. Local API calls (`payload.login` in scripts and tests) are not counted.
+- **Production only:** a request without `CF-Connecting-IP` is refused with 400 (Cloudflare always sets it on requests that reach the Worker). If the D1 binding is unavailable, these routes answer 503 and the Worker logs an error once, instead of running without the limit. Outside production, requests without the header share one counter, and a missing binding skips the limit.
 
 ### Cloudflare WAF rate limiting rule
 
-Add a zone-level [rate limiting rule](https://developers.cloudflare.com/waf/rate-limiting-rules/) so that bursts are stopped at the edge before they reach the Worker. WAF rules apply to the Worker on a custom domain or route in your zone.
+Add a zone-level [rate limiting rule](https://developers.cloudflare.com/waf/rate-limiting-rules/) so that bursts are stopped at the edge before they reach the Worker. WAF rules apply to the Worker on a custom domain or route in your zone, not on its `workers.dev` hostname.
 
 In the dashboard, open **Security** > **WAF** > **Rate limiting rules** and create a rule:
 
 - **If incoming requests match:**
 
   ```text
-  (http.request.method eq "POST" and http.request.uri.path in {"/api/users/login" "/api/graphql"})
+  (http.request.method eq "POST" and http.request.uri.path in {"/api/users/login" "/api/users/forgot-password" "/api/users/reset-password" "/api/users/refresh-token" "/api/graphql"})
   ```
 
 - **With the same characteristics:** IP.
@@ -77,4 +84,4 @@ In the dashboard, open **Security** > **WAF** > **Rate limiting rules** and crea
 - **Then take action:** Block.
 - **For duration:** Free plan: 10 seconds. Pro and above: for example 10 minutes.
 
-Supported periods and durations depend on the plan; see the availability table on that page. If your GraphQL clients send many requests, narrow the second path or create a separate rule for it.
+Supported periods and durations depend on the plan; see the availability table on that page. If your GraphQL clients send many requests, drop `/api/graphql` from this rule or give it a separate rule with a higher rate.
