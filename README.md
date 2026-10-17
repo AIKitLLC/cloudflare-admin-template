@@ -198,4 +198,4 @@ verification limits.
 
 ## 📄 License
 
-MIT © [AIKit LLC](https://github.com/AIKitLLC)
+MIT © [AI Kit LLC](https://github.com/AIKitLLC)
