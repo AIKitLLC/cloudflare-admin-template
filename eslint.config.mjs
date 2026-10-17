@@ -31,6 +31,7 @@ const eslintConfig = [
       '.qa/**',
       'src/payload-types.ts',
       'src/payload-generated-schema.ts',
+      'cloudflare-env.d.ts',
     ],
   },
 ]
