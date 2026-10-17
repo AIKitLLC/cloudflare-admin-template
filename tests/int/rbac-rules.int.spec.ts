@@ -90,6 +90,7 @@ describe('RBAC rules', () => {
       hash: 'secret-hash',
       salt: 'secret-salt',
       resetPasswordToken: 'token',
+      resetPasswordRequestedAt: '2026-10-17T00:00:00.000Z',
       sessions: [{ id: 's' }],
     })
     expect(visible).toEqual({ id: 1, email: 'a@example.com' })
