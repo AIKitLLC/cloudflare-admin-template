@@ -34,7 +34,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 | PR | Title | Base | State |
 | --- | --- | --- | --- |
-| — | feat: admin hardening 1 | `main` | This change; draft |
+| #30 | feat: admin hardening 1 | `main` | This change; draft |
 | #20 | feat: split admin features into Payload plugins | `integration/admin-stack` | Draft |
 
 #11–#15, #18, and #19 were closed as superseded by #29. #20 still targets `integration/admin-stack` and was not part of #29.
@@ -89,7 +89,7 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-`feat/admin-hardening-1` (draft, base `main` `0180b63`):
+Pull request #30 (`feat/admin-hardening-1`, draft, base `main` `0180b63`):
 
 - First-admin bootstrap: a request that is not signed in can create a user only while the `users` table is empty and only with the `x-admin-setup-token` header matching the optional Worker secret `ADMIN_SETUP_TOKEN`. `pnpm admin:create` (`scripts/create-first-admin.mjs`) creates the first admin through the Payload CLI.
 - Production cookie settings: `users` auth cookies are `Secure` in production, `SameSite=Lax` (`src/auth/users-auth.ts`).
