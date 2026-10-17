@@ -357,6 +357,22 @@ test('the guard trigger refuses a second user while a claim is live', async () =
     () => sqlite.prepare("INSERT INTO users (email) VALUES ('two@example.com')").run(),
     /first-run setup already created a user/,
   )
+  // Payload's update path is an upsert on the existing id; it must still work.
+  sqlite
+    .prepare(
+      "INSERT INTO users (id, email, roles) VALUES (1, 'one@example.com', '[7]') ON CONFLICT(id) DO UPDATE SET roles = excluded.roles",
+    )
+    .run()
+  assert.equal(userRows(sqlite)[0].roles, '[7]')
+  assert.throws(
+    () =>
+      sqlite
+        .prepare(
+          "INSERT INTO users (id, email) VALUES (2, 'two@example.com') ON CONFLICT(id) DO UPDATE SET email = excluded.email",
+        )
+        .run(),
+    /first-run setup already created a user/,
+  )
   assert.equal(await state.complete('a'), true)
   // After completion the guard is inactive and admins can add users.
   sqlite.prepare("INSERT INTO users (email) VALUES ('two@example.com')").run()
