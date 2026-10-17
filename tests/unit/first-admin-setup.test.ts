@@ -79,7 +79,7 @@ function fakePayload(
       await beforeInsert?.(data.email)
       const row = sqlite
         .prepare('INSERT INTO users (email, roles) VALUES (?, ?) RETURNING id')
-        .get(data.email, '[]') as { id: number }
+        .get(data.email.toLowerCase(), '[]') as { id: number }
       await afterInsert?.(data.email)
       return { id: row.id }
     },
@@ -124,12 +124,15 @@ test('completion is permanent for the web flow; the CLI can recover an empty tab
   const { db, sqlite } = sqliteDatabase()
   const state = createSetupState(db)
   assert.equal(await state.claim('a'), true)
+  sqlite.prepare("INSERT INTO users (email) VALUES ('first@example.com')").run()
   assert.equal(await state.complete('b'), false)
   assert.equal(await state.complete('a'), true)
   assert.equal(await state.completed(), true)
+  sqlite.prepare('DELETE FROM users').run()
   assert.equal(sqlite.prepare('SELECT count(*) AS n FROM users').get()?.n, 0)
   assert.equal(await state.claim('c'), false)
   assert.equal(await state.claim('d', { afterCompletion: true }), true)
+  sqlite.prepare("INSERT INTO users (email) VALUES ('again@example.com')").run()
   assert.equal(await state.complete('d'), true)
   assert.equal(await state.completed(), true)
 })
@@ -489,4 +492,34 @@ test("a failed setup never removes another request's account with the same email
     userRows(sqlite).map((user) => [user.id, JSON.parse(user.roles)]),
     [[b.id, [SUPER_ADMIN_ID]]],
   )
+})
+
+test('a failed setup with a mixed-case email removes the account it created', async () => {
+  const { db, sqlite } = sqliteDatabase()
+  const { payload, deletes } = fakePayload(sqlite, db, { failRoleUpdate: true })
+  await assert.rejects(
+    createFirstAdminAccount(
+      payload,
+      { email: 'Mixed.Case@Example.COM', password },
+      { source: 'web', req: webReq() },
+    ),
+    /role update failed/,
+  )
+  assert.equal(userRows(sqlite).length, 0)
+  assert.equal(deletes.length, 1)
+  assert.equal(await createSetupState(db).completed(), false)
+  // The claim was released, so setup can be retried.
+  assert.equal(await createSetupState(db).claim('retry'), true)
+})
+
+test('completion requires exactly one user', async () => {
+  const { db, sqlite } = sqliteDatabase()
+  const state = createSetupState(db)
+  assert.equal(await state.claim('a'), true)
+  assert.equal(await state.complete('a'), false)
+  sqlite.prepare("INSERT INTO users (email) VALUES ('one@example.com')").run()
+  sqlite.prepare("INSERT INTO users (email) VALUES ('two@example.com')").run()
+  assert.equal(await state.complete('a'), false)
+  sqlite.prepare("DELETE FROM users WHERE email = 'two@example.com'").run()
+  assert.equal(await state.complete('a'), true)
 })
