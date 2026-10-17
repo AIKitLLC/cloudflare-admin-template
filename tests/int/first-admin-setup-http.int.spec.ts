@@ -39,14 +39,14 @@ function runtimeEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
 }
 
 /** `form` posts like the admin panel's form: multipart with a `_payload` JSON field. */
-function setup(email: string, ip: string, origin = BASE, form = false) {
+function setup(email: string, ip: string, origin: string | null = BASE, form = false) {
   const fields = { email, password: PASSWORD, 'confirm-password': PASSWORD }
   const body = new FormData()
   body.set('_payload', JSON.stringify(fields))
   return fetch(`${BASE}/api/users/first-register`, {
     method: 'POST',
     headers: {
-      origin,
+      ...(origin ? { origin } : {}),
       'cf-connecting-ip': ip,
       ...(form ? {} : { 'content-type': 'application/json' }),
     },
@@ -190,6 +190,12 @@ describe('first-run admin setup over HTTP', () => {
     expect(await count('SELECT count(*) AS n FROM users')).toBe(0)
   })
 
+  it('refuses a setup request without Origin, Sec-Fetch-Site, or Referer', async () => {
+    const response = await setup('no-origin@example.com', '192.0.2.33', null)
+    expect(response.status).toBe(403)
+    expect(await count('SELECT count(*) AS n FROM users')).toBe(0)
+  })
+
   it('lets exactly one of two concurrent requests become Super Admin', async () => {
     const emails = ['race-a@example.com', 'race-b@example.org']
     const responses = await Promise.all([
@@ -197,6 +203,11 @@ describe('first-run admin setup over HTTP', () => {
       setup(emails[1], '192.0.2.32', BASE, true),
     ])
     expect(responses.map((response) => response.status).sort()).toEqual([200, 403])
+    expect(
+      await count(
+        "SELECT count(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name = 'setup_state_single_first_admin'",
+      ),
+    ).toBe(1)
     const winner = responses.findIndex((response) => response.status === 200)
     const body = (await responses[winner].json()) as { user?: { email?: string; id?: number } }
     expect(body.user?.email).toBe(emails[winner])

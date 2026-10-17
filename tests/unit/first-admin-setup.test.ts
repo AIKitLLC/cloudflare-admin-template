@@ -10,11 +10,13 @@ import {
   FIRST_ADMIN_SETUP_CONTEXT,
   isSameOriginSetupRequest,
   SETUP_CLAIM_TTL_MS,
+  SETUP_GUARD_TRIGGER_SQL,
   validateFirstAdminInput,
   type SetupStateDatabase,
 } from '../../src/auth/first-admin-setup'
 import { throttleAuthOperation } from '../../src/auth/login-throttle'
 import { createFirstAdmin } from '../../scripts/create-first-admin.mjs'
+import { SETUP_GUARD_TRIGGER_SQL as MIGRATION_GUARD_SQL } from '../../src/migrations/20261017_144000_setup_state'
 
 const SUPER_ADMIN_ID = 7
 
@@ -46,15 +48,27 @@ function sqliteDatabase() {
 function fakePayload(
   sqlite: DatabaseSync,
   db: SetupStateDatabase,
-  { failRoleUpdate = false }: { failRoleUpdate?: boolean } = {},
+  {
+    failRoleUpdate = false,
+    beforeInsert,
+    afterInsert,
+  }: {
+    failRoleUpdate?: boolean
+    beforeInsert?: (email: string) => Promise<void>
+    afterInsert?: (email: string) => Promise<void>
+  } = {},
 ) {
   const logs: unknown[] = []
+  const deletes: unknown[] = []
   const tick = () => new Promise((resolve) => setImmediate(resolve))
   const payload = {
     db: {
       binding: db,
-      deleteMany: async ({ where }: { where: { email: { equals: string } } }) => {
-        sqlite.prepare('DELETE FROM users WHERE email = ?').run(where.email.equals)
+      deleteMany: async ({ where }: { where: { id?: { equals: number } } }) => {
+        deletes.push(where)
+        // Only deletion by id is supported, so a cleanup by any other field fails the test.
+        if (!where.id) throw new Error(`unexpected delete: ${JSON.stringify(where)}`)
+        sqlite.prepare('DELETE FROM users WHERE id = ?').run(where.id.equals)
       },
     },
     find: async () => ({
@@ -62,9 +76,11 @@ function fakePayload(
     }),
     create: async ({ data }: { data: { email: string } }) => {
       await tick()
+      await beforeInsert?.(data.email)
       const row = sqlite
         .prepare('INSERT INTO users (email, roles) VALUES (?, ?) RETURNING id')
         .get(data.email, '[]') as { id: number }
+      await afterInsert?.(data.email)
       return { id: row.id }
     },
     findByID: async ({ id }: { id: number }) => {
@@ -80,7 +96,7 @@ function fakePayload(
     },
     logger: { info: (entry: unknown) => logs.push(entry) },
   }
-  return { payload: payload as unknown as Payload, logs }
+  return { payload: payload as unknown as Payload, logs, deletes }
 }
 
 const password = 'first-admin-password-123'
@@ -219,7 +235,36 @@ test('setup requests must come from the admin origin', () => {
       headers: new Headers(headers),
       payload: { config: { csrf: ['https://cms.example.com'] } },
     }) as unknown as PayloadRequest
-  assert.equal(isSameOriginSetupRequest(request({})), true)
+  // No Origin: only Sec-Fetch-Site same-origin or a Referer on an allowed origin passes.
+  assert.equal(isSameOriginSetupRequest(request({})), false)
+  assert.equal(isSameOriginSetupRequest(request({ 'sec-fetch-site': 'none' })), false)
+  assert.equal(
+    isSameOriginSetupRequest(
+      request({ referer: 'https://admin.example.com/admin/create-first-user' }),
+    ),
+    true,
+  )
+  assert.equal(
+    isSameOriginSetupRequest(request({ referer: 'https://cms.example.com/admin' })),
+    true,
+  )
+  assert.equal(
+    isSameOriginSetupRequest(request({ referer: 'https://other.example.net/admin' })),
+    false,
+  )
+  assert.equal(isSameOriginSetupRequest(request({ referer: 'not a url' })), false)
+  assert.equal(
+    isSameOriginSetupRequest(
+      request({ 'sec-fetch-site': 'cross-site', referer: 'https://admin.example.com/admin' }),
+    ),
+    false,
+  )
+  assert.equal(
+    isSameOriginSetupRequest(
+      request({ origin: 'https://other.example.net', referer: 'https://admin.example.com/admin' }),
+    ),
+    false,
+  )
   assert.equal(isSameOriginSetupRequest(request({ origin: 'https://admin.example.com' })), true)
   assert.equal(isSameOriginSetupRequest(request({ origin: 'https://cms.example.com' })), true)
   assert.equal(isSameOriginSetupRequest(request({ origin: 'https://other.example.net' })), false)
@@ -259,4 +304,189 @@ test('refresh with a valid session is not counted by the auth throttle', async (
   assert.equal(writes, 0)
   await throttleAuthOperation(args(req(null)))
   assert.ok(writes > 0)
+})
+
+function deferred() {
+  let resolve!: () => void
+  const promise = new Promise<void>((done) => (resolve = done))
+  return { promise, resolve }
+}
+
+const webReq = () => ({ context: {}, t: (key: string) => key }) as unknown as PayloadRequest
+const expireClaims = (sqlite: DatabaseSync) =>
+  sqlite
+    .prepare('UPDATE setup_state SET claimed_at = claimed_at - ?')
+    .run(SETUP_CLAIM_TTL_MS + 1000)
+const userRows = (sqlite: DatabaseSync) =>
+  sqlite.prepare('SELECT id, email, roles FROM users ORDER BY id').all() as Array<{
+    id: number
+    email: string
+    roles: string
+  }>
+
+test('the migration installs the same guard trigger as the runtime', () => {
+  assert.equal(MIGRATION_GUARD_SQL, SETUP_GUARD_TRIGGER_SQL)
+})
+
+test('a claim that was taken over can no longer be held', async () => {
+  const { db, sqlite } = sqliteDatabase()
+  let now = 1_000_000
+  const state = createSetupState(db, { nowMs: () => now })
+  assert.equal(await state.claim('a'), true)
+  assert.equal(await state.hold('a'), true)
+  now += SETUP_CLAIM_TTL_MS + 1
+  assert.equal(await state.hold('a'), false)
+  assert.equal(await state.claim('b'), true)
+  assert.equal(await state.hold('a'), false)
+  assert.equal(await state.hold('b'), true)
+  sqlite.prepare("INSERT INTO users (email) VALUES ('x@example.com')").run()
+  assert.equal(await state.hold('b'), false)
+})
+
+test('the guard trigger refuses a second user while a claim is live', async () => {
+  const { db, sqlite } = sqliteDatabase()
+  const state = createSetupState(db)
+  await state.installGuard()
+  await state.installGuard()
+  assert.equal(await state.claim('a'), true)
+  sqlite.prepare("INSERT INTO users (email) VALUES ('one@example.com')").run()
+  assert.throws(
+    () => sqlite.prepare("INSERT INTO users (email) VALUES ('two@example.com')").run(),
+    /first-run setup already created a user/,
+  )
+  assert.equal(await state.complete('a'), true)
+  // After completion the guard is inactive and admins can add users.
+  sqlite.prepare("INSERT INTO users (email) VALUES ('two@example.com')").run()
+  assert.equal(userRows(sqlite).length, 2)
+})
+
+test('two concurrent setups over a taken-over claim create one Super Admin (guard path)', async () => {
+  const { db, sqlite } = sqliteDatabase()
+  const aReady = deferred()
+  const aGo = deferred()
+  const bInserted = deferred()
+  const bGo = deferred()
+  const { payload, deletes } = fakePayload(sqlite, db, {
+    beforeInsert: async (email) => {
+      if (email !== 'a@example.com') return
+      aReady.resolve()
+      await aGo.promise
+    },
+    afterInsert: async (email) => {
+      if (email !== 'b@example.com') return
+      bInserted.resolve()
+      await bGo.promise
+    },
+  })
+  const a = createFirstAdminAccount(
+    payload,
+    { email: 'a@example.com', password },
+    {
+      source: 'web',
+      req: webReq(),
+    },
+  )
+  await aReady.promise
+  expireClaims(sqlite)
+  const b = createFirstAdminAccount(
+    payload,
+    { email: 'b@example.com', password },
+    {
+      source: 'web',
+      req: webReq(),
+    },
+  )
+  await bInserted.promise
+  aGo.resolve()
+  await assert.rejects(a, (error: { status?: number }) => error.status === 403)
+  bGo.resolve()
+  await b
+  const users = userRows(sqlite)
+  assert.deepEqual(
+    users.map((user) => [user.email, JSON.parse(user.roles)]),
+    [['b@example.com', [SUPER_ADMIN_ID]]],
+  )
+  assert.deepEqual(deletes, [])
+  assert.equal(await createSetupState(db).completed(), true)
+})
+
+test('two concurrent setups over a taken-over claim create one Super Admin (completion path)', async () => {
+  const { db, sqlite } = sqliteDatabase()
+  const aReady = deferred()
+  const aGo = deferred()
+  const { payload, deletes } = fakePayload(sqlite, db, {
+    beforeInsert: async (email) => {
+      if (email !== 'a@example.com') return
+      aReady.resolve()
+      await aGo.promise
+    },
+  })
+  const a = createFirstAdminAccount(
+    payload,
+    { email: 'a@example.com', password },
+    {
+      source: 'web',
+      req: webReq(),
+    },
+  )
+  await aReady.promise
+  expireClaims(sqlite)
+  const b = await createFirstAdminAccount(
+    payload,
+    { email: 'b@example.com', password },
+    {
+      source: 'web',
+      req: webReq(),
+    },
+  )
+  aGo.resolve()
+  await assert.rejects(a, (error: { status?: number }) => error.status === 409)
+  const users = userRows(sqlite)
+  assert.deepEqual(
+    users.map((user) => [user.id, user.email, JSON.parse(user.roles)]),
+    [[b.id, 'b@example.com', [SUPER_ADMIN_ID]]],
+  )
+  // The failed request removed only its own row, by id.
+  assert.equal(deletes.length, 1)
+  assert.notEqual((deletes[0] as { id: { equals: number } }).id.equals, b.id)
+})
+
+test("a failed setup never removes another request's account with the same email", async () => {
+  const { db, sqlite } = sqliteDatabase()
+  const aReady = deferred()
+  const aGo = deferred()
+  let calls = 0
+  const { payload, deletes } = fakePayload(sqlite, db, {
+    beforeInsert: async () => {
+      calls += 1
+      if (calls !== 1) return
+      aReady.resolve()
+      await aGo.promise
+    },
+  })
+  const a = createFirstAdminAccount(
+    payload,
+    { email: 'same@example.com', password },
+    {
+      source: 'web',
+      req: webReq(),
+    },
+  )
+  await aReady.promise
+  expireClaims(sqlite)
+  const b = await createFirstAdminAccount(
+    payload,
+    { email: 'same@example.com', password },
+    {
+      source: 'web',
+      req: webReq(),
+    },
+  )
+  aGo.resolve()
+  await assert.rejects(a)
+  assert.deepEqual(deletes, [])
+  assert.deepEqual(
+    userRows(sqlite).map((user) => [user.id, JSON.parse(user.roles)]),
+    [[b.id, [SUPER_ADMIN_ID]]],
+  )
 })
