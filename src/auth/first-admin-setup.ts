@@ -33,6 +33,8 @@ export type SetupStateDatabase = LoginThrottleDatabase
 /**
  * Database guard for first-run setup. While a setup claim is live, `users` can hold at most
  * one row: a second insert is aborted by SQLite, whichever request or process attempts it.
+ * Payload writes updates as `INSERT ... ON CONFLICT(id) DO UPDATE`, so a write to an existing
+ * id is let through.
  * Created by migration `20261017_144000_setup_state` and, idempotently, before each claim
  * (local development and tests build the schema without migrations).
  */
@@ -46,6 +48,7 @@ WHEN EXISTS (
     AND claim_token IS NOT NULL
     AND claimed_at > (CAST(strftime('%s', 'now') AS INTEGER) * 1000 - ${SETUP_CLAIM_TTL_MS})
 ) AND EXISTS (SELECT 1 FROM users)
+  AND NOT EXISTS (SELECT 1 FROM users WHERE id = NEW.id)
 BEGIN
   SELECT RAISE(ABORT, '${SETUP_GUARD_MESSAGE}');
 END`

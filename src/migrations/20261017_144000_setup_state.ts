@@ -27,6 +27,7 @@ WHEN EXISTS (
     AND claim_token IS NOT NULL
     AND claimed_at > (CAST(strftime('%s', 'now') AS INTEGER) * 1000 - 120000)
 ) AND EXISTS (SELECT 1 FROM users)
+  AND NOT EXISTS (SELECT 1 FROM users WHERE id = NEW.id)
 BEGIN
   SELECT RAISE(ABORT, 'first-run setup already created a user');
 END`
