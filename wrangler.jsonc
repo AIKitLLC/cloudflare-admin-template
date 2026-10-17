@@ -11,6 +11,13 @@
     // see https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public
     "global_fetch_strictly_public",
   ],
+  // Standalone verifier inputs. Managed client routes use owner-reviewed D1 configuration.
+  "vars": {
+    "FIREBASE_CLIENT_ENABLED": "false",
+    "FIREBASE_PROJECT_ID": "",
+    "FIREBASE_PROJECT_NUMBER": "",
+    "FIREBASE_APP_IDS": "",
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS",

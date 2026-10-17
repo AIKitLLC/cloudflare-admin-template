@@ -1,7 +1,13 @@
 import { withPayload } from '@payloadcms/next/withPayload'
+import { initOpenNextCloudflareForDev } from '@opennextjs/cloudflare'
+import type { NextConfig } from 'next'
 
-/** @type {import('next').NextConfig} */
-const nextConfig = {
+// Initialize Worker bindings for native client routes and Payload during Next.js development.
+initOpenNextCloudflareForDev({ remoteBindings: false })
+
+const nextConfig: NextConfig = {
+  // OpenNext packages the traced standalone server into the Worker bundle.
+  output: 'standalone',
   images: {
     localPatterns: [
       {

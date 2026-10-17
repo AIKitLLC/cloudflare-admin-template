@@ -17,7 +17,7 @@ Designed as an extensible starter kit for building custom back-office portals, i
 - **Storage:** [Cloudflare R2](https://developers.cloudflare.com/r2/) (S3-compatible asset storage via `@payloadcms/storage-r2`)
 - **Testing:** [Vitest](https://vitest.dev) & [Playwright](https://playwright.dev)
 
-> **Note:** Deploying Next.js via OpenNext on Cloudflare Workers currently requires the **Cloudflare Workers Paid** plan due to worker bundle size requirements (>3MB).
+> **Note on Workers plans:** Cloudflare limits Worker size to **64 MiB uncompressed on both the Free and Paid plans**, with no compressed size limit ([Workers limits](https://developers.cloudflare.com/workers/platform/limits/#worker-size)). A local build of this template produces about 15.5 MiB uncompressed (about 3.6 MiB gzip), so bundle size alone does not require Workers Paid. CPU time per request (10 ms on Free) and the 1 second startup limit have **not been measured** yet; check them with `wrangler` and Workers Logs before choosing a plan.
 
 ---
 
@@ -25,7 +25,7 @@ Designed as an extensible starter kit for building custom back-office portals, i
 
 ### 1. Prerequisites
 
-- [Node.js](https://nodejs.org/) `>= 24.15.0`
+- [Node.js](https://nodejs.org/) `>= 22.14.0` (CI uses Node 22, see `.nvmrc`)
 - [pnpm](https://pnpm.io/) `>= 9.x`
 - [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/)
 
@@ -133,11 +133,13 @@ pnpm generate:types
 ### 1. Create Cloudflare Resources
 
 Create your D1 Database:
+
 ```bash
 pnpm wrangler d1 create <YOUR_DATABASE_NAME>
 ```
 
 Create your R2 Bucket:
+
 ```bash
 pnpm wrangler r2 bucket create <YOUR_BUCKET_NAME>
 ```
@@ -155,9 +157,30 @@ pnpm run deploy
 
 ## 🧪 Testing
 
+Run every CI check locally (install, typecheck, lint, unit, integration, Next.js build, Worker bundle). No secrets or Cloudflare account needed:
+
 ```bash
-# Run unit & integration tests
+pnpm ci:local                      # or: scripts/ci-local.sh
+scripts/ci-local.sh --maxWorkers 2 # cap test parallelism on small machines
+```
+
+Individual steps:
+
+```bash
+# Firebase client authentication and route/ownership/quota identity tests
+pnpm test:unit
+
+# Actual local Cloudflare runtime using synthetic signed tokens (no external calls)
+pnpm test:firebase:runtime
+
+# Run isolated Payload D1/R2 and native route integration tests
 pnpm test:int
+
+# Build the application, exercise its local HTTP APIs, and package the Worker
+pnpm build
+pnpm test:api
+pnpm test:client-security:browser
+pnpm build:worker
 
 # Run end-to-end Playwright tests
 pnpm test:e2e
@@ -165,6 +188,23 @@ pnpm test:e2e
 
 ---
 
+## Firebase Native Clients
+
+The protected `GET /api/client/v1/me` example requires both a Firebase App Check token
+and a Firebase Anonymous Authentication ID token. It derives the client UID from the
+verified ID token and keeps Firebase clients separate from Payload administrator
+sessions. Owners manage public Firebase trust and persistent UID/IP/global quotas
+at `/admin/client-security`. Defaults remain disabled with zero quotas; activation
+requires the real project ID/number, allowed App IDs, and reviewed limits. Existing
+admins are not automatically promoted to owner. Audited revisions and rollback
+preserve active usage and reject stale saves.
+
+See [Firebase client authentication](docs/firebase-client-auth.md) for setup, Play
+Integrity requirements, the reusable route adapter, ownership/quota examples, and
+verification limits.
+
+---
+
 ## 📄 License
 
-MIT © [AIKit LLC](https://github.com/AIKitLLC)
+MIT © [AI Kit LLC](https://github.com/AIKitLLC)
