@@ -106,7 +106,9 @@ export function createSetupState(
       const row = await db
         .prepare(
           `UPDATE ${SETUP_STATE_TABLE} SET completed_at = ?3, claim_token = NULL, claimed_at = NULL
-           WHERE singleton = ?1 AND claim_token = ?2 RETURNING singleton`,
+           WHERE singleton = ?1 AND claim_token = ?2
+             AND (SELECT count(*) FROM users) = 1
+           RETURNING singleton`,
         )
         .bind(FIRST_ADMIN_SETUP_KEY, token, nowMs())
         .first<{ singleton: string }>()
