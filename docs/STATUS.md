@@ -51,7 +51,7 @@ On `main` today:
 
 - `wrangler.jsonc` still has the D1 `database_id` placeholder `DATABASE_ID`. Create the D1 database and R2 bucket and fill in the ids first (README, Deployment).
 - `PAYLOAD_SECRET` is a Worker secret (`package.json` `cloudflare.bindings`, `.env.example`), not a var in `wrangler.jsonc`.
-- Apply the migrations in `src/migrations` (listed in `src/migrations/index.ts`, the latest is `20261017_105600_login_throttle`) to the target D1 database with `pnpm run deploy:database` or `pnpm payload migrate`. Local `pnpm dev` is not a substitute.
+- Apply the migrations in `src/migrations` (listed in `src/migrations/index.ts`, the latest is `20261017_133958_payload_3_91_security`) to the target D1 database with `pnpm run deploy:database` or `pnpm payload migrate`. Local `pnpm dev` is not a substitute.
 - Create the first admin with `pnpm admin:create`. Cloudflare Access in front of `/admin` and `/api/users/*` is required in production. See `docs/admin-access.md`, and add the WAF rate limiting rule described there.
 - Firebase native clients are off by default (`FIREBASE_CLIENT_ENABLED` = `"false"`, empty project values in `wrangler.jsonc`). The first owner is set by an operator with `scripts/bootstrap-client-security-owner.mjs`. See `docs/firebase-client-auth.md`.
 - Workers plan: the README note on Workers plans is the source. Worker size is limited to 64 MiB uncompressed on both Free and Paid plans. A local build is about 15.7 MiB uncompressed (about 3.6 MiB gzip; measured 2026-10-17 06:18 CT at commit `b6c8198` with `wrangler deploy --dry-run`), so bundle size alone does not require Workers Paid. CPU time per request and startup time have not been measured yet.
