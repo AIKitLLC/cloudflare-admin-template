@@ -196,6 +196,11 @@ Cloudflare Queues are optional. The `queues` block in `wrangler.jsonc` is commen
 
 ## 🚢 Deployment
 
+For the deploy-button inputs, a separate demo instance, and post-deploy checks, see
+[Cloudflare demo deployment](docs/demo-deployment.md). The button provisions resources;
+it does not create the first administrator. Web setup is tracked separately in PR #32.
+
+
 ### 1. Create Cloudflare Resources
 
 Create your D1 Database:
