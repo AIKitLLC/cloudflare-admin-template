@@ -2,6 +2,13 @@
 
 Last updated: 2026-10-23.
 
+## Deployment follow-up (#40)
+
+The deploy-button inputs now include the required `JOBS_INTERNAL_SECRET` and descriptions
+for it and `PAYLOAD_PUBLIC_SERVER_URL`. See `docs/demo-deployment.md` for an isolated
+demo rollout and acceptance checks. Web first-admin setup (#32) is on `main`, and the
+status snapshot refresh (#39) is merged. A live demo has not been verified yet.
+
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for Tony.
 
 The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-23 around 08:15 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `abad182`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
