@@ -5,12 +5,12 @@ import {
   guardClientSecurityOwnerOperation,
   clearClientSecurityRecoveryOperation,
   isStoredClientSecurityOwner,
-} from '../auth/client-security-owner'
+} from '../auth'
 
-import { guardPublicUserCreation } from '../auth/first-admin'
-import { firstRegisterEndpoint, holdFirstAdminSetupClaim } from '../auth/first-admin-setup'
-import { releaseLoginAttempt, throttleAuthOperation } from '../auth/login-throttle'
-import { usersAuthOptions } from '../auth/users-auth'
+import { guardPublicUserCreation } from '../auth'
+import { firstRegisterEndpoint, holdFirstAdminSetupClaim } from '../auth'
+import { releaseLoginAttempt, throttleAuthOperation } from '../auth'
+import { usersAuthOptions } from '../auth'
 import { evaluateCollectionAccess } from '../access'
 import { isPermissionPayloadCall, permissionDocumentId } from '../access'
 import { withRbac } from '../access'

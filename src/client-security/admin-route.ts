@@ -1,6 +1,6 @@
 import type { Payload } from 'payload'
 
-import { isStoredClientSecurityOwner } from '../auth/client-security-owner'
+import { isStoredClientSecurityOwner } from '../auth'
 import {
   clientSecurityReadiness,
   ClientSecurityValidationError,
@@ -26,7 +26,7 @@ const response = (body: unknown, status = 200) =>
     status,
     headers: { 'Cache-Control': 'private, no-store', Vary: 'Authorization, Cookie' },
   })
-const invalid = () => {
+function invalid(): never {
   throw new ClientSecurityStoreError(400, 'client_security_invalid_operation')
 }
 const conflict = () => {

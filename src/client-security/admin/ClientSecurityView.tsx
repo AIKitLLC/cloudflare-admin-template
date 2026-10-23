@@ -1,7 +1,7 @@
 import { headers } from 'next/headers'
 import type { AdminViewServerProps } from 'payload'
 
-import { isStoredClientSecurityOwner } from '@/auth/client-security-owner'
+import { isStoredClientSecurityOwner } from '@/auth'
 import { ClientSecurityPanel } from './ClientSecurityPanel'
 
 /** Custom admin routes need their own authorization before mounting client readers. */

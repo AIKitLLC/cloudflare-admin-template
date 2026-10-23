@@ -1,6 +1,6 @@
 import { APIError, type CollectionConfig } from 'payload'
 
-import { isClientSecurityOwner } from '../auth/client-security-owner'
+import { isClientSecurityOwner } from '../auth'
 
 /** Payload owns the table schema; the reviewed CAS adapter owns all writes. */
 const protectedTable = (slug: string, fields: CollectionConfig['fields']): CollectionConfig => ({

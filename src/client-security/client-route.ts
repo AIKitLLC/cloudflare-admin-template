@@ -3,8 +3,8 @@ import {
   FirebaseAuthError,
   type FirebaseClientAuthenticator,
   type FirebaseClientIdentity,
-} from '../auth/firebase-client'
-import type { FirebaseClientHandler } from '../auth/firebase-client-route'
+} from '../auth'
+import type { FirebaseClientHandler } from '../auth'
 import {
   canonicalClientSecurityIp,
   ClientSecurityRateLimitError,

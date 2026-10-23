@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 
-import type { ClientSecurityConfiguration } from '@/client-security/schema'
+import type { ClientSecurityConfiguration } from '../schema'
 
 type Readiness = { ready: boolean; reasons: string[] }
 type Snapshot = {
