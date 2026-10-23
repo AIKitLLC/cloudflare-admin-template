@@ -1,10 +1,6 @@
 {
-  "cycles": [
-    "jobs <-> payload.config"
-  ],
+  "cycles": [],
   "deepImports": [
-    "custom-worker.ts -> src/jobs/runtime/open-next-worker-types.ts",
-    "custom-worker.ts -> src/jobs/runtime/worker-dispatch.ts",
     "scripts/client-security-browser-qa.mjs -> src/client-security/initialize.ts",
     "scripts/client-security-browser-qa.mjs -> src/client-security/store.ts",
     "scripts/create-first-admin.mjs -> src/auth/first-admin-setup.ts",
@@ -13,10 +9,6 @@
     "scripts/local-api-smoke.mjs -> src/client-security/store.ts",
     "src/app/api/admin/client-security/route.ts -> src/client-security/admin-route.ts",
     "src/app/api/client/v1/me/route.ts -> src/client-security/client-route.ts",
-    "src/app/jobs-worker/route.ts -> src/jobs/runtime/handle-queue-batch.ts",
-    "src/app/jobs-worker/route.ts -> src/jobs/runtime/handle-scheduled.ts",
-    "src/app/jobs-worker/route.ts -> src/jobs/runtime/internal-secret.ts",
-    "src/app/jobs-worker/route.ts -> src/jobs/runtime/worker-dispatch.ts",
     "src/client-security/admin-route.ts -> src/auth/client-security-owner.ts",
     "src/client-security/client-route.ts -> src/auth/firebase-client-route.ts",
     "src/client-security/client-route.ts -> src/auth/firebase-client.ts",
@@ -33,11 +25,6 @@
     "src/components/ClientSecurityNav.tsx -> src/auth/client-security-owner.ts",
     "src/components/ClientSecurityPanel.tsx -> src/client-security/schema.ts",
     "src/components/ClientSecurityView.tsx -> src/auth/client-security-owner.ts",
-    "src/components/jobs/JobsDashboardView.tsx -> src/jobs/auth/evaluate-job-dispatch.ts",
-    "src/components/jobs/JobsDashboardView.tsx -> src/jobs/constants.ts",
-    "src/components/jobs/JobsDashboardView.tsx -> src/jobs/registry/job-registry.ts",
-    "src/jobs/runtime/handle-queue-batch.ts -> src/payload.config.ts",
-    "src/jobs/runtime/handle-scheduled.ts -> src/payload.config.ts",
     "src/migrations/20261013_120000.ts -> src/client-security/initialize.ts",
     "src/migrations/20261013_120000.ts -> src/client-security/schema.ts",
     "src/payload.config.ts -> src/access/cover-unwrapped.ts",

@@ -6,9 +6,9 @@ import React from 'react'
 import { evaluateCollectionAccess } from '../../access'
 import { isAccessGranted } from '../../access'
 import { loadUserGrants } from '../../access'
-import { evaluateJobDispatch } from '../../jobs/auth/evaluate-job-dispatch'
-import { JOBS_SLUG } from '../../jobs/constants'
-import { listJobDefinitions } from '../../jobs/registry/job-registry'
+import { evaluateJobDispatch } from '../auth/evaluate-job-dispatch'
+import { JOBS_SLUG } from '../constants'
+import { listJobDefinitions } from '../registry/job-registry'
 import { JobsDashboard, type JobMonitorRow } from './JobsDashboard'
 
 export async function JobsDashboardView({

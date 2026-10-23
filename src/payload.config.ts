@@ -143,7 +143,7 @@ export default buildConfig({
       afterNavLinks: [
         '@/components/ClientSecurityNav#ClientSecurityNav',
         '/rbac/admin/PermissionMatrixNavLink#PermissionMatrixNavLink',
-        '/components/jobs/JobsNavLink#JobsNavLink',
+        '/jobs/admin/JobsNavLink#JobsNavLink',
       ],
       views: {
         clientSecurity: {
@@ -159,7 +159,7 @@ export default buildConfig({
           },
         },
         jobMonitor: {
-          Component: '/components/jobs/JobsDashboardView#JobsDashboardView',
+          Component: '/jobs/admin/JobsDashboardView#JobsDashboardView',
           path: '/job-monitor',
           exact: true,
           meta: {

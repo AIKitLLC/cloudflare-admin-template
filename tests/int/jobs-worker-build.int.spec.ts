@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const projectRequire = createRequire(join(process.cwd(), 'package.json'))
@@ -33,6 +33,44 @@ function run(command: string, args: string[], timeout: number): string {
 
 const secret = process.env.PAYLOAD_SECRET || 'test-secret-for-local-runs'
 const jobsInternalSecret = 'jobs-internal-secret-for-worker-proof-01'
+
+// custom-worker.ts imports the OpenNext server bundle (./.open-next/worker.js), so the built custom-worker.js
+// legitimately contains Payload. The guard therefore walks custom-worker.ts's own source import graph and
+// stops at that OpenNext boundary: nothing else it reaches may touch Payload or the config.
+function workerOwnSourceGraph(entry: string): Map<string, string> {
+  const files = new Map<string, string>()
+  const queue = [resolve(entry)]
+  while (queue.length > 0) {
+    const file = queue.pop() as string
+    if (files.has(file)) continue
+    const text = readFileSync(file, 'utf8')
+    files.set(file, text)
+    for (const match of text.matchAll(/(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g)) {
+      const specifier = match[1]
+      if (specifier.includes('.open-next')) continue
+      if (!specifier.startsWith('.')) {
+        files.set(`pkg:${specifier}`, '')
+        continue
+      }
+      const base = resolve(dirname(file), specifier)
+      const found = [base, `${base}.ts`, join(base, 'index.ts')].find((c) => c.endsWith('.ts') && existsSync(c))
+      if (found) queue.push(found)
+    }
+  }
+  return files
+}
+
+describe('worker entry', () => {
+  it('worker bundle does not include Payload', () => {
+    const graph = workerOwnSourceGraph('custom-worker.ts')
+    const specifiers = [...graph.keys()].filter((key) => key.startsWith('pkg:')).map((key) => key.slice(4))
+    expect(specifiers.filter((s) => /^(payload|@payloadcms)/.test(s) || s.startsWith('@/'))).toEqual([])
+    const sources = [...graph.entries()].filter(([key]) => !key.startsWith('pkg:'))
+    for (const [file, text] of sources) {
+      expect(text, file).not.toMatch(/buildConfig|getPayload|payload\.config/)
+    }
+  })
+})
 
 describe('worker build', () => {
   it(
