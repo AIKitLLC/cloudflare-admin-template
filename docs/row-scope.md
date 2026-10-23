@@ -64,7 +64,7 @@ An account with no assignments is outside every limited scope. Only a full-acces
 
 ## Adding a scoped collection
 
-Pass `rowScope` to `withRbac`, which stores it on `custom.rbac`, and wrap the result directly in `withRowScope` (imported from the scope entry, `src/scope`). `withRowScope` appends the scope hooks such as `guardRecordScope`, which enforce the write. `payload.config.ts` calls `assertRowScopeHooks`, so a row-scoped collection that is not wrapped fails at boot. The contributor reads the same options from `custom.rbac` and filters reads.
+Pass `rowScope` to `withRbac`, which stores it on `custom.rbac`, and wrap the result directly in `withRowScope` (imported from the scope entry, `src/scope`). `withRowScope` appends the scope hooks such as `guardRecordScope`, which enforce the write. The hooks are applied per collection, in its own file. `payload.config.ts` calls `assertRowScopeHooks` at module load and again in `onInit` on the final collection list, so a row-scoped collection that is not wrapped, including one added by a plugin, fails at boot. The contributor reads the same options from `custom.rbac` and filters reads.
 
 ```ts
 export const Customers = withRowScope(

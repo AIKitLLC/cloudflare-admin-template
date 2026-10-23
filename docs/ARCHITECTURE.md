@@ -1,6 +1,6 @@
 # Architecture
 
-Last reviewed against branch `feat/45-in-code-modules` at `05e8594` (2026-10-24), which is based on `main` `29262dd`. This is the map of the code in this tree.
+Last reviewed against branch `feat/45-in-code-modules` head (2026-10-24), which is based on `main` `29262dd`. This is the map of the code in this tree.
 
 ## What this repository is
 
@@ -10,7 +10,7 @@ Node 22 (`.nvmrc`), `engines.node` `>=22.14.0`. Package manager is pnpm 10.33.4 
 
 ## Current modules
 
-Every top-level directory under `src/` (except the private helper `src/config/`) is a module with one public `index.ts`. These are the real boundaries. Use the `area:` label in the table where there is one.
+Every top-level directory under `src/` is a module with one public `index.ts`, except three groups the boundary test (`groupOf` in `tests/unit/module-boundaries.test.ts`) treats differently: `src/config` and `src/migrations` belong to the composition root with `src/payload.config.ts`, and `src/app` is the route layer that composes modules. These are the real boundaries. Use the `area:` label in the table where there is one.
 
 | Module | Area label | Path | Responsibility |
 | --- | --- | --- | --- |
@@ -20,7 +20,7 @@ Every top-level directory under `src/` (except the private helper `src/config/`)
 | auth | — | `src/auth` | `firebase-client.ts` verifies Firebase App Check and ID tokens. `firebase-client-route.ts` is the reusable route adapter plus ownership and quota-key helpers. `client-security-owner.ts` defines the `owner` / `admin` / `editor` roles and the `Users` hooks that guard owner changes. `first-admin.ts` refuses `users` creation without a signed-in user outside first-run setup. `first-admin-setup.ts` is first-run admin setup: the `POST /api/users/first-register` handler behind the admin panel's create-first-user screen, and the shared path `pnpm admin:create` uses, both gated by the single-row `setup-state` claim. `users-auth.ts` holds the `users` auth options (production cookie settings, per-account lockout). `login-throttle.ts` is the per-IP counter for sign-in, forgot-password, reset-password, refresh-token, and first-run setup. See `docs/admin-access.md`. |
 | client-security | — | `src/client-security` | Owner-managed Firebase trust settings and per-client rate limits: configuration schema and validation, the revisioned D1 store, rate limiting, the admin and client route factories, and the schema initializer used by the migration. |
 | collections | `area:collections` | `src/collections` | `Users` is the auth collection with a `role` field that only an owner can change. `Media` is a public-read upload with a required `alt`; crop and focal point are off because Workers has no `sharp`. `ClientSecurityCollections` are hidden, owner-read tables (`client-security-state`, `-versions`, `-counters`, `-audit`); Payload rejects direct writes and the `client-security` store owns them. `LoginThrottle` (`login-throttle`) is a hidden table with no API access; only `src/auth/login-throttle.ts` writes it. `SetupState` (`setup-state`) is the same kind of hidden table for first-run admin setup; only `src/auth/first-admin-setup.ts` writes it. |
-| persistence | `area:persistence` | `src/migrations` | D1 schema. Migrations `20250929_111647` and `20261013_120000` (client security tables and the `users.role` column), exported in order from `src/migrations/index.ts`. `20261017_105600_login_throttle` adds the `login_throttle` table, `20261017_133958_payload_3_91_security` adds the columns Payload 3.90 introduced (`users.reset_password_requested_at`, `media._objectkey`), and `20261017_144000_setup_state` adds `setup_state` (marking installs that already have users as set up); each JSON snapshot is the full schema at that point. |
+| persistence | `area:persistence` | `src/migrations` (composition root, not a module) | D1 schema. Migrations `20250929_111647` and `20261013_120000` (client security tables and the `users.role` column), exported in order from `src/migrations/index.ts`. `20261017_105600_login_throttle` adds the `login_throttle` table, `20261017_133958_payload_3_91_security` adds the columns Payload 3.90 introduced (`users.reset_password_requested_at`, `media._objectkey`), and `20261017_144000_setup_state` adds `setup_state` (marking installs that already have users as set up); each JSON snapshot is the full schema at that point. |
 | platform | `area:platform` | `wrangler.jsonc`, `open-next.config.ts`, `next.config.ts`, the Cloudflare context in `src/payload.config.ts` | Worker name `my-app`, compatibility date `2025-08-15`, flags `nodejs_compat` and `global_fetch_strictly_public`. Bindings below. |
 | tests | `area:tests` | `tests/` | `tests/unit` (Node test runner) covers Firebase verification, the route adapter, owner rules, the settings schema, and the store. `tests/int` (Vitest, Node environment, isolated local D1/R2) covers Payload and the client security flow. `tests/e2e` (Playwright) covers the homepage and the admin screens and is not in CI yet. |
 | tooling | `area:platform` | `scripts/`, `.github/workflows` | `scripts/ci-local.sh` (`pnpm ci:local`) and the `ci` workflow (job `verify`) run the same checks. Other scripts are local QA helpers and the operator-only first-owner bootstrap. |
@@ -31,7 +31,7 @@ Every top-level directory under `src/` (except the private helper `src/config/`)
 | system-parameters | — | `src/system-parameters` | The `system-parameters` collection and `getParameter`. See `docs/system-parameters.md`. |
 | jobs | — | `src/jobs` | The `jobs` collection, the typed job registry (`defineJob`), the runner, endpoints, the admin monitor (`src/jobs/admin`), and the worker-safe entry `src/jobs/worker.ts`. The queue and scheduled handlers live in `src/app/jobs-worker`. See `docs/jobs.md`. |
 
-`src/payload.config.ts` is the composition root, not a separate domain. It composes the modules: it registers the collections, applies `withRbac`, `withRowScope`, and `withAuditTrail`, calls `assertRowScopeHooks`, adds the admin views and nav links from each module's `admin` directory, the Lexical editor, the D1 adapter, the R2 storage plugin, and a JSON logger used only when `NODE_ENV` is `production`.
+`src/payload.config.ts` is the composition root, not a separate domain. It composes the modules: it registers the collections, applies `withAuditTrail` to `system-parameters` and `jobs` only (each collection file applies its own `withRbac` and `withRowScope`), calls `assertRowScopeHooks` at module load and again in `onInit` on the final collection list, adds the admin views and nav links from each module's `admin` directory, the Lexical editor, the D1 adapter, the R2 storage plugin, and a JSON logger used only when `NODE_ENV` is `production`.
 
 ### Generated files
 
@@ -53,19 +53,19 @@ Each module has one public file, `src/<module>/index.ts`. Other modules import o
 | Entry | Who may import it |
 | --- | --- |
 | `src/payload.config.ts` default export, also `@payload-config` and `@/payload.config` | App routes and tests. |
-| `src/access`, `src/audit`, `src/auth`, `src/client-security`, `src/collections`, `src/jobs`, `src/migrations`, `src/rbac`, `src/scope`, `src/system-parameters` (each `index.ts`) | Modules above them in the dependency diagram, `src/payload.config.ts`, the route layer `src/app`, `scripts/**`, `custom-worker.ts`, and tests. |
+| `src/access`, `src/audit`, `src/auth`, `src/client-security`, `src/collections`, `src/jobs`, `src/rbac`, `src/scope`, `src/system-parameters` (each `index.ts`) | Modules above them in the dependency diagram, `src/payload.config.ts`, the route layer `src/app`, `scripts/**`, `custom-worker.ts`, and tests. |
 | `src/jobs/worker.ts` | `custom-worker.ts` only. Wrangler bundles it as the Worker entry, so it must not reach Payload or the CMS config. |
 | `src/auth/firebase.ts` | The Firebase native-client path. `scripts/firebase-client-runtime.mjs` bundles it for workerd, so it must not reach Node builtins or Payload. |
 | `src/client-security/client.ts` | Same path as `src/auth/firebase.ts`, with the same constraint. |
 | `migrations` from `src/migrations/index.ts` | Payload's migration runner. |
 
-`src/config` is a private helper of the composition root (`public-server-url.ts`, `test-runtime.ts`); no module imports it.
+`src/config` (`public-server-url.ts`, `test-runtime.ts`) and `src/migrations` are part of the composition root; no module imports them. `src/app` is the route layer: it imports module entries and `payload.config.ts`, and it reaches `rbac/admin` and `audit/admin` components only through the generated import map.
 
 Consumers that may compose modules: `src/payload.config.ts` (the composition root) and the route layer `src/app`. `scripts/**` and `custom-worker.ts` import entries. `tests/` may import any file.
 
 Enforcement: `tests/unit/module-boundaries.test.ts` runs in `pnpm test:unit`, so it is part of `pnpm ci:local` and the blocking `ci` job. It fails on deep cross-module imports, import cycles between modules, `'use client'` files that import another module, and admin component path strings that do not resolve. `architecture.yml` stays report-only.
 
-Row scope is wired in the composition root. `withRbac` records `rowScope` on `custom.rbac`. `withRowScope` (scope entry) appends the scope hooks and must wrap `withRbac` directly, inside any `withAuditTrail`. `payload.config.ts` calls `assertRowScopeHooks`, which fails closed at boot.
+Row scope is wired in each collection file, not in the composition root. `withRbac` records `rowScope` on `custom.rbac`. `withRowScope` (scope entry) appends the scope hooks and must wrap `withRbac` directly, inside any `withAuditTrail`. The root asserts the result: `assertRowScopeHooks` checks that every row-scoped collection actually carries the scope hooks, at module load and again in `onInit` on `payload.config.collections`, so a collection added by a plugin without `withRowScope` fails closed too.
 
 ### Dependency direction
 
@@ -94,8 +94,15 @@ flowchart TD
   admin --> config
   admin --> security
   admin --> jobs
+  admin --> rbac
+  admin --> audit
   tests --> config
   config --> collections
+  config --> access
+  config --> audit
+  config --> rbac
+  config --> scope
+  config --> migrations
   config --> security
   config --> jobs
   config --> params

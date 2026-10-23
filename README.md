@@ -164,7 +164,7 @@ Users can be assigned organizations, branches, and data classes. Organizations a
 
 A limited user can assign only scope values they already hold, including inherited ones, and cannot edit their own assignments or see user accounts outside that scope. Adding scope to someone else also requires that their permission keys are already within the actor's. Granting a permission is refused when a holder of that role can see rows outside the granter's scope. See [docs/row-scope.md](docs/row-scope.md).
 
-Opt in with `rowScope` on `withRbac`, and wrap the result directly in `withRowScope` from `src/scope`. `withRowScope` attaches the scope hooks, and `payload.config.ts` refuses to boot if a row-scoped collection is not wrapped:
+Opt in with `rowScope` on `withRbac`, and wrap the result directly in `withRowScope` from `src/scope`. `withRowScope` attaches the scope hooks to that collection, and `payload.config.ts` refuses to boot if any row-scoped collection, including one a plugin adds, lacks them:
 
 ```typescript
 export const Customers = withRowScope(
