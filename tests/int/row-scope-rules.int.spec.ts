@@ -409,4 +409,33 @@ describe('row-scoped collection hooks', () => {
     expect(() => assertRowScopeHooks([withRowScope(bare)])).not.toThrow()
     expect(() => assertRowScopeHooks([withRbac({ slug: 'plain', fields: [] })])).not.toThrow()
   })
+
+  it('assertRowScopeHooks checks the hook arrays, not a flag', () => {
+    const bare = withRbac({ slug: 'flagged', fields: [] }, { rowScope: { assignments: true } })
+    const flagged = {
+      ...bare,
+      custom: { ...bare.custom, rbac: { ...bare.custom?.rbac, rowScopeHooks: true } },
+    }
+    expect(() => assertRowScopeHooks([flagged])).toThrow(/flagged.*beforeOperation/)
+    // Hooks present for most keys but one removed still fails closed.
+    const wrapped = withRowScope(bare)
+    const partial = { ...wrapped, hooks: { ...wrapped.hooks, afterDelete: [] as never[] } }
+    expect(() => assertRowScopeHooks([partial])).toThrow(/afterDelete/)
+  })
+
+  it('rejects a plugin-added unwrapped row-scoped collection and accepts the runtime config', async () => {
+    // The same check onInit runs on `payload.config.collections` after plugins have applied.
+    const addUnwrapped = (incoming: { collections: CollectionConfig[] }) => ({
+      ...incoming,
+      collections: [
+        ...incoming.collections,
+        withRbac({ slug: 'plugin-added', fields: [] }, { rowScope: { organizationField: 'org' } }),
+      ],
+    })
+    const resolved = await config
+    expect(() => assertRowScopeHooks(resolved.collections)).not.toThrow()
+    expect(() =>
+      assertRowScopeHooks(addUnwrapped({ collections: [...resolved.collections] }).collections),
+    ).toThrow(/plugin-added/)
+  })
 })

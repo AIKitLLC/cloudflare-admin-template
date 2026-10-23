@@ -14,13 +14,8 @@ export function withRowScope(collection: CollectionConfig): CollectionConfig {
     return collection
   }
   const hooks = collection.hooks
-  const custom = (collection.custom ?? {}) as { rbac?: Record<string, unknown> }
   return {
     ...collection,
-    custom: {
-      ...custom,
-      rbac: { ...(custom.rbac ?? {}), rowScopeHooks: true },
-    },
     hooks: {
       ...hooks,
       beforeOperation: [...(hooks?.beforeOperation ?? []), ...(extra.beforeOperation ?? [])],
@@ -32,17 +27,36 @@ export function withRowScope(collection: CollectionConfig): CollectionConfig {
   }
 }
 
-/** Fails closed when a row-scoped collection was not wrapped with `withRowScope`. */
-export function assertRowScopeHooks(collections: CollectionConfig[]): void {
+const HOOK_KEYS = [
+  'beforeOperation',
+  'beforeChange',
+  'beforeDelete',
+  'afterChange',
+  'afterDelete',
+] as const
+
+/**
+ * Fails closed when a row-scoped collection does not carry the scope hooks. It checks the hook
+ * arrays themselves, so a collection added by a plugin (or a sanitized runtime config) cannot
+ * keep filtered reads while silently losing its write guards. `scopeHooksFor` returns the same
+ * module-level hook functions on every call, so presence is compared by function identity.
+ */
+export function assertRowScopeHooks(
+  collections: ReadonlyArray<Pick<CollectionConfig, 'custom' | 'hooks' | 'slug'>>,
+): void {
   for (const collection of collections) {
-    if (!scopeHooksFor(readRowScopeBinding(collection.custom))) {
+    const expected = scopeHooksFor(readRowScopeBinding(collection.custom))
+    if (!expected) {
       continue
     }
-    const rbac = (collection.custom as { rbac?: { rowScopeHooks?: boolean } }).rbac
-    if (rbac?.rowScopeHooks !== true) {
-      throw new Error(
-        `Collection "${collection.slug}" declares a rowScope binding but its scope hooks are not attached. Wrap it with withRowScope().`,
-      )
+    for (const key of HOOK_KEYS) {
+      const present = (collection.hooks?.[key] ?? []) as unknown[]
+      const missing = ((expected[key] ?? []) as unknown[]).filter((hook) => !present.includes(hook))
+      if (missing.length > 0) {
+        throw new Error(
+          `Collection "${collection.slug}" declares a rowScope binding but its ${key} scope hooks are not attached. Wrap it with withRowScope().`,
+        )
+      }
     }
   }
 }

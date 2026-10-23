@@ -184,6 +184,8 @@ export default buildConfig({
     coverLiveConfig(payload)
     applyFieldAccess(payload)
     assertRbacCoverage(payload)
+    // Plugins can add row-scoped collections after the module-load check; verify the final list.
+    assertRowScopeHooks(payload.config.collections)
     try {
       await seedRbac(payload)
     } catch (error) {
