@@ -33,6 +33,7 @@ export { relationId, relationIds } from './relation-id'
 export { permissionKey } from './permission-key'
 export { loadUserGrants, userGrantsFullAccess } from './resolve/load-user-grants'
 export { fullAccessRoleIds } from './privilege/full-access-role-ids'
+// Trusted server code only (seed/bootstrap); never set from request data.
 export { SKIP_RBAC_PRIVILEGE_CHECKS, skipsPrivilegeChecks } from './privilege/privilege-context'
 export { addedRoleIds, changedRoleIds, roleIdList, sameRoleIds } from './privilege/role-id-set'
 export { grantedKeysByRole, permissionKeysForIds } from './privilege/role-permission-keys'

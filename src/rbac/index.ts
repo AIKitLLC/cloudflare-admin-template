@@ -10,6 +10,5 @@ export {
   guardUserRoleAssignment,
 } from './guards/guard-full-access-assignment'
 export { assignSuperAdminToFirstUser } from './hooks/assign-super-admin-to-first-user'
-export { GRANT_ROUTE } from './routes'
 export { ensureSuperAdminRole } from './seed/ensure-super-admin-role'
 export { seedRbac } from './seed/seed-rbac'

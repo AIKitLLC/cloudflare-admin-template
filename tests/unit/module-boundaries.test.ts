@@ -198,6 +198,12 @@ function isLegal(edge: Edge): boolean {
   return target === PAYLOAD_CONFIG && !isModule(fromGroup)
 }
 
+/** A `'use client'` file may import only its own module's internals, never any `index.ts`. */
+function isUseClientViolation(edge: Edge): boolean {
+  if (edge.typeOnly) return false
+  return edge.fromGroup !== edge.targetGroup || /^src\/[^/]+\/index\.ts$/.test(edge.target)
+}
+
 /** Elementary cycles, each reported once: `a <-> b` for pairs, `a -> b -> c -> a` otherwise. */
 function findCycles(graph: Map<string, Set<string>>): string[] {
   const found = new Set<string>()
@@ -234,9 +240,7 @@ function analyse() {
         importedModules.add(edge.targetGroup)
       }
       if (!isLegal(edge)) deepImports.add(entry)
-      if (useClient && !edge.typeOnly && edge.fromGroup !== edge.targetGroup) {
-        useClientViolations.add(entry)
-      }
+      if (useClient && isUseClientViolation(edge)) useClientViolations.add(entry)
     }
   }
   return {
@@ -321,4 +325,56 @@ test('comment stripping is string-aware', () => {
   // Real comments are still removed, including imports written inside them.
   assert.deepEqual(specs("/* import a from './in-block' */\n// import b from './in-line'"), [])
   assert.deepEqual(specs("import a from './kept' // import b from './dropped'"), ['./kept'])
+})
+
+test("'use client' rule also rejects an import of the own module's index.ts", () => {
+  const edge = (target: string, typeOnly = false): Edge => ({
+    from: 'src/rbac/admin/View.tsx',
+    fromGroup: 'rbac',
+    target,
+    targetGroup: 'rbac',
+    typeOnly,
+  })
+  assert.equal(isUseClientViolation(edge('src/rbac/index.ts')), true)
+  assert.equal(isUseClientViolation(edge('src/rbac/routes.ts')), false)
+  assert.equal(isUseClientViolation(edge('src/rbac/index.ts', true)), false)
+  assert.equal(isUseClientViolation({ ...edge('src/access/index.ts'), targetGroup: 'access' }), true)
+})
+
+const CLIENT_SAFE_ENTRIES = [
+  'src/jobs/worker.ts',
+  'src/auth/firebase.ts',
+  'src/client-security/client.ts',
+]
+const FORBIDDEN_BARE = /^(?:payload(?:\/.*)?|node:.*|next(?:\/.*)?)$/
+
+/** First forbidden thing reachable from `entry` (with the chain), or null. */
+function forbiddenReach(entry: string): string | null {
+  const seen = new Set<string>()
+  const visit = (rel: string, chain: string[]): string | null => {
+    if (seen.has(rel)) return null
+    seen.add(rel)
+    const file = path.join(ROOT, rel)
+    const { imports } = parseImports(readFileSync(file, 'utf8'))
+    for (const { spec } of imports) {
+      if (FORBIDDEN_BARE.test(spec)) return [...chain, rel, `"${spec}"`].join(' -> ')
+      const target = resolveSpecifier(file, spec)
+      if (!target) continue
+      const bad =
+        target === PAYLOAD_CONFIG ||
+        (/^src\/[^/]+\/index\.ts$/.test(target) && target !== rel)
+      if (bad) return [...chain, rel, target].join(' -> ')
+      if (target.startsWith('src/')) {
+        const found = visit(target, [...chain, rel])
+        if (found) return found
+      }
+    }
+    return null
+  }
+  return visit(entry, [])
+}
+
+test('client-safe entries cannot reach server-only code', () => {
+  const problems = CLIENT_SAFE_ENTRIES.map(forbiddenReach).filter((p): p is string => p !== null)
+  assert.deepEqual(problems, [], `Client-safe entries reach server code:${NL}${problems.join(NL)}`)
 })
