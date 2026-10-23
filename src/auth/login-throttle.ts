@@ -15,13 +15,16 @@ export const LOGIN_THROTTLE_CLEANUP_BATCH = 100
 
 /**
  * Attempts allowed per client IP and window for each `users` auth operation. Each operation
- * has its own counter. Successful sign-ins are given back, so `login` counts failures.
+ * has its own counter. Successful sign-ins are given back, so `login` counts failures, and
+ * `refresh` counts only requests without a valid session. `registerFirstUser` is the
+ * first-run admin setup endpoint.
  */
 export const AUTH_THROTTLE_LIMITS = {
   login: 10,
   forgotPassword: 5,
   resetPassword: 10,
-  refresh: 60,
+  refresh: 20,
+  registerFirstUser: 5,
 } as const
 export type ThrottledAuthOperation = keyof typeof AUTH_THROTTLE_LIMITS
 export const LOGIN_THROTTLE_MAX_FAILURES = AUTH_THROTTLE_LIMITS.login
@@ -147,7 +150,10 @@ export const throttleAuthOperation: CollectionBeforeOperationHook = async ({
   operation,
   req,
 }) => {
-  if (isThrottledAuthOperation(operation)) await admitAuthAttempt(req, operation)
+  if (!isThrottledAuthOperation(operation)) return args
+  // A refresh with a valid session is routine for signed-in admins and is not counted.
+  if (operation === 'refresh' && req.user) return args
+  await admitAuthAttempt(req, operation)
   return args
 }
 

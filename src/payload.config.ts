@@ -19,6 +19,7 @@ import { Users } from './collections/Users'
 import { Media } from './collections/Media'
 import { ClientSecurityCollections } from './collections/ClientSecurity'
 import { LoginThrottle } from './collections/LoginThrottle'
+import { SetupState } from './collections/SetupState'
 import { Branches } from './scope/collections/Branches'
 import { DataClasses } from './scope/collections/DataClasses'
 import { Organizations } from './scope/collections/Organizations'
@@ -152,6 +153,7 @@ export default buildConfig({
     Media,
     ...ClientSecurityCollections,
     LoginThrottle,
+    SetupState,
     Roles,
     Permissions,
     RolePermissions,

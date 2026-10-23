@@ -8,6 +8,7 @@ import {
 } from '../auth/client-security-owner'
 
 import { guardPublicUserCreation } from '../auth/first-admin'
+import { firstRegisterEndpoint, holdFirstAdminSetupClaim } from '../auth/first-admin-setup'
 import { releaseLoginAttempt, throttleAuthOperation } from '../auth/login-throttle'
 import { usersAuthOptions } from '../auth/users-auth'
 import { evaluateCollectionAccess } from '../access/evaluate-collection-access'
@@ -34,6 +35,8 @@ export const Users: CollectionConfig = withAuditTrail(
         useAsTitle: 'email',
       },
       auth: usersAuthOptions(),
+      // Matched before Payload's built-in auth endpoints with the same path.
+      endpoints: [firstRegisterEndpoint],
       access: {
         admin: ({ req }) => Boolean(req.user),
         // Payload writes unlock directly, so collection beforeChange never sees it.
@@ -120,7 +123,11 @@ export const Users: CollectionConfig = withAuditTrail(
           guardAuthCredentialOperation,
         ],
         afterLogin: [releaseLoginAttempt],
-        beforeChange: [guardClientSecurityOwnerChange, guardUserRoleAssignment],
+        beforeChange: [
+          guardClientSecurityOwnerChange,
+          guardUserRoleAssignment,
+          holdFirstAdminSetupClaim,
+        ],
         beforeDelete: [guardClientSecurityOwnerDelete, guardLastFullAccessDeletion],
         afterChange: [assignSuperAdminToFirstUser],
         afterOperation: [clearClientSecurityRecoveryOperation],

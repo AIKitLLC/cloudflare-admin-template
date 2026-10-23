@@ -1,14 +1,37 @@
 # Admin access setup
 
-How the first admin is created, which Cloudflare Access setup production requires, how admin sessions are configured, and how auth requests are rate limited. Do these steps before the Worker is reachable from the internet.
+How the first admin is created, which Cloudflare Access setup production requires, how admin sessions are configured, and how auth requests are rate limited.
 
-## First admin: `pnpm admin:create`
+## First admin
 
-`pnpm admin:create` is the only way to create the first admin. Over HTTP, `users` can be created only by a signed-in user with the `users:create` permission, from the admin panel or the API. A request without a signed-in user cannot create users, whether or not users exist.
+A new install has no users. Create the first admin in one of two ways:
 
-The admin panel's "create first user" screen (`/admin/create-first-user`) and `POST /api/users/first-register` are intentionally unavailable: on a new install that screen refuses the form. Use `pnpm admin:create`.
+- **From the web (first-run admin setup).** Open `/admin` on the new deploy. While the `users` table is empty and setup has not completed, Payload shows its "create first user" screen (`/admin/create-first-user`). Submitting it calls `POST /api/users/first-register`, which creates the account with the Super Admin role and signs you in.
+- **From the command line.** `pnpm admin:create` (below) does the same through the Payload Local API.
 
-`pnpm admin:create` runs `scripts/create-first-admin.mjs` through the Payload CLI and refuses to run when any user exists. The password comes from the `FIRST_ADMIN_PASSWORD` environment variable (at least 12 characters), so it is not part of the command arguments. The first user receives the Super Admin role (see the RBAC section of the README).
+### Create the admin right after the deploy, or enable Access first
+
+Until the first admin exists, whoever completes the setup screen first becomes that admin. Do one of these:
+
+- **Recommended:** set up the Cloudflare Access application described below *before* the first deploy is reachable, then open `/admin` through Access and create the admin there. Access stays in place afterwards; it is required in production either way.
+- Or open `/admin` immediately after `pnpm run deploy` finishes and create the admin straight away, then set up Access before you share the URL or store real data.
+
+### How first-run setup works
+
+`src/auth/first-admin-setup.ts` handles `POST /api/users/first-register` in place of Payload's built-in handler:
+
+- **One admin, even with concurrent requests.** The D1 table `setup_state` (migration `20261017_144000_setup_state`) holds one row with a unique key. A single SQL statement claims it, and only while `users` is empty and setup has not completed, so exactly one request or CLI run can proceed. The others get 403 (web) or 409 (CLI). If a step fails, the account is removed and the claim released, so setup can be retried.
+- **Super Admin role.** The new account is checked for the Super Admin role before setup is marked complete.
+- **Closes permanently.** On success `setup_state.completed_at` is set. The web flow stays closed after that, even if every user is later deleted; the screen may still render on an empty table, but the form is refused. Installs that already have users are recorded as set up by the migration. Use `pnpm admin:create` to recover an empty `users` table.
+- **Same-origin form.** Requests whose `Origin` is not the Worker's own origin or a configured CSRF origin (`PAYLOAD_PUBLIC_SERVER_URL`, `PAYLOAD_ALLOWED_ORIGINS`), or whose `Sec-Fetch-Site` is not `same-origin`, are refused.
+- **Inputs.** Only the email and password are used, and the password must be at least 12 characters.
+- **Throttled and logged.** The endpoint has its own per-IP limit (see [Auth request throttling](#auth-request-throttling)). Each first admin creation is logged as `First admin created` with the user ID, the email domain, and `source` (`web` or `cli`). The password and full email address are not logged.
+
+After setup, `users` can be created over HTTP only by a signed-in user with the `users:create` permission, from the admin panel or the API.
+
+### `pnpm admin:create`
+
+`pnpm admin:create` runs `scripts/create-first-admin.mjs` through the Payload CLI. It takes the same `setup_state` claim, so two runs started at once create at most one user. It refuses when any user exists, but unlike the web screen it also works after setup has completed, as long as `users` is empty. The password comes from the `FIRST_ADMIN_PASSWORD` environment variable (at least 12 characters), so it is not part of the command arguments.
 
 Local D1 (the database `pnpm dev` uses):
 
@@ -29,7 +52,7 @@ On a local database that was created with `pnpm payload migrate` instead of `pnp
 
 ## Cloudflare Access is required in production
 
-Production deployments must put Cloudflare Access in front of the admin panel and the `users` auth API: `/admin` and `/api/users/*`, which includes `/api/users/login`, `/api/users/forgot-password`, `/api/users/reset-password`, and `/api/users/refresh-token`. Payload's own sign-in still applies behind Access. Access signs people in before a request reaches the Worker, so only your team's identities reach these routes.
+Production deployments must put Cloudflare Access in front of the admin panel and the `users` auth API: `/admin` and `/api/users/*`, which includes `/api/users/login`, `/api/users/first-register`, `/api/users/forgot-password`, `/api/users/reset-password`, and `/api/users/refresh-token`. Setting it up before the first deploy also covers first-run setup. Payload's own sign-in still applies behind Access. Access signs people in before a request reaches the Worker, so only your team's identities reach these routes.
 
 Steps, in the Cloudflare dashboard:
 
@@ -62,7 +85,8 @@ Limits applied in the Worker:
   | Sign-in | `POST /api/users/login`, GraphQL `loginUser` | 10 failed attempts (successful sign-ins are not counted) |
   | Forgot password | `POST /api/users/forgot-password`, GraphQL `forgotPasswordUser` | 5 requests |
   | Reset password | `POST /api/users/reset-password`, GraphQL `resetPasswordUser` | 10 requests |
-  | Refresh token | `POST /api/users/refresh-token`, GraphQL `refreshTokenUser` | 60 requests |
+  | Refresh token | `POST /api/users/refresh-token`, GraphQL `refreshTokenUser` | 20 requests without a valid session (refreshes of a signed-in session are not counted) |
+  | First-run setup | `POST /api/users/first-register` | 5 requests |
 
   Over the limit, the route answers 429 until the window ends. Expired rows are deleted during later writes. Local API calls (`payload.login` in scripts and tests) are not counted.
 - **Production only:** a request without `CF-Connecting-IP` is refused with 400 (Cloudflare always sets it on requests that reach the Worker). If the D1 binding is unavailable, these routes answer 503 and the Worker logs an error once, instead of running without the limit. Outside production, requests without the header share one counter, and a missing binding skips the limit.
@@ -76,7 +100,7 @@ In the dashboard, open **Security** > **WAF** > **Rate limiting rules** and crea
 - **If incoming requests match:**
 
   ```text
-  (http.request.method eq "POST" and http.request.uri.path in {"/api/users/login" "/api/users/forgot-password" "/api/users/reset-password" "/api/users/refresh-token" "/api/graphql"})
+  (http.request.method eq "POST" and http.request.uri.path in {"/api/users/login" "/api/users/first-register" "/api/users/forgot-password" "/api/users/reset-password" "/api/users/refresh-token" "/api/graphql"})
   ```
 
 - **With the same characteristics:** IP.
