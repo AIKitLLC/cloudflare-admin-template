@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { JOB_DISPATCH_ACTIONS, PERMISSION_ACTIONS } from '@/access'
+import { Permissions } from '@/rbac/collections/Permissions'
 import { omitAuthSecrets } from '@/access/export/create-export-endpoint'
 import { permissionKey } from '@/access/permission-key'
 import { toCsv } from '@/access/export/to-csv'
@@ -95,5 +97,15 @@ describe('RBAC rules', () => {
     })
     expect(visible).toEqual({ id: 1, email: 'a@example.com' })
     expect(toCsv([visible])).not.toContain('secret-hash')
+  })
+
+  it('permissions action options keep the dispatch actions', () => {
+    const action = Permissions.fields.find((f) => 'name' in f && f.name === 'action')
+    const values =
+      action && 'options' in action
+        ? action.options.map((o) => (typeof o === 'string' ? o : o.value))
+        : []
+    expect(values).toEqual([...PERMISSION_ACTIONS, 'trigger', 'retry'])
+    expect(JOB_DISPATCH_ACTIONS).toEqual(['trigger', 'retry'])
   })
 })

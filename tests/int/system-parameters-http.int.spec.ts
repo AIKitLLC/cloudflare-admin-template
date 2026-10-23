@@ -4,7 +4,7 @@ import { getPayload, type CollectionSlug, type Payload, type PayloadRequest } fr
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import config from '@/payload.config'
-import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
+import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/access/privilege/privilege-context'
 import { setRoleGrant } from '@/rbac/matrix/set-role-grant'
 import {
   createIsolateMemory,

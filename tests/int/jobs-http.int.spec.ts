@@ -14,7 +14,7 @@ import {
   UNKNOWN_JOB_MESSAGE,
 } from '@/jobs/errors'
 import { processJob } from '@/jobs/runner/process-job'
-import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
+import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/access/privilege/privilege-context'
 import { setRoleGrant } from '@/rbac/matrix/set-role-grant'
 
 const ORIGIN = 'http://localhost:3000'

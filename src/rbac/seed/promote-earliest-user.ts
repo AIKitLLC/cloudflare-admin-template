@@ -1,7 +1,7 @@
 import type { CollectionSlug, Payload } from 'payload'
 
 import { USERS_SLUG } from '../../access/constants'
-import { SKIP_RBAC_PRIVILEGE_CHECKS } from '../guards/privilege-context'
+import { SKIP_RBAC_PRIVILEGE_CHECKS } from '../../access'
 import { earliestUser, shouldPromoteUnassignedUsers } from './promotion-policy'
 
 export type PromotedUser = {

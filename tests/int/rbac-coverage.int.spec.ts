@@ -6,7 +6,7 @@ import { applyRbacToGlobal, applyRbacToUnwrappedCollection } from '@/access/cove
 import { collectionEnablesRbac } from '@/access/options'
 import { resolvePublicServerURL } from '@/config/public-server-url'
 import { assignSuperAdminToFirstUser } from '@/rbac/hooks/assign-super-admin-to-first-user'
-import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
+import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/access/privilege/privilege-context'
 
 describe('RBAC coverage and production URL', () => {
   it('fails production startup when the public server URL is missing', () => {

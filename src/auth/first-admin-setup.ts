@@ -14,7 +14,7 @@ import {
 import { generatePayloadCookie } from 'payload/shared'
 
 import { USERS_SLUG } from '../access/constants'
-import { SKIP_RBAC_PRIVILEGE_CHECKS } from '../rbac/guards/privilege-context'
+import { SKIP_RBAC_PRIVILEGE_CHECKS } from '../access'
 import { ensureSuperAdminRole } from '../rbac/seed/ensure-super-admin-role'
 import { admitAuthAttempt, type LoginThrottleDatabase } from './login-throttle'
 

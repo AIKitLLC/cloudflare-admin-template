@@ -10,8 +10,7 @@ import { APIError } from 'payload'
 import { USERS_SLUG } from '../../access/constants'
 import { loadUserGrants, userGrantsFullAccess } from '../../access/resolve/load-user-grants'
 import { relationIds } from '../../access/relation-id'
-import { fullAccessRoleIds } from './full-access-role-ids'
-import { addedRoleIds, changedRoleIds, roleIdList, sameRoleIds } from './role-id-set'
+import { addedRoleIds, changedRoleIds, fullAccessRoleIds, grantedKeysByRole, roleIdList, sameRoleIds, skipsPrivilegeChecks } from '../../access'
 import {
   FULL_ACCESS_ASSIGNMENT_ERROR,
   LAST_FULL_ACCESS_ERROR,
@@ -19,8 +18,6 @@ import {
   SUBSET_ASSIGNMENT_ERROR,
 } from './privilege-errors'
 import { assertUserWithinActorScope } from '../../scope/guards/assert-user-within-actor-scope'
-import { skipsPrivilegeChecks } from './privilege-context'
-import { grantedKeysByRole } from './role-permission-keys'
 
 export const guardUserRoleAssignment: CollectionBeforeChangeHook = async ({
   context,

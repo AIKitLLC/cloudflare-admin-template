@@ -11,8 +11,7 @@ import { loadUserGrants } from '../../access/resolve/load-user-grants'
 import { relationId } from '../../access/relation-id'
 import { assertRoleHoldersWithinActorScope } from '../../scope/guards/assert-role-holders-within-actor-scope'
 import { OWN_ROLE_GRANT_ERROR, SUBSET_GRANT_ERROR } from './privilege-errors'
-import { skipsPrivilegeChecks } from './privilege-context'
-import { permissionKeysForIds } from './role-permission-keys'
+import { permissionKeysForIds, skipsPrivilegeChecks } from '../../access'
 
 export async function assertMayChangeRoleGrant(args: {
   context?: unknown

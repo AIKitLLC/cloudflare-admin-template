@@ -5,7 +5,7 @@ import type {
 } from 'payload'
 
 import { userGrantsFullAccess } from '../../access/resolve/load-user-grants'
-import { skipsPrivilegeChecks } from '../../rbac/guards/privilege-context'
+import { skipsPrivilegeChecks } from '../../access'
 import { USER_SCOPE_FIELDS } from '../constants'
 import { applyScopeAssignmentPolicy } from './apply-scope-assignment-policy'
 import { collapseAndCapScopeFields } from './normalize-scope-fields'

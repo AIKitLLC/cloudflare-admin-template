@@ -12,7 +12,7 @@ import {
 } from '@/auth/login-throttle'
 import { usersAuthOptions } from '@/auth/users-auth'
 import config from '@/payload.config'
-import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
+import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/access/privilege/privilege-context'
 
 const ORIGIN = 'http://localhost:3000'
 const post = REST_POST(config)

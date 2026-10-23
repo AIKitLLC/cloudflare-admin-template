@@ -1,6 +1,6 @@
 import type { CollectionSlug, PayloadRequest } from 'payload'
 
-import { ROLES_SLUG } from '../../access/constants'
+import { ROLES_SLUG } from '../constants'
 
 export async function fullAccessRoleIds(req: PayloadRequest): Promise<Set<string>> {
   const roles = await req.payload.find({

@@ -1,8 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
-import { PERMISSION_ACTIONS } from '../../access/constants'
+import { JOB_DISPATCH_ACTIONS, PERMISSION_ACTIONS } from '../../access'
 import { withRbac } from '../../access/with-rbac'
-import { JOB_DISPATCH_ACTIONS } from '../../jobs/constants'
 
 export const Permissions: CollectionConfig = withRbac({
   slug: 'permissions',

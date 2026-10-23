@@ -1,7 +1,7 @@
 import type { PayloadRequest } from 'payload'
 import { APIError } from 'payload'
 
-import { addedRoleIds, roleIdList } from '../../rbac/guards/role-id-set'
+import { addedRoleIds, roleIdList } from '../../access'
 import {
   USER_BRANCHES_FIELD,
   USER_DATA_CLASSES_FIELD,
