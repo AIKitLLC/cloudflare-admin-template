@@ -205,3 +205,13 @@ test('every module directory with outside importers has an index.ts', () => {
     .sort()
   assert.deepEqual(missing, [], `Missing index.ts in: ${missing.join(', ')}`)
 })
+
+test("known 'use client' violations are still present", () => {
+  const current = new Set(found.useClientViolations)
+  const stale = KNOWN_USE_CLIENT_VIOLATIONS.filter((e) => !current.has(e))
+  assert.deepEqual(
+    stale,
+    [],
+    `These 'use client' violations are fixed: remove them from KNOWN_USE_CLIENT_VIOLATIONS:\n${stale.join('\n')}`,
+  )
+})
