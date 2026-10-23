@@ -4,7 +4,7 @@ Last updated: 2026-10-23.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for review.
 
-The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-23 around 10:00 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `29262dd`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
+The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-23 around 15:20 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `63ee819`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
 
 ## What is on `main`
 
@@ -25,6 +25,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | `0c0a719` | #33 | Security patch: Payload 3.91.0, `undici` 7.29.1, migration `20261017_133958_payload_3_91_security`. Closes #35 and #36. |
 | `abad182` | #32 | First-run admin setup from the web (`src/auth/first-admin-setup.ts`, hidden collection `setup-state`, migration `20261017_144000_setup_state`). Closes #37. |
 | `29262dd` | #39 | This status page refreshed after #29 and #30. Closes #38. |
+| `63ee819` | #41 | Deploy-button inputs (`JOBS_INTERNAL_SECRET` active in `.env.example`, descriptions in `package.json`) and the isolated demo rollout guide `docs/demo-deployment.md`. Refs #40. |
 
 ## Toolchain and CI
 
@@ -39,7 +40,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 | Pull request | Title | Issue | Base | State |
 | --- | --- | --- | --- | --- |
-| #41 | Deploy-button inputs and demo rollout guide | #40 | `main` | This change; ready for review |
+| This change | Status page refreshed after #41 | — | `main` | Ready for review |
 
 #11–#15, #18, and #19 were closed as superseded by #29. #20 (plugin split, base `integration/admin-stack`) was closed on 2026-10-23; that work is on hold.
 
@@ -47,7 +48,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 A maintainer decides the merge order. Do not merge any pull request without maintainer approval.
 
-#31, #33, #32, and #39 were merged in that order.
+#31, #33, #32, #39, and #41 were merged in that order.
 
 ## Deploy prerequisites
 
@@ -78,11 +79,11 @@ Labels exist (`type:*`, `area:*`, `status:*`, `priority:*`). No milestones exist
 | #10 | Safe script runner | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
 | #46 | Bump vulnerable transitive dependencies reported by `pnpm audit --prod` | — | — |
 | #47 | Recovery path when first-run setup is left incomplete | — | — |
-| #40 | Deploy-button inputs and isolated demo rollout | — | #41 (the live demo is not verified yet) |
+| #40 | Deploy-button inputs and isolated demo rollout | — | #41 (merged). Stays open until a demo deploy and sign-in check succeed and the demo URL is recorded. |
 | #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | — |
 | #45 | Decouple core features into in-code modules | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | — |
 
-Closed on 2026-10-17 as resolved by #29 (`0180b63`): #1 (RBAC and permission matrix), #2 (row-level scope), #3 (audit trail), and #9 (system parameters). Closed by #31: #34. Closed by #33: #35 and #36. Closed by #32: #37. Closed by #39: #38.
+Closed on 2026-10-17 as resolved by #29 (`0180b63`): #1 (RBAC and permission matrix), #2 (row-level scope), #3 (audit trail), and #9 (system parameters). Closed by #31: #34. Closed by #33: #35 and #36. Closed by #32: #37. Closed by #39: #38. #41 (merged) refs #40 but does not close it.
 
 Proposed milestones, for a person with permission to create them:
 
@@ -99,12 +100,7 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Pull request #41 (`fix/deploy-button-demo-inputs`, base `main` `29262dd`, refs #40). Configuration and docs; no runtime logic or dependencies change.
-
-- `.env.example`: `JOBS_INTERNAL_SECRET` is an active entry with an empty value, so the deploy button asks for it.
-- `package.json`: deploy-button descriptions for `JOBS_INTERNAL_SECRET` and `PAYLOAD_PUBLIC_SERVER_URL`.
-- `docs/demo-deployment.md`: separate demo instance, first admin, and acceptance checks; linked from the README.
-- This page refreshed as one snapshot of 2026-10-23.
+Docs only. This page refreshed as one snapshot of 2026-10-23 after #41 was merged (`main` at `63ee819`). No code, configuration, or dependencies change.
 
 ## Acronyms
 
