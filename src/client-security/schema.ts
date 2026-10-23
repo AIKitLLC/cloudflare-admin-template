@@ -1,4 +1,4 @@
-import { readFirebaseClientConfig } from '../auth'
+import { readFirebaseClientConfig } from '../auth/firebase'
 
 /** Only public Firebase identifiers and bounded quota settings may be stored here. */
 export interface ClientSecurityConfiguration {

@@ -10,7 +10,11 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const BASELINE_PATH = path.join(ROOT, 'tests/unit/module-boundaries.baseline.json')
-const EXTRA_ENTRIES: Record<string, string[]> = { jobs: ['worker.ts'] }
+const EXTRA_ENTRIES: Record<string, string[]> = {
+  jobs: ['worker.ts'],
+  auth: ['firebase.ts'],
+  'client-security': ['client.ts'],
+}
 const PAYLOAD_CONFIG = 'src/payload.config.ts'
 // Non-module groups: the composition root (payload.config.ts, src/config, src/migrations), the
 // route layer, scripts and the worker entry.

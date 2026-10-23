@@ -1,4 +1,4 @@
-import type { FirebaseClientIdentity } from '../auth'
+import type { FirebaseClientIdentity } from '../auth/firebase'
 import {
   canonicalClientSecurityConfiguration,
   digestClientSecurityConfiguration,
