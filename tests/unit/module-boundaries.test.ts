@@ -1,15 +1,13 @@
 import assert from 'node:assert/strict'
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 // Enforces the in-code module boundaries (#45): every top-level `src/<m>` directory is a module
-// whose only public surface is `src/<m>/index.ts`. Existing violations live in the baseline JSON,
-// which later tasks shrink until it is empty. `UPDATE_BASELINE=1` rewrites the baseline.
+// whose only public surface is `src/<m>/index.ts`. There is no baseline: zero violations allowed.
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const BASELINE_PATH = path.join(ROOT, 'tests/unit/module-boundaries.baseline.json')
 const EXTRA_ENTRIES: Record<string, string[]> = {
   jobs: ['worker.ts'],
   auth: ['firebase.ts'],
@@ -24,7 +22,6 @@ const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '.mjs']
 const RESOLVE_SUFFIXES = ['', '.ts', '.tsx', '.js', '.mjs', '/index.ts', '/index.tsx']
 const SKIPPED = new Set(['src/app/(payload)/admin/importMap.js', 'src/payload-types.ts'])
 
-type Baseline = { cycles: string[]; deepImports: string[] }
 type Edge = {
   from: string
   fromGroup: string
@@ -67,8 +64,80 @@ function groupOf(rel: string): string {
 const isModule = (group: string) =>
   group !== COMPOSITION && group !== ROUTE_LAYER && group !== 'scripts' && group !== 'custom-worker'
 
+/**
+ * Removes comments while leaving string, template and regex literals untouched, so a string such
+ * as a glob ending in `*` + `/*` cannot open a fake block comment and hide the imports after it.
+ */
 function stripComments(text: string): string {
-  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  let out = ''
+  let i = 0
+  // Whether a `/` here starts a regex literal rather than a division.
+  const regexAllowed = () => {
+    const before = out.trimEnd()
+    return (
+      before === '' ||
+      '(,=:[!&|?{};+-*%<>~^'.includes(before.slice(-1)) ||
+      /\b(?:return|typeof)$/.test(before)
+    )
+  }
+  const skipQuoted = (quote: string) => {
+    out += text[i++]
+    while (i < text.length && text[i] !== quote && text[i] !== '\n') {
+      if (text[i] === '\\') out += text[i++]
+      out += text[i++]
+    }
+    if (i < text.length) out += text[i++]
+  }
+  const skipTemplate = () => {
+    out += text[i++]
+    while (i < text.length && text[i] !== '`') {
+      if (text[i] === '\\') {
+        out += text[i++]
+      } else if (text[i] === '$' && text[i + 1] === '{') {
+        out += text.slice(i, i + 2)
+        i += 2
+        let depth = 1
+        while (i < text.length) {
+          if (text[i] === '{') depth++
+          else if (text[i] === '}' && --depth === 0) break
+          scan()
+        }
+      }
+      if (i < text.length) out += text[i++]
+    }
+    if (i < text.length) out += text[i++]
+  }
+  const skipRegex = () => {
+    out += text[i++]
+    let inClass = false
+    while (i < text.length && text[i] !== '\n') {
+      const ch = text[i]
+      if (ch === '\\') out += text[i++]
+      else if (ch === '[') inClass = true
+      else if (ch === ']') inClass = false
+      else if (ch === '/' && !inClass) break
+      out += text[i++]
+    }
+    if (i < text.length && text[i] === '/') out += text[i++]
+  }
+  // Consumes one token of code, or one whole literal or comment.
+  function scan() {
+    const ch = text[i]
+    const next = text[i + 1]
+    if (ch === "'" || ch === '"') skipQuoted(ch)
+    else if (ch === '`') skipTemplate()
+    else if (ch === '/' && next === '/') {
+      while (i < text.length && text[i] !== '\n') i++
+    } else if (ch === '/' && next === '*') {
+      const end = text.indexOf('*/', i + 2)
+      const stop = end === -1 ? text.length : end + 2
+      out += text.slice(i, stop).replace(/[^\n]/g, '')
+      i = stop
+    } else if (ch === '/' && regexAllowed()) skipRegex()
+    else out += text[i++]
+  }
+  while (i < text.length) scan()
+  return out
 }
 
 function resolveSpecifier(fromFile: string, spec: string): string | null {
@@ -84,24 +153,38 @@ function resolveSpecifier(fromFile: string, spec: string): string | null {
   return null
 }
 
-function readEdges(file: string): { edges: Edge[]; useClient: boolean } {
-  const rel = toRel(file)
-  const text = stripComments(readFileSync(file, 'utf8'))
-  const fromGroup = groupOf(rel)
-  const edges: Edge[] = []
-  const add = (spec: string, typeOnly: boolean) => {
-    const target = resolveSpecifier(file, spec)
-    if (!target || !target.startsWith('src/')) return
-    edges.push({ from: rel, fromGroup, target, targetGroup: groupOf(target), typeOnly })
-  }
+/** Module specifiers a source text imports, and whether it opens with a `'use client'` directive. */
+function parseImports(source: string): {
+  imports: { spec: string; typeOnly: boolean }[]
+  useClient: boolean
+} {
+  const text = stripComments(source)
+  const imports: { spec: string; typeOnly: boolean }[] = []
   // `import … from '…'` and `export … from '…'` (type-only when `import type` / `export type`).
   const fromPattern =
     /(?:^|[\s;{}])(?:import|export)(\s+type)?\s[^'"`;]*?\bfrom\s*['"]([^'"]+)['"]/g
-  for (const m of text.matchAll(fromPattern)) add(m[2], Boolean(m[1]))
+  for (const m of text.matchAll(fromPattern)) imports.push({ spec: m[2], typeOnly: Boolean(m[1]) })
   // Side-effect imports and dynamic imports.
-  for (const m of text.matchAll(/(?:^|[\s;{}])import\s*['"]([^'"]+)['"]/g)) add(m[1], false)
-  for (const m of text.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) add(m[1], false)
-  return { edges, useClient: /^\s*['"]use client['"]/.test(text) }
+  for (const m of text.matchAll(/(?:^|[\s;{}])import\s*['"]([^'"]+)['"]/g)) {
+    imports.push({ spec: m[1], typeOnly: false })
+  }
+  for (const m of text.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g)) {
+    imports.push({ spec: m[1], typeOnly: false })
+  }
+  return { imports, useClient: /^\s*['"]use client['"]/.test(text) }
+}
+
+function readEdges(file: string): { edges: Edge[]; useClient: boolean } {
+  const rel = toRel(file)
+  const { imports, useClient } = parseImports(readFileSync(file, 'utf8'))
+  const fromGroup = groupOf(rel)
+  const edges: Edge[] = []
+  for (const { spec, typeOnly } of imports) {
+    const target = resolveSpecifier(file, spec)
+    if (!target || !target.startsWith('src/')) continue
+    edges.push({ from: rel, fromGroup, target, targetGroup: groupOf(target), typeOnly })
+  }
+  return { edges, useClient }
 }
 
 function isLegal(edge: Edge): boolean {
@@ -164,40 +247,78 @@ function analyse() {
   }
 }
 
+const NL = '\n'
 const found = analyse()
 
-if (process.env.UPDATE_BASELINE === '1') {
-  const next: Baseline = { cycles: found.cycles, deepImports: found.deepImports }
-  writeFileSync(BASELINE_PATH, `${JSON.stringify(next, null, 2)}\n`)
-}
-
-const baseline = JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) as Baseline
-
-test('no deep cross-module imports outside the baseline', () => {
-  const known = new Set(baseline.deepImports)
-  const offenders = found.deepImports.filter((entry) => !known.has(entry))
-  assert.deepEqual(offenders, [], `New deep cross-module imports:\n${offenders.join('\n')}`)
+test('no deep cross-module imports', () => {
+  assert.deepEqual(
+    found.deepImports,
+    [],
+    `Deep cross-module imports:${NL}${found.deepImports.join(NL)}`,
+  )
 })
 
-test('baseline has no stale deep imports', () => {
-  const current = new Set(found.deepImports)
-  const stale = baseline.deepImports.filter((entry) => !current.has(entry))
-  assert.deepEqual(stale, [], `Remove from the baseline:\n${stale.join('\n')}`)
-})
-
-test('module graph cycles match the baseline', () => {
-  assert.deepEqual(found.cycles, [...baseline.cycles].sort())
+test('module graph has no cycles', () => {
+  assert.deepEqual(found.cycles, [], `Module cycles:${NL}${found.cycles.join(NL)}`)
 })
 
 test("'use client' files stay inside their module", () => {
-  assert.deepEqual(found.useClientViolations, [])
+  assert.deepEqual(
+    found.useClientViolations,
+    [],
+    `'use client' files importing another group at runtime:${NL}${found.useClientViolations.join(NL)}`,
+  )
 })
 
 test('every module directory with outside importers has an index.ts', () => {
-  const stillBaselined = (m: string) =>
-    baseline.deepImports.some((entry) => entry.split(' -> ')[1]?.startsWith(`src/${m}/`))
   const missing = [...found.importedModules]
-    .filter((m) => !stillBaselined(m) && !existsSync(path.join(ROOT, 'src', m, 'index.ts')))
+    .filter((m) => !existsSync(path.join(ROOT, 'src', m, 'index.ts')))
     .sort()
   assert.deepEqual(missing, [], `Missing index.ts in: ${missing.join(', ')}`)
+})
+
+test('admin component paths resolve', () => {
+  const text = readFileSync(path.join(ROOT, PAYLOAD_CONFIG), 'utf8')
+  const paths = [...text.matchAll(/['"`](@?\/[^#'"`]+#\w+)['"`]/g)]
+    .map((m) => m[1])
+    .filter((value) => /^@?\/[^#]+#\w+$/.test(value))
+  assert.ok(paths.length > 0, 'no admin component paths found in payload.config.ts')
+  const problems: string[] = []
+  for (const value of paths) {
+    const [rawPath, name] = value.split('#')
+    const base = path.join(ROOT, 'src', rawPath.replace(/^@?\//, ''))
+    const file = ['.tsx', '.ts'].map((ext) => base + ext).find((candidate) => existsSync(candidate))
+    if (!file) {
+      problems.push(`${value}: no file ${toRel(base)}.tsx or .ts`)
+      continue
+    }
+    const source = readFileSync(file, 'utf8')
+    const exported = [
+      new RegExp(String.raw`export\s+(?:async\s+)?function\s+${name}\b`),
+      new RegExp(String.raw`export\s+const\s+${name}\b`),
+      new RegExp(String.raw`export\s*\{[^}]*\b${name}\b`),
+    ].some((pattern) => pattern.test(source))
+    if (!exported) problems.push(`${value}: ${toRel(file)} does not export ${name}`)
+  }
+  assert.deepEqual(problems, [], `Unresolved admin component paths:${NL}${problems.join(NL)}`)
+})
+
+test('comment stripping is string-aware', () => {
+  const specs = (source: string) => parseImports(source).imports.map((i) => i.spec)
+  // A glob string must not open a fake block comment that hides the import after it.
+  const globThenImport = [
+    "const glob = '**/*'",
+    "import { x } from './after-glob'",
+    '/** doc */',
+  ].join('\n')
+  assert.deepEqual(specs(globThenImport), ['./after-glob'])
+  assert.deepEqual(specs('const t = `a /* ${"/*"} b`\nimport "./after-template"'), [
+    './after-template',
+  ])
+  assert.deepEqual(specs("const re = /['\"`]/g\nimport { y } from './after-regex'"), [
+    './after-regex',
+  ])
+  // Real comments are still removed, including imports written inside them.
+  assert.deepEqual(specs("/* import a from './in-block' */\n// import b from './in-line'"), [])
+  assert.deepEqual(specs("import a from './kept' // import b from './dropped'"), ['./kept'])
 })

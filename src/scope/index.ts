@@ -7,6 +7,10 @@ export {
   USER_DATA_CLASSES_FIELD,
   USER_ORGANIZATIONS_FIELD,
 } from './constants'
+export { Branches } from './collections/Branches'
+export { DataClasses } from './collections/DataClasses'
+export { Organizations } from './collections/Organizations'
+export { Records } from './collections/Records'
 export {
   SCOPE_ASSIGNMENT_ERROR,
   SCOPE_ASSIGNMENT_LIMIT_ERROR,
