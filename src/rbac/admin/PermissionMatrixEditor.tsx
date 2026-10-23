@@ -2,8 +2,8 @@
 
 import React, { useState } from 'react'
 
-import type { PermissionMatrix } from '../../rbac/matrix/matrix-types'
-import { GRANT_ROUTE } from '../../rbac/routes'
+import type { PermissionMatrix } from '../matrix/matrix-types'
+import { GRANT_ROUTE } from '../routes'
 
 type PermissionMatrixEditorProps = {
   matrix: PermissionMatrix

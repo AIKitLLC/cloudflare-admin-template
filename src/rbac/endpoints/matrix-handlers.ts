@@ -1,8 +1,8 @@
 import type { CollectionSlug, Endpoint, PayloadRequest } from 'payload'
 
-import { evaluateCollectionAccess } from '../../access/evaluate-collection-access'
-import { PERMISSIONS_SLUG, ROLE_PERMISSIONS_SLUG, ROLES_SLUG } from '../../access/constants'
-import { isAccessGranted, isUnconditionalAllow } from '../../access/result'
+import { evaluateCollectionAccess } from '../../access'
+import { PERMISSIONS_SLUG, ROLE_PERMISSIONS_SLUG, ROLES_SLUG } from '../../access'
+import { isAccessGranted, isUnconditionalAllow } from '../../access'
 import { assertMayChangeRoleGrant } from '../guards/guard-role-grants'
 import { UNCONDITIONAL_GRANT_ERROR } from '../guards/privilege-errors'
 import { loadPermissionMatrix } from '../matrix/load-permission-matrix'

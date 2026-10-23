@@ -5,7 +5,7 @@ import type {
 } from 'payload'
 import { APIError } from 'payload'
 
-import { ROLES_SLUG, SUPER_ADMIN_SLUG } from '../../access/constants'
+import { ROLES_SLUG, SUPER_ADMIN_SLUG } from '../../access'
 import { assertRemainingFullAccessHolder } from '../guards/guard-full-access-assignment'
 import { assertCanChangeFullAccessFlag } from '../guards/guard-full-access-flag'
 import { skipsPrivilegeChecks } from '../../access'

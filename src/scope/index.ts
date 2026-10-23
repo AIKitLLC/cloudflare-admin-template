@@ -1,4 +1,12 @@
-export { BRANCHES_SLUG, DATA_CLASSES_SLUG, ORGANIZATIONS_SLUG, RECORDS_SLUG } from './constants'
+export {
+  BRANCHES_SLUG,
+  DATA_CLASSES_SLUG,
+  ORGANIZATIONS_SLUG,
+  RECORDS_SLUG,
+  USER_BRANCHES_FIELD,
+  USER_DATA_CLASSES_FIELD,
+  USER_ORGANIZATIONS_FIELD,
+} from './constants'
 export {
   SCOPE_ASSIGNMENT_ERROR,
   SCOPE_ASSIGNMENT_LIMIT_ERROR,
@@ -14,6 +22,8 @@ export {
   SCOPE_USER_ERROR,
   SELF_SCOPE_ASSIGNMENT_ERROR,
 } from './errors'
+export { assertRoleHoldersWithinActorScope } from './guards/assert-role-holders-within-actor-scope'
+export { assertUserWithinActorScope } from './guards/assert-user-within-actor-scope'
 export { ensureRowScopeRegistered } from './register-row-scope'
 export { loadEffectiveScope } from './resolve/load-effective-scope'
 export { resolveEffectiveScope } from './resolve/resolve-effective-scope'

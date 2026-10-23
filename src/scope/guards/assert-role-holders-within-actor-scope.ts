@@ -1,9 +1,9 @@
 import type { CollectionSlug, PayloadRequest } from 'payload'
 import { APIError } from 'payload'
 
-import { USERS_SLUG } from '../../access/constants'
-import { userGrantsFullAccess } from '../../access/resolve/load-user-grants'
-import { relationIds } from '../../access/relation-id'
+import { USERS_SLUG } from '../../access'
+import { userGrantsFullAccess } from '../../access'
+import { relationIds } from '../../access'
 import { fullAccessRoleIds, skipsPrivilegeChecks } from '../../access'
 import { SCOPE_GRANT_ERROR } from '../errors'
 import { assignmentsFromRecord } from '../resolve/assignments-from-record'

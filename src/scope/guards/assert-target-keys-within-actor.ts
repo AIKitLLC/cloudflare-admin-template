@@ -1,7 +1,7 @@
 import type { PayloadRequest } from 'payload'
 import { APIError } from 'payload'
 
-import { loadUserGrants } from '../../access/resolve/load-user-grants'
+import { loadUserGrants } from '../../access'
 import { fullAccessRoleIds, grantedKeysByRole } from '../../access'
 import { SCOPE_TARGET_KEYS_ERROR } from '../errors'
 

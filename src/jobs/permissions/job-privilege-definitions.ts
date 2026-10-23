@@ -1,4 +1,4 @@
-import type { PermissionDefinition } from '../../rbac/catalog/permission-definition'
+import type { PermissionDefinition } from '../../rbac'
 import { JOBS_SLUG } from '../constants'
 import { listJobDefinitions } from '../registry/job-registry'
 

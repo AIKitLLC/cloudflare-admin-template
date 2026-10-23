@@ -11,22 +11,22 @@ import { guardPublicUserCreation } from '../auth/first-admin'
 import { firstRegisterEndpoint, holdFirstAdminSetupClaim } from '../auth/first-admin-setup'
 import { releaseLoginAttempt, throttleAuthOperation } from '../auth/login-throttle'
 import { usersAuthOptions } from '../auth/users-auth'
-import { evaluateCollectionAccess } from '../access/evaluate-collection-access'
-import { isPermissionPayloadCall, permissionDocumentId } from '../access/permission-payload-call'
-import { withRbac } from '../access/with-rbac'
+import { evaluateCollectionAccess } from '../access'
+import { isPermissionPayloadCall, permissionDocumentId } from '../access'
+import { withRbac } from '../access'
 import { withAuditTrail } from '../audit'
 import { withRowScope } from '../scope'
 import {
   guardAuthCredentialOperation,
   guardLastFullAccessDeletion,
   guardUserRoleAssignment,
-} from '../rbac/guards/guard-full-access-assignment'
-import { assignSuperAdminToFirstUser } from '../rbac/hooks/assign-super-admin-to-first-user'
+} from '../rbac'
+import { assignSuperAdminToFirstUser } from '../rbac'
 import {
   USER_BRANCHES_FIELD,
   USER_DATA_CLASSES_FIELD,
   USER_ORGANIZATIONS_FIELD,
-} from '../scope/constants'
+} from '../scope'
 
 export const Users: CollectionConfig = withAuditTrail(
   withRowScope(

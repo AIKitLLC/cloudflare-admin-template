@@ -1,6 +1,6 @@
 import type { CollectionConfig } from 'payload'
 
-import { withRbac } from '../../access/with-rbac'
+import { withRbac } from '../../access'
 import { withRowScope } from '../hooks/with-row-scope'
 import { ORGANIZATIONS_SLUG, SCOPE_PARENT_FIELD } from '../constants'
 import { scopePathField } from '../path/scope-path-field'

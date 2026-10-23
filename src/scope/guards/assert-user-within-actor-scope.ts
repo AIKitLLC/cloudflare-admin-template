@@ -1,7 +1,7 @@
 import type { PayloadRequest } from 'payload'
 import { APIError } from 'payload'
 
-import { userGrantsFullAccess } from '../../access/resolve/load-user-grants'
+import { userGrantsFullAccess } from '../../access'
 import { SCOPE_USER_ERROR } from '../errors'
 import { loadEffectiveScope } from '../resolve/load-effective-scope'
 import { assignmentsWithinScope } from './assignments-within-scope'

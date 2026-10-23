@@ -1,6 +1,6 @@
 import type { CollectionSlug, PayloadRequest } from 'payload'
 
-import { USERS_SLUG } from '../../access/constants'
+import { USERS_SLUG } from '../../access'
 import { assignmentsFromRecord, emptyAssignments } from './assignments-from-record'
 import type { ScopeAssignments } from '../types'
 

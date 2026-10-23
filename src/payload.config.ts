@@ -142,7 +142,7 @@ export default buildConfig({
     components: {
       afterNavLinks: [
         '@/components/ClientSecurityNav#ClientSecurityNav',
-        '/components/rbac/PermissionMatrixNavLink#PermissionMatrixNavLink',
+        '/rbac/admin/PermissionMatrixNavLink#PermissionMatrixNavLink',
         '/components/jobs/JobsNavLink#JobsNavLink',
       ],
       views: {
@@ -151,7 +151,7 @@ export default buildConfig({
           path: '/client-security',
         },
         permissionMatrix: {
-          Component: '/components/rbac/PermissionMatrixView#PermissionMatrixView',
+          Component: '/rbac/admin/PermissionMatrixView#PermissionMatrixView',
           path: '/permission-matrix',
           exact: true,
           meta: {

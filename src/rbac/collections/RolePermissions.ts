@@ -1,6 +1,6 @@
 import type { CollectionConfig } from 'payload'
 
-import { withRbac } from '../../access/with-rbac'
+import { withRbac } from '../../access'
 import { guardRolePermissionDelete, guardRolePermissionWrite } from '../guards/guard-role-grants'
 
 export const RolePermissions: CollectionConfig = withRbac({

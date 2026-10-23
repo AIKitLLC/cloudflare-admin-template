@@ -1,6 +1,6 @@
 import type { CollectionSlug, Payload } from 'payload'
 
-import { ROLES_SLUG, SUPER_ADMIN_NAME, SUPER_ADMIN_SLUG } from '../../access/constants'
+import { ROLES_SLUG, SUPER_ADMIN_NAME, SUPER_ADMIN_SLUG } from '../../access'
 import { isUniqueConstraintError } from './unique-constraint'
 
 export type SuperAdminRole = {

@@ -1,6 +1,6 @@
 import type { CollectionSlug, Payload } from 'payload'
 
-import { ROLES_SLUG, SUPER_ADMIN_SLUG } from '../../access/constants'
+import { ROLES_SLUG, SUPER_ADMIN_SLUG } from '../../access'
 import { collectPermissionDefinitions } from '../catalog/permission-definition'
 import { catalogFingerprint } from './catalog-fingerprint'
 import { ensureSuperAdminRole, type SuperAdminRole } from './ensure-super-admin-role'

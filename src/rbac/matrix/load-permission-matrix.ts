@@ -1,7 +1,7 @@
 import type { CollectionSlug, Payload } from 'payload'
 
-import { PERMISSIONS_SLUG, ROLE_PERMISSIONS_SLUG, ROLES_SLUG } from '../../access/constants'
-import { relationId } from '../../access/relation-id'
+import { PERMISSIONS_SLUG, ROLE_PERMISSIONS_SLUG, ROLES_SLUG } from '../../access'
+import { relationId } from '../../access'
 import type { MatrixGroup, MatrixRole, PermissionMatrix } from './matrix-types'
 
 const ACTION_ORDER = ['create', 'read', 'update', 'delete', 'export', 'readField', 'writeField']

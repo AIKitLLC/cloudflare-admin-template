@@ -18,11 +18,6 @@ const COMPOSITION = 'payload.config'
 const ROUTE_LAYER = 'app'
 const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '.mjs']
 const RESOLVE_SUFFIXES = ['', '.ts', '.tsx', '.js', '.mjs', '/index.ts', '/index.tsx']
-// Pre-existing 'use client' violation, kept out of the baseline JSON (its shape is fixed). The task
-// that moves rbac/routes.ts behind the rbac entry must empty this list.
-const KNOWN_USE_CLIENT_VIOLATIONS = [
-  'src/components/rbac/PermissionMatrixEditor.tsx -> src/rbac/routes.ts',
-]
 const SKIPPED = new Set(['src/app/(payload)/admin/importMap.js', 'src/payload-types.ts'])
 
 type Baseline = { cycles: string[]; deepImports: string[] }
@@ -191,10 +186,7 @@ test('module graph cycles match the baseline', () => {
 })
 
 test("'use client' files stay inside their module", () => {
-  const offenders = found.useClientViolations.filter(
-    (e) => !KNOWN_USE_CLIENT_VIOLATIONS.includes(e),
-  )
-  assert.deepEqual(offenders, [])
+  assert.deepEqual(found.useClientViolations, [])
 })
 
 test('every module directory with outside importers has an index.ts', () => {
@@ -204,14 +196,4 @@ test('every module directory with outside importers has an index.ts', () => {
     .filter((m) => !stillBaselined(m) && !existsSync(path.join(ROOT, 'src', m, 'index.ts')))
     .sort()
   assert.deepEqual(missing, [], `Missing index.ts in: ${missing.join(', ')}`)
-})
-
-test("known 'use client' violations are still present", () => {
-  const current = new Set(found.useClientViolations)
-  const stale = KNOWN_USE_CLIENT_VIOLATIONS.filter((e) => !current.has(e))
-  assert.deepEqual(
-    stale,
-    [],
-    `These 'use client' violations are fixed: remove them from KNOWN_USE_CLIENT_VIOLATIONS:\n${stale.join('\n')}`,
-  )
 })

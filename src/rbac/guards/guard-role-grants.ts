@@ -6,10 +6,10 @@ import type {
 } from 'payload'
 import { APIError } from 'payload'
 
-import { ROLE_PERMISSIONS_SLUG } from '../../access/constants'
-import { loadUserGrants } from '../../access/resolve/load-user-grants'
-import { relationId } from '../../access/relation-id'
-import { assertRoleHoldersWithinActorScope } from '../../scope/guards/assert-role-holders-within-actor-scope'
+import { ROLE_PERMISSIONS_SLUG } from '../../access'
+import { loadUserGrants } from '../../access'
+import { relationId } from '../../access'
+import { assertRoleHoldersWithinActorScope } from '../../scope'
 import { OWN_ROLE_GRANT_ERROR, SUBSET_GRANT_ERROR } from './privilege-errors'
 import { permissionKeysForIds, skipsPrivilegeChecks } from '../../access'
 

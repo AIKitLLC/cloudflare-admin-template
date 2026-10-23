@@ -84,7 +84,7 @@ See [First admin and admin access](#first-admin-and-admin-access).
 │   ├── collections/         # Payload Collection definitions
 │   │   ├── Users.ts         # User authentication collection
 │   │   └── Media.ts         # Asset upload collection (R2)
-│   ├── components/rbac/     # Permission matrix admin view
+│   ├── rbac/admin/           # Permission matrix admin view
 │   ├── rbac/                # Roles, permissions, seeding, and matrix API
 │   ├── migrations/          # D1 database migrations
 │   ├── payload.config.ts    # Main Payload CMS configuration & bindings

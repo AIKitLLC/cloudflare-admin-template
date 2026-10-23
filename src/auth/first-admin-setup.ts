@@ -13,9 +13,9 @@ import {
 } from 'payload'
 import { generatePayloadCookie } from 'payload/shared'
 
-import { USERS_SLUG } from '../access/constants'
+import { USERS_SLUG } from '../access'
 import { SKIP_RBAC_PRIVILEGE_CHECKS } from '../access'
-import { ensureSuperAdminRole } from '../rbac/seed/ensure-super-admin-role'
+import { ensureSuperAdminRole } from '../rbac'
 import { admitAuthAttempt, type LoginThrottleDatabase } from './login-throttle'
 
 export const SETUP_STATE_SLUG = 'setup-state'

@@ -4,7 +4,7 @@ import type {
   PayloadRequest,
 } from 'payload'
 
-import { userGrantsFullAccess } from '../../access/resolve/load-user-grants'
+import { userGrantsFullAccess } from '../../access'
 import { skipsPrivilegeChecks } from '../../access'
 import { USER_SCOPE_FIELDS } from '../constants'
 import { applyScopeAssignmentPolicy } from './apply-scope-assignment-policy'

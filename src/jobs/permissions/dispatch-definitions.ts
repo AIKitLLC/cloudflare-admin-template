@@ -1,4 +1,4 @@
-import type { PermissionDefinition } from '../../rbac/catalog/permission-definition'
+import type { PermissionDefinition } from '../../rbac'
 import { JOBS_RETRY_KEY, JOBS_SLUG, JOBS_TRIGGER_KEY } from '../constants'
 
 const suppressed = [

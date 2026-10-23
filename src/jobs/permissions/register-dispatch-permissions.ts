@@ -1,4 +1,4 @@
-import { registerCatalogContributor } from '../../rbac/catalog/catalog-contributors'
+import { registerCatalogContributor } from '../../rbac'
 import { jobDispatchDefinitions, suppressedJobPermissionKeys } from './dispatch-definitions'
 import { jobPrivilegeDefinitions } from './job-privilege-definitions'
 

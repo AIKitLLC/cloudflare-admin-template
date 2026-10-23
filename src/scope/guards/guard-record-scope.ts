@@ -1,9 +1,9 @@
 import type { CollectionBeforeChangeHook } from 'payload'
 import { APIError } from 'payload'
 
-import type { RowScopeBinding } from '../../access/types'
-import { userGrantsFullAccess } from '../../access/resolve/load-user-grants'
-import { relationId } from '../../access/relation-id'
+import type { RowScopeBinding } from '../../access'
+import { userGrantsFullAccess } from '../../access'
+import { relationId } from '../../access'
 import { skipsPrivilegeChecks } from '../../access'
 import { readRowScopeBinding } from '../bindings/read-row-scope-binding'
 import { SCOPE_RECORD_ERROR, SCOPE_RECORD_MISMATCH_ERROR } from '../errors'
