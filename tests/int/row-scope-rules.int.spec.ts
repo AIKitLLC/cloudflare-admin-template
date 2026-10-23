@@ -1,6 +1,10 @@
 // @vitest-environment node
+import type { CollectionConfig } from 'payload'
 import { describe, expect, it } from 'vitest'
 
+import { withRbac } from '@/access/with-rbac'
+import { assertRowScopeHooks, withRowScope } from '@/scope'
+import config from '@/payload.config'
 import { isPermissionPayloadCall, permissionDocumentId } from '@/access/permission-payload-call'
 import { SCOPE_ASSIGNMENT_ERROR, SCOPE_CYCLE_ERROR } from '@/scope/errors'
 import { assignmentsWithinScope } from '@/scope/guards/assignments-within-scope'
@@ -316,3 +320,93 @@ function catalog(): ScopeCatalog {
 function ids(values: ReadonlySet<string>): string[] {
   return [...values].sort()
 }
+
+const SCOPE_HOOK_KEYS = [
+  'beforeOperation',
+  'beforeChange',
+  'beforeDelete',
+  'afterChange',
+  'afterDelete',
+] as const
+
+function hookNames(collection: CollectionConfig | undefined) {
+  return Object.fromEntries(
+    SCOPE_HOOK_KEYS.map((key) => [
+      key,
+      (collection?.hooks?.[key] ?? []).map((hook) => (hook as { name: string }).name),
+    ]),
+  )
+}
+
+describe('row-scoped collection hooks', () => {
+  it('row-scoped collections keep their scope hooks', async () => {
+    const built = await config
+    const slugs = ['users', 'organizations', 'branches', 'data-classes', 'records', 'work-notes']
+    const actual = Object.fromEntries(
+      slugs.map((slug) => [slug, hookNames(built.collections.find((c) => c.slug === slug))]),
+    )
+    expect(actual).toEqual({
+      users: {
+        beforeOperation: [
+          'throttleAuthOperation',
+          'guardPublicUserCreation',
+          'guardClientSecurityOwnerOperation',
+          'guardAuthCredentialOperation',
+          'guardScopeAssignmentOperation',
+        ],
+        beforeChange: [
+          '',
+          'guardClientSecurityOwnerChange',
+          'guardUserRoleAssignment',
+          'holdFirstAdminSetupClaim',
+          'guardScopeAssignment',
+        ],
+        beforeDelete: ['guardClientSecurityOwnerDelete', 'guardLastFullAccessDeletion'],
+        afterChange: ['assignSuperAdminToFirstUser', 'clearScopeCacheAfterChange', ''],
+        afterDelete: ['clearScopeCacheAfterDelete', ''],
+      },
+      organizations: {
+        beforeOperation: [],
+        beforeChange: ['guardScopeNode'],
+        beforeDelete: ['guardScopeNodeDelete'],
+        afterChange: ['syncScopePath', 'clearScopeCacheAfterChange'],
+        afterDelete: ['clearScopeCacheAfterDelete'],
+      },
+      branches: {
+        beforeOperation: [],
+        beforeChange: ['guardScopeNode'],
+        beforeDelete: ['guardScopeNodeDelete'],
+        afterChange: ['syncScopePath', 'clearScopeCacheAfterChange'],
+        afterDelete: ['clearScopeCacheAfterDelete'],
+      },
+      'data-classes': {
+        beforeOperation: [],
+        beforeChange: ['guardScopeNode'],
+        beforeDelete: ['guardScopeNodeDelete'],
+        afterChange: ['syncScopePath', 'clearScopeCacheAfterChange'],
+        afterDelete: ['clearScopeCacheAfterDelete'],
+      },
+      records: {
+        beforeOperation: [],
+        beforeChange: ['guardRecordScope'],
+        beforeDelete: [],
+        afterChange: [],
+        afterDelete: [],
+      },
+      'work-notes': {
+        beforeOperation: [],
+        beforeChange: ['guardRecordScope'],
+        beforeDelete: [],
+        afterChange: [],
+        afterDelete: [],
+      },
+    })
+  })
+
+  it('assertRowScopeHooks fails closed for an unwrapped row-scoped collection', () => {
+    const bare = withRbac({ slug: 'unwrapped', fields: [] }, { rowScope: { assignments: true } })
+    expect(() => assertRowScopeHooks([bare])).toThrow(/unwrapped/)
+    expect(() => assertRowScopeHooks([withRowScope(bare)])).not.toThrow()
+    expect(() => assertRowScopeHooks([withRbac({ slug: 'plain', fields: [] })])).not.toThrow()
+  })
+})

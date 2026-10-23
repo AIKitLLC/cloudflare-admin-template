@@ -1,6 +1,7 @@
 import type { CollectionConfig } from 'payload'
 
 import { withRbac } from '../../access/with-rbac'
+import { withRowScope } from '../hooks/with-row-scope'
 import {
   BRANCHES_SLUG,
   DATA_CLASSES_SLUG,
@@ -10,58 +11,60 @@ import {
   RECORDS_SLUG,
 } from '../constants'
 
-export const Records: CollectionConfig = withRbac(
-  {
-    slug: RECORDS_SLUG,
-    labels: {
-      singular: 'Record',
-      plural: 'Records',
-    },
-    admin: {
-      useAsTitle: 'title',
-      group: 'Organization',
-      description:
-        'Example scoped collection. Reads, updates, deletes, and exports are limited to the signed-in user organization, branch, and data class.',
-      defaultColumns: ['title', 'organization', 'branch', 'dataClass'],
-    },
-    fields: [
-      {
-        name: 'title',
-        type: 'text',
-        required: true,
+export const Records: CollectionConfig = withRowScope(
+  withRbac(
+    {
+      slug: RECORDS_SLUG,
+      labels: {
+        singular: 'Record',
+        plural: 'Records',
       },
-      {
-        name: 'organization',
-        type: 'relationship',
-        relationTo: ORGANIZATIONS_SLUG,
-        required: true,
-        index: true,
+      admin: {
+        useAsTitle: 'title',
+        group: 'Organization',
+        description:
+          'Example scoped collection. Reads, updates, deletes, and exports are limited to the signed-in user organization, branch, and data class.',
+        defaultColumns: ['title', 'organization', 'branch', 'dataClass'],
       },
-      {
-        name: RECORD_BRANCH_FIELD,
-        type: 'relationship',
-        relationTo: BRANCHES_SLUG,
-        required: true,
-        index: true,
+      fields: [
+        {
+          name: 'title',
+          type: 'text',
+          required: true,
+        },
+        {
+          name: 'organization',
+          type: 'relationship',
+          relationTo: ORGANIZATIONS_SLUG,
+          required: true,
+          index: true,
+        },
+        {
+          name: RECORD_BRANCH_FIELD,
+          type: 'relationship',
+          relationTo: BRANCHES_SLUG,
+          required: true,
+          index: true,
+        },
+        {
+          name: RECORD_DATA_CLASS_FIELD,
+          type: 'relationship',
+          relationTo: DATA_CLASSES_SLUG,
+          required: true,
+          index: true,
+        },
+      ],
+      graphQL: {
+        singularName: 'Record',
+        pluralName: 'Records',
       },
-      {
-        name: RECORD_DATA_CLASS_FIELD,
-        type: 'relationship',
-        relationTo: DATA_CLASSES_SLUG,
-        required: true,
-        index: true,
-      },
-    ],
-    graphQL: {
-      singularName: 'Record',
-      pluralName: 'Records',
     },
-  },
-  {
-    rowScope: {
-      organizationField: 'organization',
-      branchField: RECORD_BRANCH_FIELD,
-      dataClassField: RECORD_DATA_CLASS_FIELD,
+    {
+      rowScope: {
+        organizationField: 'organization',
+        branchField: RECORD_BRANCH_FIELD,
+        dataClassField: RECORD_DATA_CLASS_FIELD,
+      },
     },
-  },
+  ),
 )

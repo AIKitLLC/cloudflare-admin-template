@@ -24,6 +24,7 @@ import { Branches } from './scope/collections/Branches'
 import { DataClasses } from './scope/collections/DataClasses'
 import { Organizations } from './scope/collections/Organizations'
 import { Records } from './scope/collections/Records'
+import { assertRowScopeHooks } from './scope'
 import { ensureRowScopeRegistered } from './scope/register-row-scope'
 import { SystemParameters } from './system-parameters/collections/SystemParameters'
 import { migrations } from './migrations'
@@ -112,6 +113,26 @@ const cloudflare = isTest
 
 ensureRowScopeRegistered()
 
+const collections: CollectionConfig[] = [
+  Users,
+  Media,
+  ...ClientSecurityCollections,
+  LoginThrottle,
+  SetupState,
+  Roles,
+  Permissions,
+  RolePermissions,
+  Organizations,
+  Branches,
+  DataClasses,
+  Records,
+  withAuditTrail(SystemParameters),
+  withAuditTrail(Jobs),
+  AuditLogs,
+  ...testOnlyCollections(),
+]
+assertRowScopeHooks(collections)
+
 export default buildConfig({
   admin: {
     user: Users.slug,
@@ -148,24 +169,7 @@ export default buildConfig({
       },
     },
   },
-  collections: ensureRbacCoverage([
-    Users,
-    Media,
-    ...ClientSecurityCollections,
-    LoginThrottle,
-    SetupState,
-    Roles,
-    Permissions,
-    RolePermissions,
-    Organizations,
-    Branches,
-    DataClasses,
-    Records,
-    withAuditTrail(SystemParameters),
-    withAuditTrail(Jobs),
-    AuditLogs,
-    ...testOnlyCollections(),
-  ]),
+  collections: ensureRbacCoverage(collections),
   endpoints: [matrixEndpoint, grantEndpoint],
   graphQL: {
     mutations: retryJobMutation,

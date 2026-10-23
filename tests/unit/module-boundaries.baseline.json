@@ -1,6 +1,5 @@
 {
   "cycles": [
-    "access <-> scope",
     "jobs <-> payload.config"
   ],
   "deepImports": [
@@ -12,7 +11,6 @@
     "scripts/local-api-smoke.mjs -> src/client-security/initialize.ts",
     "scripts/local-api-smoke.mjs -> src/client-security/schema.ts",
     "scripts/local-api-smoke.mjs -> src/client-security/store.ts",
-    "src/access/with-rbac.ts -> src/scope/hooks/scope-hooks-for.ts",
     "src/app/api/admin/client-security/route.ts -> src/client-security/admin-route.ts",
     "src/app/api/client/v1/me/route.ts -> src/client-security/client-route.ts",
     "src/app/jobs-worker/route.ts -> src/jobs/runtime/handle-queue-batch.ts",

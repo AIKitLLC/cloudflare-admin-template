@@ -1,57 +1,60 @@
 import type { CollectionConfig } from 'payload'
 
 import { withRbac } from '../../access/with-rbac'
+import { withRowScope } from '../hooks/with-row-scope'
 import { DATA_CLASSES_SLUG } from '../constants'
 import { scopePathField } from '../path/scope-path-field'
 
-export const DataClasses: CollectionConfig = withRbac(
-  {
-    slug: DATA_CLASSES_SLUG,
-    labels: {
-      singular: 'Data Class',
-      plural: 'Data Classes',
-    },
-    admin: {
-      useAsTitle: 'name',
-      group: 'Organization',
-      description:
-        'Data classes form groups. Assignment to a group includes every class nested under it.',
-      defaultColumns: ['name', 'slug', 'parent'],
-    },
-    fields: [
-      {
-        name: 'name',
-        type: 'text',
-        required: true,
+export const DataClasses: CollectionConfig = withRowScope(
+  withRbac(
+    {
+      slug: DATA_CLASSES_SLUG,
+      labels: {
+        singular: 'Data Class',
+        plural: 'Data Classes',
       },
-      {
-        name: 'slug',
-        type: 'text',
-        required: true,
-        unique: true,
-        index: true,
+      admin: {
+        useAsTitle: 'name',
+        group: 'Organization',
+        description:
+          'Data classes form groups. Assignment to a group includes every class nested under it.',
+        defaultColumns: ['name', 'slug', 'parent'],
       },
-      {
-        name: 'parent',
-        type: 'relationship',
-        relationTo: DATA_CLASSES_SLUG,
-        index: true,
-        admin: {
-          position: 'sidebar',
-          description:
-            'Group that contains this class. Nested groups are included in the assignment.',
+      fields: [
+        {
+          name: 'name',
+          type: 'text',
+          required: true,
         },
+        {
+          name: 'slug',
+          type: 'text',
+          required: true,
+          unique: true,
+          index: true,
+        },
+        {
+          name: 'parent',
+          type: 'relationship',
+          relationTo: DATA_CLASSES_SLUG,
+          index: true,
+          admin: {
+            position: 'sidebar',
+            description:
+              'Group that contains this class. Nested groups are included in the assignment.',
+          },
+        },
+        scopePathField(),
+      ],
+      graphQL: {
+        singularName: 'DataClass',
+        pluralName: 'DataClasses',
       },
-      scopePathField(),
-    ],
-    graphQL: {
-      singularName: 'DataClass',
-      pluralName: 'DataClasses',
     },
-  },
-  {
-    rowScope: {
-      dimension: 'data-class',
+    {
+      rowScope: {
+        dimension: 'data-class',
+      },
     },
-  },
+  ),
 )
