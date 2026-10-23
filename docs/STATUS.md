@@ -1,10 +1,10 @@
 # Status
 
-Last updated: 2026-10-17.
+Last updated: 2026-10-23.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for Tony.
 
-The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-17 around 11:30 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `0c0a719`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
+The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-23 around 08:15 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `abad182`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
 
 ## What is on `main`
 
@@ -23,6 +23,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | `533abcb` | #30 | Admin hardening 1: first admin from `pnpm admin:create` only ([CLI](https://en.wikipedia.org/wiki/Command-line_interface)), `Secure` / `SameSite=Lax` admin cookies in production, per-[IP](https://en.wikipedia.org/wiki/IP_address) throttling of sign-in, forgot-password, reset-password, and refresh-token (migration `20261017_105600_login_throttle`), required Cloudflare Access for `/admin` and `/api/users/*`, and homepage cleanup. |
 | `53fa735` | #31 | Security patch: Next.js 16.4.1, every `sharp` at 0.35.5 or later, `packageManager` `pnpm@10.33.4`. Closes #34. |
 | `0c0a719` | #33 | Security patch: Payload 3.91.0, `undici` 7.29.1, migration `20261017_133958_payload_3_91_security`. Closes #35 and #36. |
+| `abad182` | #32 | First-run admin setup from the web (`src/auth/first-admin-setup.ts`, hidden collection `setup-state`, migration `20261017_144000_setup_state`). Closes #37. |
 
 ## Toolchain and CI
 
@@ -37,7 +38,6 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 | Pull request | Title | Issue | Base | State |
 | --- | --- | --- | --- | --- |
-| #32 | feat: first-run admin setup from the web | #37 | `main` | Draft. Rebased onto `main` after #33. Adds migration `20261017_144000_setup_state`, ordered after the Payload 3.91 migration. |
 | #39 | docs: update STATUS.md after #29 and #30 | #38 | `main` | This change; draft |
 | #20 | feat: split admin features into Payload plugins | — | `integration/admin-stack` | Draft |
 
@@ -47,7 +47,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 Tony decides the merge order. Do not merge any pull request without his approval.
 
-#31 and #33 were merged in that order. #32 needs a Security review at its current head before merge. #32 also changes the "This change" section of this file, so whichever of #32 and #39 merges second needs a one-section rebase.
+#31, #33, and #32 were merged in that order. #39 was rebased onto `main` after #32.
 
 ## Deploy prerequisites
 
@@ -57,7 +57,7 @@ On `main` today:
 
 - `wrangler.jsonc` still has the D1 `database_id` placeholder `DATABASE_ID`. Create the D1 database and R2 bucket and fill in the ids first (README, Deployment).
 - `PAYLOAD_SECRET` is a Worker secret (`package.json` `cloudflare.bindings`, `.env.example`), not a var in `wrangler.jsonc`.
-- Apply the migrations in `src/migrations` (listed in `src/migrations/index.ts`, the latest is `20261017_105600_login_throttle`) to the target D1 database with `pnpm run deploy:database` or `pnpm payload migrate`. Local `pnpm dev` is not a substitute.
+- Apply the migrations in `src/migrations` (listed in `src/migrations/index.ts`, the latest is `20261017_144000_setup_state`) to the target D1 database with `pnpm run deploy:database` or `pnpm payload migrate`. Local `pnpm dev` is not a substitute.
 - Create the first admin with `pnpm admin:create`. Cloudflare Access in front of `/admin` and `/api/users/*` is required in production. See `docs/admin-access.md`, and add the WAF rate limiting rule described there.
 - Firebase native clients are off by default (`FIREBASE_CLIENT_ENABLED` = `"false"`, empty project values in `wrangler.jsonc`). The first owner is set by an operator with `scripts/bootstrap-client-security-owner.mjs`. See `docs/firebase-client-auth.md`.
 - Workers plan: the README note on Workers plans is the source. Worker size is limited to 64 MiB uncompressed on both Free and Paid plans. A local build is about 15.7 MiB uncompressed (about 3.6 MiB gzip; measured 2026-10-17 06:18 CT at commit `b6c8198` with `wrangler deploy --dry-run`), so bundle size alone does not require Workers Paid. CPU time per request and startup time have not been measured yet.
@@ -76,10 +76,11 @@ Labels exist (`type:*`, `area:*`, `status:*`, `priority:*`). No milestones exist
 | #7 | State machine and approval workflow | `type:feature`, `area:collections`, `status:ready`, `priority:p2` | — |
 | #8 | Advanced data grid | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
 | #10 | Safe script runner | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
-| #37 | First-run admin setup from the web | `type:feature`, `area:admin`, `status:in-review`, `priority:p1` | #32 |
+| #46 | Bump vulnerable transitive dependencies reported by `pnpm audit --prod` | — | — |
+| #47 | Recovery path when first-run setup is left incomplete | — | — |
 | #38 | Update STATUS.md after #29 and #30 | `type:docs`, `status:in-review` | #39 |
 
-Closed on 2026-10-17 as resolved by #29 (`0180b63`): #1 (RBAC and permission matrix), #2 (row-level scope), #3 (audit trail), and #9 (system parameters). Closed by #31: #34. Closed by #33: #35 and #36.
+Closed on 2026-10-17 as resolved by #29 (`0180b63`): #1 (RBAC and permission matrix), #2 (row-level scope), #3 (audit trail), and #9 (system parameters). Closed by #31: #34. Closed by #33: #35 and #36. Closed by #32: #37.
 
 Proposed milestones, for a person with permission to create them:
 
@@ -96,9 +97,10 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Pull request #39 (`docs/status-after-29-30`, draft, base `main` `0c0a719`, closes #38):
+Pull request #39 (`docs/status-after-29-30`, draft, base `main` `abad182`, closes #38):
 
-- Records #30, #31, and #33 on `main` and the open pull requests #32, #39, and #20.
+- Records #30, #31, #33, and #32 on `main` and the open pull requests #39 and #20.
+- Lists follow-up issues #46 and #47.
 - Updates the issue table: #1, #2, #3, and #9 closed as resolved by #29; #5 waits for the queues; #34–#36 closed by #31 and #33; #37 and #38 open.
 - Adds the acronym list below.
 
