@@ -71,7 +71,10 @@ cache/refresh tokens. Do not create a new account each call, hardcode/log tokens
 or place them in URLs. Native authentication does not require or trust Origin.
 
 `src/auth/firebase-client.ts` uses `jose` and Web Crypto, without the Node-only
-Firebase Admin SDK. Use `createManagedFirebaseClientRoute` from
+Firebase Admin SDK. The native-client path is bundled for workerd by
+`scripts/firebase-client-runtime.mjs` through two documented extra entries,
+`src/auth/firebase.ts` and `src/client-security/client.ts`, which must not reach
+Node builtins or Payload. Use `createManagedFirebaseClientRoute` from
 `src/client-security/client-route.ts` for automatic policy/authentication/admission:
 
 ```ts

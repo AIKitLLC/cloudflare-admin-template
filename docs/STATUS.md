@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-10-23.
+Last updated: 2026-10-24.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for Tony.
 
@@ -40,6 +40,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | --- | --- | --- | --- | --- |
 | #39 | docs: update STATUS.md after #29 and #30 | #38 | `main` | This change; draft |
 | #20 | feat: split admin features into Payload plugins | — | `integration/admin-stack` | Draft |
+| — | refactor: decouple core features into in-code modules (`feat/45-in-code-modules`) | #45 | `main` | Draft, not yet opened |
 
 #11–#15, #18, and #19 were closed as superseded by #29. #20 still targets `integration/admin-stack` and was not part of #29.
 

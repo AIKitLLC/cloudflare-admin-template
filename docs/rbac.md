@@ -76,7 +76,7 @@ Restart after adding a collection so the catalog sync inserts the new permission
 
 ## Extension points for later issues
 
-Import from `src/access`:
+Import from `src/access` (its single public entry, `src/access/index.ts`; the privilege helpers `privilege-context`, `role-id-set`, `full-access-role-ids`, `role-permission-keys` and `JOB_DISPATCH_ACTIONS` also live there, and the matrix admin UI is in `src/rbac/admin`). `tests/unit/module-boundaries.test.ts` rejects deep imports into other modules:
 
 | Later issue               | What to call                                    | Contract                                                                                                                                                                                                                                            |
 | ------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

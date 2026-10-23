@@ -80,16 +80,19 @@ See [First admin and admin access](#first-admin-and-admin-access).
 │   ├── app/                 # Next.js App Router (Admin & API endpoints)
 │   ├── access/              # RBAC decision pipeline and collection/field helpers
 │   ├── audit/               # Opt-in field-level audit trail (see src/audit/README.md)
+│   ├── auth/                # Firebase client auth, first-admin setup, login throttle
+│   ├── client-security/     # Firebase trust settings, rate limits, admin view
 │   ├── scope/               # Organizational row scope, hierarchy, and assignment guards
+│   ├── system-parameters/   # Typed system parameters and getParameter
+│   ├── jobs/                # Typed background jobs, runner, and monitor (jobs/admin)
 │   ├── collections/         # Payload Collection definitions
 │   │   ├── Users.ts         # User authentication collection
 │   │   └── Media.ts         # Asset upload collection (R2)
-│   ├── rbac/admin/           # Permission matrix admin view
-│   ├── rbac/                # Roles, permissions, seeding, and matrix API
+│   ├── rbac/                # Roles, permissions, seeding, matrix API, and matrix admin view (rbac/admin)
 │   ├── migrations/          # D1 database migrations
 │   ├── payload.config.ts    # Main Payload CMS configuration & bindings
 │   └── payload-types.ts     # Auto-generated TypeScript types
-├── tests/                   # Integration and E2E test suites
+├── tests/                   # Unit, integration, and E2E test suites (unit includes the module boundary test)
 ├── wrangler.jsonc           # Cloudflare Workers, D1 & R2 configuration
 ├── open-next.config.ts      # OpenNext build adapter configuration
 └── package.json
@@ -103,7 +106,7 @@ Wrap collections with `withRbac` so they join the permission matrix. Startup syn
 
 ```typescript
 import type { CollectionConfig } from 'payload'
-import { withRbac } from '../access/with-rbac'
+import { withRbac } from '../access'
 
 export const Customers: CollectionConfig = withRbac({
   slug: 'customers',
