@@ -4,7 +4,7 @@ Last updated: 2026-10-23.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for review.
 
-The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-23 around 15:20 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `63ee819`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
+The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-23. `main` is `703d7b1`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
 
 ## What is on `main`
 
@@ -30,7 +30,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 ## Toolchain and CI
 
 - Node 22 (`.nvmrc`). `package.json` `engines`: Node `>=22.14.0`, pnpm `^9 || ^10 || ^11`. `packageManager` is `pnpm@10.33.4`, and the `ci` workflow installs the same release.
-- Pinned stack in `pnpm-lock.yaml`: Payload `3.91.0`, Next.js `16.4.1`, React `19.3.0`, `@opennextjs/cloudflare` `1.20.11`, Wrangler `4.116.0`, TypeScript `6.0.3`, Vitest `5.0.1`, Playwright `1.63.0`. `pnpm.overrides` resolves every `sharp` to `0.35.5` or later and every `undici` 7.x below `7.29.1` to `7.29.1`.
+- Pinned stack in `pnpm-lock.yaml`: Payload `3.91.0`, Next.js `16.4.1`, React `19.3.0`, `@opennextjs/cloudflare` `1.20.11`, Wrangler `4.116.0`, TypeScript `6.0.3`, Vitest `5.0.1`, Playwright `1.63.0`. `pnpm.overrides` resolves every `sharp` to `0.35.5` or later, every `undici` 7.x below `7.30.1` to `7.30.1` and every `undici` 6.x below `6.29.1` to `6.29.1`, and pins the transitive `dompurify` to `3.4.17`, `glob` 10.x to `10.5.0`, `esbuild` below `0.25.0` to `0.25.12`, `fast-uri` to `3.1.9`, `body-parser` to `2.4.0`, and `happy-dom` to `21.0.4` (security pins for #46).
 - `pnpm ci:local` runs `scripts/ci-local.sh`: frozen install, `typecheck`, `typecheck:firebase`, `lint`, unit tests (`tests/unit`), integration tests (`tests/int`), `next build`, and the OpenNext Worker bundle. `--maxWorkers N` caps test parallelism. It needs no secrets and no Cloudflare account, and it deploys nothing.
 - `.github/workflows/ci.yml` runs the same script in job `verify` on every pull request and on pushes to `main`. Runner `ubuntu-24.04`, Node from `.nvmrc`, actions pinned by commit SHA, `contents: read`.
 - `.github/workflows/architecture.yml` (added by #27, tightened by #28) runs a report-only architecture analysis on pull requests as an inline, hash-locked job. See `AGENTS.md`.
@@ -40,7 +40,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 | Pull request | Title | Issue | Base | State |
 | --- | --- | --- | --- | --- |
-| This change | Status page refreshed after #41 | — | `main` | Ready for review |
+| This change | deps: bump vulnerable transitive dependencies reported by `pnpm audit --prod` | #46 | `main` | Draft |
 
 #11–#15, #18, and #19 were closed as superseded by #29. #20 (plugin split, base `integration/admin-stack`) was closed on 2026-10-23; that work is on hold.
 
@@ -77,7 +77,7 @@ Labels exist (`type:*`, `area:*`, `status:*`, `priority:*`). No milestones exist
 | #7 | State machine and approval workflow | `type:feature`, `area:collections`, `status:ready`, `priority:p2` | — |
 | #8 | Advanced data grid | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
 | #10 | Safe script runner | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
-| #46 | Bump vulnerable transitive dependencies reported by `pnpm audit --prod` | — | — |
+| #46 | Bump vulnerable transitive dependencies reported by `pnpm audit --prod` | — | This change |
 | #47 | Recovery path when first-run setup is left incomplete | — | — |
 | #40 | Deploy-button inputs and isolated demo rollout | — | #41 (merged). Stays open until a demo deploy and sign-in check succeed and the demo URL is recorded. |
 | #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | — |
@@ -100,7 +100,7 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Docs only. This page refreshed as one snapshot of 2026-10-23 after #41 was merged (`main` at `63ee819`). No code, configuration, or dependencies change.
+Dependencies only, for #46. `package.json` `pnpm.overrides` now pins the vulnerable transitive versions found under `pnpm audit --prod` to their patched releases (`undici` 7.x to `7.30.1` and 6.x to `6.29.1`, `dompurify` to `3.4.17`, `glob` 10.x to `10.5.0`, `esbuild` below `0.25.0` to `0.25.12`, `fast-uri` to `3.1.9`, `body-parser` to `2.4.0`, `happy-dom` to `21.0.4`), and `pnpm-lock.yaml` was regenerated. No application code changes.
 
 ## Acronyms
 
