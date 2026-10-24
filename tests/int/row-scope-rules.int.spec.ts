@@ -1,5 +1,5 @@
 // @vitest-environment node
-import type { CollectionConfig } from 'payload'
+import type { CollectionConfig, Payload } from 'payload'
 import { describe, expect, it } from 'vitest'
 
 import { withRbac } from '@/access/with-rbac'
@@ -437,5 +437,20 @@ describe('row-scoped collection hooks', () => {
     expect(() =>
       assertRowScopeHooks(addUnwrapped({ collections: [...resolved.collections] }).collections),
     ).toThrow(/plugin-added/)
+  })
+
+  it('onInit refuses to start with a plugin-added unwrapped row-scoped collection', async () => {
+    const resolved = await config
+    const pluginAdded = withRbac(
+      { slug: 'plugin-added-on-init', fields: [] },
+      { rowScope: { organizationField: 'org' } },
+    )
+    // onInit runs against the runtime config, after plugins. The assertion throws before seedRbac,
+    // so no database is touched; globals are left empty so nothing shared is mutated.
+    const payload = {
+      config: { ...resolved, collections: [...resolved.collections, pluginAdded], globals: [] },
+      logger: { error: () => {} },
+    } as unknown as Payload
+    await expect(resolved.onInit!(payload)).rejects.toThrow(/plugin-added-on-init/)
   })
 })
