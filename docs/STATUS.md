@@ -4,7 +4,7 @@ Last updated: 2026-10-24.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for review.
 
-The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-24 around 16:12 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `b12a6ed`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
+The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-24 around 17:10 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `a49d6c0`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
 
 ## What is on `main`
 
@@ -30,6 +30,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | `dcf0162` | #50 | First-run setup recovery: an interrupted setup (stale claim, exactly one user) completes on the next web attempt or `pnpm admin:create` (`src/auth/first-admin-setup.ts`, `docs/admin-access.md`). Closes #47. |
 | `2468373` | #51 | Core features as in-code modules: one public `index.ts` per `src/` module, admin UI moved out of `src/components`, row-scope hooks via `withRowScope` with a fail-closed `assertRowScopeHooks`, and `tests/unit/module-boundaries.test.ts` enforcing the boundaries. Closes #45. |
 | `b12a6ed` | #52 | Dependencies: `pnpm.overrides` pins vulnerable transitive versions reported by `pnpm audit --prod` to patched releases; lockfile regenerated. No application code changes. Closes #46. |
+| `a49d6c0` | #55 | Tests and docs: `onInit` row-scope assertion pinned for plugin-added collections; boundary test rejects `@payloadcms/*` and un-prefixed Node built-ins in runtime-limited entries. No runtime change. Closes #54. |
 
 ## Toolchain and CI
 
@@ -44,7 +45,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 | Pull request | Title | Issue | Base | State |
 | --- | --- | --- | --- | --- |
-| This change | test: pin the onInit row-scope assertion for plugin-added collections | #54 | `main` | Draft |
+| This change | docs: refresh status after #50, #51, #52, and #55 | — | `main` | Ready for review |
 
 #11–#15, #18, and #19 were closed as superseded by #29. #20 (plugin split, base `integration/admin-stack`) was closed on 2026-10-23; that work is on hold.
 
@@ -52,7 +53,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 A maintainer decides the merge order. Do not merge any pull request without maintainer approval.
 
-#31, #33, #32, #39, #41, #48, #50, #51, and #52 were merged in that order.
+#31, #33, #32, #39, #41, #48, #50, #51, #52, and #55 were merged in that order.
 
 ## Deploy prerequisites
 
@@ -81,12 +82,11 @@ Labels exist (`type:*`, `area:*`, `status:*`, `priority:*`). No milestones exist
 | #7 | State machine and approval workflow | `type:feature`, `area:collections`, `status:ready`, `priority:p2` | — |
 | #8 | Advanced data grid | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
 | #10 | Safe script runner | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
-| #46 | Bump vulnerable transitive dependencies reported by `pnpm audit --prod` | — | This change |
 | #49 | Mandatory CI/CD deploy; no deploys from a local machine | — | — |
 | #40 | Deploy-button inputs and isolated demo rollout | — | #41 (merged). Stays open until a demo deploy and sign-in check succeed and the demo URL is recorded. |
 | #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | — |
 
-Closed on 2026-10-17 as resolved by #29 (`0180b63`): #1 (RBAC and permission matrix), #2 (row-level scope), #3 (audit trail), and #9 (system parameters). Closed by #31: #34. Closed by #33: #35 and #36. Closed by #32: #37. Closed by #39: #38. Closed by #50: #47. Closed by #51: #45. #41 (merged) refs #40 but does not close it.
+Closed on 2026-10-17 as resolved by #29 (`0180b63`): #1 (RBAC and permission matrix), #2 (row-level scope), #3 (audit trail), and #9 (system parameters). Closed by #31: #34. Closed by #33: #35 and #36. Closed by #32: #37. Closed by #39: #38. Closed by #50: #47. Closed by #51: #45. Closed by #52: #46. Closed by #55: #54. #41 (merged) refs #40 but does not close it.
 
 Proposed milestones, for a person with permission to create them:
 
@@ -103,7 +103,7 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Tests and docs for #54, a follow-up to #51. `tests/int/row-scope-rules.int.spec.ts` calls the built config's `onInit` with a plugin-added row-scoped collection that is not wrapped with `withRowScope` and expects it to throw, so removing the `onInit` `assertRowScopeHooks` call now fails a test. The runtime-entry reachability check in `tests/unit/module-boundaries.test.ts` also rejects `@payloadcms/*` and Node built-ins imported without the `node:` prefix. `docs/ARCHITECTURE.md` lists every rule the boundary test enforces. No runtime change.
+Docs only. This page refreshed after #50 (closes #47), #51 (closes #45), #52 (closes #46), and #55 (closes #54) merged; `main` is `a49d6c0`.
 
 ## Acronyms
 
