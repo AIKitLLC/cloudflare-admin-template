@@ -4,7 +4,7 @@ Last updated: 2026-10-24.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for review.
 
-The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-24 around 15:33 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `dcf0162`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
+The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-24 around 11:09 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `2468373`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
 
 ## What is on `main`
 
@@ -28,11 +28,12 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | `63ee819` | #41 | Deploy-button inputs (`JOBS_INTERNAL_SECRET` active in `.env.example`, descriptions in `package.json`) and the isolated demo rollout guide `docs/demo-deployment.md`. Refs #40. |
 | `703d7b1` | #48 | This status page refreshed after #41. |
 | `dcf0162` | #50 | First-run setup recovery: an interrupted setup (stale claim, exactly one user) completes on the next web attempt or `pnpm admin:create` (`src/auth/first-admin-setup.ts`, `docs/admin-access.md`). Closes #47. |
+| `2468373` | #51 | Decouple core features into in-code modules (one public `index.ts` per top-level `src/` module; composition in `src/payload.config.ts` and `src/app`). Closes #45. |
 
 ## Toolchain and CI
 
 - Node 22 (`.nvmrc`). `package.json` `engines`: Node `>=22.14.0`, pnpm `^9 || ^10 || ^11`. `packageManager` is `pnpm@10.33.4`, and the `ci` workflow installs the same release.
-- Pinned stack in `pnpm-lock.yaml`: Payload `3.91.0`, Next.js `16.4.1`, React `19.3.0`, `@opennextjs/cloudflare` `1.20.11`, Wrangler `4.116.0`, TypeScript `6.0.3`, Vitest `5.0.1`, Playwright `1.63.0`. `pnpm.overrides` resolves every `sharp` to `0.35.5` or later and every `undici` 7.x below `7.29.1` to `7.29.1`.
+- Pinned stack in `pnpm-lock.yaml`: Payload `3.91.0`, Next.js `16.4.1`, React `19.3.0`, `@opennextjs/cloudflare` `1.20.11`, Wrangler `4.116.0`, TypeScript `6.0.3`, Vitest `5.0.1`, Playwright `1.63.0`. `pnpm.overrides` resolves every `sharp` to `0.35.5` or later, every `undici` 7.x below `7.30.1` to `7.30.1` and every `undici` 6.x below `6.29.1` to `6.29.1`, and pins the transitive `dompurify` to `3.4.17`, `glob` 10.x to `10.5.0`, `esbuild` below `0.25.0` to `0.25.12`, `fast-uri` to `3.1.9`, `body-parser` to `2.4.0`, and `happy-dom` to `21.0.4` (security pins for #46).
 - `pnpm ci:local` runs `scripts/ci-local.sh`: frozen install, `typecheck`, `typecheck:firebase`, `lint`, unit tests (`tests/unit`), integration tests (`tests/int`), `next build`, and the OpenNext Worker bundle. `--maxWorkers N` caps test parallelism. It needs no secrets and no Cloudflare account, and it deploys nothing.
 - `.github/workflows/ci.yml` runs the same script in job `verify` on every pull request and on pushes to `main`. Runner `ubuntu-24.04`, Node from `.nvmrc`, actions pinned by commit SHA, `contents: read`.
 - `.github/workflows/architecture.yml` (added by #27, tightened by #28) runs a report-only architecture analysis on pull requests as an inline, hash-locked job. See `AGENTS.md`.
@@ -42,8 +43,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 | Pull request | Title | Issue | Base | State |
 | --- | --- | --- | --- | --- |
-| #51 | refactor: decouple core features into in-code modules | #45 | `main` | Ready for review |
-| #52 | deps: bump vulnerable transitive dependencies reported by pnpm audit --prod | #46 | `main` | Ready for review |
+| #52 | deps: bump vulnerable transitive dependencies reported by `pnpm audit --prod` | #46 | `main` | Ready for review |
 
 #11–#15, #18, and #19 were closed as superseded by #29. #20 (plugin split, base `integration/admin-stack`) was closed on 2026-10-23; that work is on hold.
 
@@ -51,7 +51,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 A maintainer decides the merge order. Do not merge any pull request without maintainer approval.
 
-#31, #33, #32, #39, #41, #48, and #50 were merged in that order.
+#31, #33, #32, #39, #41, #48, #50, and #51 were merged in that order.
 
 ## Deploy prerequisites
 
@@ -80,14 +80,12 @@ Labels exist (`type:*`, `area:*`, `status:*`, `priority:*`). No milestones exist
 | #7 | State machine and approval workflow | `type:feature`, `area:collections`, `status:ready`, `priority:p2` | — |
 | #8 | Advanced data grid | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
 | #10 | Safe script runner | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
-| #46 | Bump vulnerable transitive dependencies reported by `pnpm audit --prod` | — | — |
-| #47 | Recovery path when first-run setup is left incomplete | — | This change |
+| #46 | Bump vulnerable transitive dependencies reported by `pnpm audit --prod` | — | This change |
 | #49 | Mandatory CI/CD deploy; no deploys from a local machine | — | — |
 | #40 | Deploy-button inputs and isolated demo rollout | — | #41 (merged). Stays open until a demo deploy and sign-in check succeed and the demo URL is recorded. |
 | #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | — |
-| #45 | Decouple core features into in-code modules | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | — |
 
-Closed on 2026-10-17 as resolved by #29 (`0180b63`): #1 (RBAC and permission matrix), #2 (row-level scope), #3 (audit trail), and #9 (system parameters). Closed by #31: #34. Closed by #33: #35 and #36. Closed by #32: #37. Closed by #39: #38. #41 (merged) refs #40 but does not close it.
+Closed on 2026-10-17 as resolved by #29 (`0180b63`): #1 (RBAC and permission matrix), #2 (row-level scope), #3 (audit trail), and #9 (system parameters). Closed by #31: #34. Closed by #33: #35 and #36. Closed by #32: #37. Closed by #39: #38. Closed by #50: #47. Closed by #51: #45. #41 (merged) refs #40 but does not close it.
 
 Proposed milestones, for a person with permission to create them:
 
@@ -104,7 +102,7 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Module decoupling for #45 (#51). Every top-level `src/` directory is a module with one public `index.ts`; `src/payload.config.ts` and `src/app` compose them; `src/components` moved into the owning modules' `admin/` folders. `tests/unit/module-boundaries.test.ts` fails on deep cross-module imports, module cycles, `'use client'` files importing an entry, unresolved admin component paths, and runtime-limited entries (`src/jobs/worker.ts`, `src/auth/firebase.ts`, `src/client-security/client.ts`) reaching Payload or Node built-ins. Row-scope hooks come from `withRowScope`; `assertRowScopeHooks` stops boot when a row-scoped collection lacks them. No runtime behavior change. See `docs/ARCHITECTURE.md`. This page refreshed in the same pull request after merging `main` at `dcf0162`.
+Dependencies only, for #46. `package.json` `pnpm.overrides` now pins the vulnerable transitive versions found under `pnpm audit --prod` to their patched releases (`undici` 7.x to `7.30.1` and 6.x to `6.29.1`, `dompurify` to `3.4.17`, `glob` 10.x to `10.5.0`, `esbuild` below `0.25.0` to `0.25.12`, `fast-uri` to `3.1.9`, `body-parser` to `2.4.0`, `happy-dom` to `21.0.4`), and `pnpm-lock.yaml` was regenerated. No application code changes.
 
 ## Acronyms
 
