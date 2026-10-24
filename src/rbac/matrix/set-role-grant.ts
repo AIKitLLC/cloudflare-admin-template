@@ -1,6 +1,6 @@
 import type { CollectionSlug, Payload, PayloadRequest } from 'payload'
 
-import { ROLE_PERMISSIONS_SLUG } from '../../access/constants'
+import { ROLE_PERMISSIONS_SLUG } from '../../access'
 import { isUniqueConstraintError } from '../seed/unique-constraint'
 
 export async function setRoleGrant(

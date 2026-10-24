@@ -1,6 +1,6 @@
 import type { Where } from 'payload'
 
-import type { CollectionAction, RowScopeBinding } from '../../access/types'
+import type { CollectionAction, RowScopeBinding } from '../../access'
 import { SCOPE_PATH_FIELD } from '../constants'
 import type { DirectScope } from './direct-scope'
 import { matchNothing } from './match-nothing'

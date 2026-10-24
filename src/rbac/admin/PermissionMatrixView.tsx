@@ -3,10 +3,10 @@ import { DefaultTemplate } from '@payloadcms/next/templates'
 import { Gutter } from '@payloadcms/ui'
 import React from 'react'
 
-import { ROLE_PERMISSIONS_SLUG } from '../../access/constants'
-import { evaluateCollectionAccess } from '../../access/evaluate-collection-access'
-import { isAccessGranted } from '../../access/result'
-import { loadPermissionMatrix } from '../../rbac/matrix/load-permission-matrix'
+import { ROLE_PERMISSIONS_SLUG } from '../../access'
+import { evaluateCollectionAccess } from '../../access'
+import { isAccessGranted } from '../../access'
+import { loadPermissionMatrix } from '../matrix/load-permission-matrix'
 import { PermissionMatrixEditor } from './PermissionMatrixEditor'
 
 export async function PermissionMatrixView({

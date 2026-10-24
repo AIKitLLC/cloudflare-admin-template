@@ -1,6 +1,6 @@
 import type { CollectionBeforeChangeHook, CollectionConfig, PayloadRequest } from 'payload'
 
-import { withRbac } from '../../access/with-rbac'
+import { withRbac } from '../../access'
 import {
   invalidateSystemParameterCache,
   invalidateSystemParameterCacheOnDelete,

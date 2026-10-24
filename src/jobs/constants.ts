@@ -4,7 +4,7 @@ export const JOBS_READ_KEY = 'jobs:read'
 export const JOBS_TRIGGER_KEY = 'jobs:trigger'
 export const JOBS_RETRY_KEY = 'jobs:retry'
 
-export const JOB_DISPATCH_ACTIONS = ['trigger', 'retry'] as const
+export { JOB_DISPATCH_ACTIONS } from '../access'
 
 export const JOB_STATUSES = ['PENDING', 'RUNNING', 'SUCCESS', 'FAILED'] as const
 

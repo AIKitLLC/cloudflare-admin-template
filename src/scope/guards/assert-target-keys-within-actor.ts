@@ -1,9 +1,8 @@
 import type { PayloadRequest } from 'payload'
 import { APIError } from 'payload'
 
-import { loadUserGrants } from '../../access/resolve/load-user-grants'
-import { fullAccessRoleIds } from '../../rbac/guards/full-access-role-ids'
-import { grantedKeysByRole } from '../../rbac/guards/role-permission-keys'
+import { loadUserGrants } from '../../access'
+import { fullAccessRoleIds, grantedKeysByRole } from '../../access'
 import { SCOPE_TARGET_KEYS_ERROR } from '../errors'
 
 /** Full-access targets and any key the actor does not hold block a scope extension. */

@@ -9,7 +9,7 @@ import { SUPER_ADMIN_SLUG } from '@/access/constants'
 import { relationIds } from '@/access/relation-id'
 import config from '@/payload.config'
 import { PRIVILEGED_USER_ERROR } from '@/rbac/guards/privilege-errors'
-import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
+import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/access/privilege/privilege-context'
 import {
   SCOPE_ASSIGNMENT_ERROR,
   SCOPE_GRANT_ERROR,

@@ -1,6 +1,6 @@
 import type { CollectionSlug, Payload } from 'payload'
 
-import { PERMISSIONS_SLUG } from '../../access/constants'
+import { PERMISSIONS_SLUG } from '../../access'
 import {
   collectPermissionDefinitions,
   type PermissionDefinition,

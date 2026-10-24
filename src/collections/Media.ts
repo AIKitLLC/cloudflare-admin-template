@@ -1,6 +1,6 @@
 import type { CollectionConfig } from 'payload'
 
-import { withRbac } from '../access/with-rbac'
+import { withRbac } from '../access'
 import { withAuditTrail } from '../audit'
 
 export const Media: CollectionConfig = withAuditTrail(

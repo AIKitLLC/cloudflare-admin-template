@@ -1,7 +1,7 @@
 import { APIError, type PayloadRequest } from 'payload'
 
 import { userGrantsFullAccess } from '../../access'
-import { exportCollection } from '../../access/export/create-export-endpoint'
+import { exportCollection } from '../../access'
 import { SYSTEM_PARAMETERS_SLUG } from '../constants'
 import { PARAMETER_VALUE_QUERY_ERROR } from '../validation/messages'
 

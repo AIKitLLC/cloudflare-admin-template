@@ -17,3 +17,5 @@ export const GRANT_CACHE_KEY = 'rbacUserGrants'
 export const SYSTEM_FIELD_NAMES = new Set(['createdAt', 'updatedAt'])
 
 export const INTERNAL_COLLECTION_PREFIX = 'payload-'
+
+export const JOB_DISPATCH_ACTIONS = ['trigger', 'retry'] as const

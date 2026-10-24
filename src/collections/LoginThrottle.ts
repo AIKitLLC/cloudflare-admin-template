@@ -1,6 +1,6 @@
 import { APIError, type CollectionConfig } from 'payload'
 
-import { LOGIN_THROTTLE_SLUG } from '../auth/login-throttle'
+import { LOGIN_THROTTLE_SLUG } from '../auth'
 
 /** Per-IP sign-in counters. Payload owns the schema; `src/auth/login-throttle.ts` owns writes. */
 export const LoginThrottle: CollectionConfig = {

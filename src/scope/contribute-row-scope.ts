@@ -1,6 +1,6 @@
 import { APIError } from 'payload'
 
-import type { AccessConstraint, AccessEvaluationContext } from '../access/types'
+import type { AccessConstraint, AccessEvaluationContext } from '../access'
 import { bindingFiltersRows } from './bindings/read-row-scope-binding'
 import { MAX_DIRECT_ASSIGNMENTS } from './constants'
 import { SCOPE_ASSIGNMENT_READ_ERROR } from './errors'

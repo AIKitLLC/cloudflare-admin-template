@@ -1,4 +1,4 @@
-import type { RowScopeBinding } from '../../access/types'
+import type { RowScopeBinding } from '../../access'
 
 export function readRowScopeBinding(custom: unknown): RowScopeBinding | undefined {
   if (!custom || typeof custom !== 'object' || !('rbac' in custom)) {

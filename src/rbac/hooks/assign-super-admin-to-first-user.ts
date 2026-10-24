@@ -1,7 +1,7 @@
 import type { CollectionAfterChangeHook } from 'payload'
 
-import { USERS_SLUG } from '../../access/constants'
-import { SKIP_RBAC_PRIVILEGE_CHECKS, skipsPrivilegeChecks } from '../guards/privilege-context'
+import { USERS_SLUG } from '../../access'
+import { SKIP_RBAC_PRIVILEGE_CHECKS, skipsPrivilegeChecks } from '../../access'
 import { ensureSuperAdminRole } from '../seed/ensure-super-admin-role'
 import { hasAssignedRoles, shouldAssignSuperAdminOnCreate } from '../seed/promotion-policy'
 

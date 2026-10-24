@@ -1,9 +1,9 @@
 import type { PayloadRequest } from 'payload'
 import { APIError } from 'payload'
 
-import { userGrantsFullAccess } from '../../access/resolve/load-user-grants'
+import { userGrantsFullAccess } from '../../access'
 import { FULL_ACCESS_FLAG_ERROR } from './privilege-errors'
-import { skipsPrivilegeChecks } from './privilege-context'
+import { skipsPrivilegeChecks } from '../../access'
 
 export async function assertCanChangeFullAccessFlag(args: {
   context: unknown

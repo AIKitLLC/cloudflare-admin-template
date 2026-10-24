@@ -1,6 +1,6 @@
 import type { CollectionConfig } from 'payload'
 
-import { withRbac } from '../../access/with-rbac'
+import { withRbac } from '../../access'
 import { preventSuperAdminDeletion, protectSuperAdminRole } from '../hooks/protect-super-admin-role'
 
 export const Roles: CollectionConfig = withRbac({

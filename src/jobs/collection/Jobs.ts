@@ -1,8 +1,8 @@
 import { randomUUID } from 'crypto'
 import type { CollectionConfig } from 'payload'
 
-import { evaluateCollectionAccess } from '../../access/evaluate-collection-access'
-import { withRbac } from '../../access/with-rbac'
+import { evaluateCollectionAccess } from '../../access'
+import { withRbac } from '../../access'
 import { evaluateJobDispatch } from '../auth/evaluate-job-dispatch'
 import { JOB_STATUSES, JOBS_SLUG } from '../constants'
 import { jobDataFieldAccess } from './job-field-access'

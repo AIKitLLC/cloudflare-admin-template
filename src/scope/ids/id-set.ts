@@ -1,4 +1,4 @@
-import { relationIds } from '../../access/relation-id'
+import { relationIds } from '../../access'
 
 export function idSet(value: unknown): Set<string> {
   return new Set(relationIds(value))

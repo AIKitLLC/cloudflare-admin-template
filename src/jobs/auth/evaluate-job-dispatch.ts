@@ -1,9 +1,9 @@
 import type { PayloadRequest } from 'payload'
 
-import { readRbacCollectionOptions } from '../../access/options'
-import { policyGate } from '../../access/gates/policy-gate'
-import { unauthenticatedGate } from '../../access/gates/unauthenticated-gate'
-import { loadUserGrants } from '../../access/resolve/load-user-grants'
+import { readRbacCollectionOptions } from '../../access'
+import { policyGate } from '../../access'
+import { unauthenticatedGate } from '../../access'
+import { loadUserGrants } from '../../access'
 import { JOBS_RETRY_KEY, JOBS_SLUG, JOBS_TRIGGER_KEY } from '../constants'
 
 export async function evaluateJobDispatch(

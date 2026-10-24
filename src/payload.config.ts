@@ -8,32 +8,36 @@ import { CloudflareContext, getCloudflareContext } from '@opennextjs/cloudflare'
 import { GetPlatformProxyOptions } from 'wrangler'
 import { r2Storage } from '@payloadcms/storage-r2'
 
-import { coverLiveConfig } from './access/cover-unwrapped'
-import { assertRbacCoverage, ensureRbacCoverage } from './access/ensure-rbac-coverage'
-import { applyFieldAccess } from './access/fields/apply-field-access'
-import { rbacCoveragePlugin } from './access/rbac-coverage-plugin'
+import {
+  applyFieldAccess,
+  assertRbacCoverage,
+  coverLiveConfig,
+  ensureRbacCoverage,
+  rbacCoveragePlugin,
+} from './access'
 import { AuditLogs, withAuditTrail } from './audit'
+import { ClientSecurityCollections, LoginThrottle, Media, SetupState, Users } from './collections'
 import { resolvePublicServerURL } from './config/public-server-url'
 import { testRuntimeStorageDir, testRuntimeWranglerConfig } from './config/test-runtime'
-import { Users } from './collections/Users'
-import { Media } from './collections/Media'
-import { ClientSecurityCollections } from './collections/ClientSecurity'
-import { LoginThrottle } from './collections/LoginThrottle'
-import { SetupState } from './collections/SetupState'
-import { Branches } from './scope/collections/Branches'
-import { DataClasses } from './scope/collections/DataClasses'
-import { Organizations } from './scope/collections/Organizations'
-import { Records } from './scope/collections/Records'
-import { ensureRowScopeRegistered } from './scope/register-row-scope'
-import { SystemParameters } from './system-parameters/collections/SystemParameters'
+import { Jobs, retryJobMutation } from './jobs'
 import { migrations } from './migrations'
-import { Jobs } from './jobs/collection/Jobs'
-import { retryJobMutation } from './jobs/graphql/retry-job-mutation'
-import { Permissions } from './rbac/collections/Permissions'
-import { RolePermissions } from './rbac/collections/RolePermissions'
-import { Roles } from './rbac/collections/Roles'
-import { grantEndpoint, matrixEndpoint } from './rbac/endpoints/matrix-handlers'
-import { seedRbac } from './rbac/seed/seed-rbac'
+import {
+  Permissions,
+  RolePermissions,
+  Roles,
+  grantEndpoint,
+  matrixEndpoint,
+  seedRbac,
+} from './rbac'
+import {
+  Branches,
+  DataClasses,
+  Organizations,
+  Records,
+  assertRowScopeHooks,
+  ensureRowScopeRegistered,
+} from './scope'
+import { SystemParameters } from './system-parameters'
 
 /**
  * Vitest setup assigns this before the config module loads. Production and
@@ -112,6 +116,26 @@ const cloudflare = isTest
 
 ensureRowScopeRegistered()
 
+const collections: CollectionConfig[] = [
+  Users,
+  Media,
+  ...ClientSecurityCollections,
+  LoginThrottle,
+  SetupState,
+  Roles,
+  Permissions,
+  RolePermissions,
+  Organizations,
+  Branches,
+  DataClasses,
+  Records,
+  withAuditTrail(SystemParameters),
+  withAuditTrail(Jobs),
+  AuditLogs,
+  ...testOnlyCollections(),
+]
+assertRowScopeHooks(collections)
+
 export default buildConfig({
   admin: {
     user: Users.slug,
@@ -120,17 +144,17 @@ export default buildConfig({
     },
     components: {
       afterNavLinks: [
-        '@/components/ClientSecurityNav#ClientSecurityNav',
-        '/components/rbac/PermissionMatrixNavLink#PermissionMatrixNavLink',
-        '/components/jobs/JobsNavLink#JobsNavLink',
+        '/client-security/admin/ClientSecurityNav#ClientSecurityNav',
+        '/rbac/admin/PermissionMatrixNavLink#PermissionMatrixNavLink',
+        '/jobs/admin/JobsNavLink#JobsNavLink',
       ],
       views: {
         clientSecurity: {
-          Component: '@/components/ClientSecurityView#ClientSecurityView',
+          Component: '/client-security/admin/ClientSecurityView#ClientSecurityView',
           path: '/client-security',
         },
         permissionMatrix: {
-          Component: '/components/rbac/PermissionMatrixView#PermissionMatrixView',
+          Component: '/rbac/admin/PermissionMatrixView#PermissionMatrixView',
           path: '/permission-matrix',
           exact: true,
           meta: {
@@ -138,7 +162,7 @@ export default buildConfig({
           },
         },
         jobMonitor: {
-          Component: '/components/jobs/JobsDashboardView#JobsDashboardView',
+          Component: '/jobs/admin/JobsDashboardView#JobsDashboardView',
           path: '/job-monitor',
           exact: true,
           meta: {
@@ -148,24 +172,7 @@ export default buildConfig({
       },
     },
   },
-  collections: ensureRbacCoverage([
-    Users,
-    Media,
-    ...ClientSecurityCollections,
-    LoginThrottle,
-    SetupState,
-    Roles,
-    Permissions,
-    RolePermissions,
-    Organizations,
-    Branches,
-    DataClasses,
-    Records,
-    withAuditTrail(SystemParameters),
-    withAuditTrail(Jobs),
-    AuditLogs,
-    ...testOnlyCollections(),
-  ]),
+  collections: ensureRbacCoverage(collections),
   endpoints: [matrixEndpoint, grantEndpoint],
   graphQL: {
     mutations: retryJobMutation,
@@ -177,6 +184,8 @@ export default buildConfig({
     coverLiveConfig(payload)
     applyFieldAccess(payload)
     assertRbacCoverage(payload)
+    // Plugins can add row-scoped collections after the module-load check; verify the final list.
+    assertRowScopeHooks(payload.config.collections)
     try {
       await seedRbac(payload)
     } catch (error) {

@@ -1,4 +1,4 @@
-import { registerRowScopeContributor } from '../access/extensions'
+import { registerRowScopeContributor } from '../access'
 import { contributeRowScope } from './contribute-row-scope'
 
 let registered = false

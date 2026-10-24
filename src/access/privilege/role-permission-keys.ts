@@ -1,7 +1,7 @@
 import type { CollectionSlug, PayloadRequest } from 'payload'
 
-import { PERMISSIONS_SLUG, ROLE_PERMISSIONS_SLUG } from '../../access/constants'
-import { relationId } from '../../access/relation-id'
+import { PERMISSIONS_SLUG, ROLE_PERMISSIONS_SLUG } from '../constants'
+import { relationId } from '../relation-id'
 
 type PermissionRecord = {
   id?: number | string

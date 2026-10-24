@@ -1,6 +1,6 @@
 import type { CollectionAfterChangeHook, CollectionSlug, PayloadRequest } from 'payload'
 
-import { relationId } from '../../access/relation-id'
+import { relationId } from '../../access'
 import { MAX_SCOPE_DEPTH } from '../constants'
 import { runStatement } from '../sql/run-statement'
 import { sql } from '../sql/scope-sql'

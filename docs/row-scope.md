@@ -64,26 +64,28 @@ An account with no assignments is outside every limited scope. Only a full-acces
 
 ## Adding a scoped collection
 
-Pass `rowScope` to `withRbac`. The helper appends `guardRecordScope`, which enforces the write. The contributor reads the same options from `custom.rbac` and filters reads.
+Pass `rowScope` to `withRbac`, which stores it on `custom.rbac`, and wrap the result directly in `withRowScope` (imported from the scope entry, `src/scope`). `withRowScope` appends the scope hooks such as `guardRecordScope`, which enforce the write. The hooks are applied per collection, in its own file. `payload.config.ts` calls `assertRowScopeHooks` at module load and again in `onInit` on the final collection list, so a row-scoped collection that is not wrapped, including one added by a plugin, fails at boot. The contributor reads the same options from `custom.rbac` and filters reads.
 
 ```ts
-export const Customers = withRbac(
-  {
-    slug: 'customers',
-    fields: [
-      { name: 'name', type: 'text', required: true },
-      { name: 'organization', type: 'relationship', relationTo: 'organizations', required: true },
-      { name: 'branch', type: 'relationship', relationTo: 'branches', required: true },
-      { name: 'dataClass', type: 'relationship', relationTo: 'data-classes', required: true },
-    ],
-  },
-  {
-    rowScope: {
-      organizationField: 'organization',
-      branchField: 'branch',
-      dataClassField: 'dataClass',
+export const Customers = withRowScope(
+  withRbac(
+    {
+      slug: 'customers',
+      fields: [
+        { name: 'name', type: 'text', required: true },
+        { name: 'organization', type: 'relationship', relationTo: 'organizations', required: true },
+        { name: 'branch', type: 'relationship', relationTo: 'branches', required: true },
+        { name: 'dataClass', type: 'relationship', relationTo: 'data-classes', required: true },
+      ],
     },
-  },
+    {
+      rowScope: {
+        organizationField: 'organization',
+        branchField: 'branch',
+        dataClassField: 'dataClass',
+      },
+    },
+  ),
 )
 ```
 
@@ -105,7 +107,7 @@ This work is stacked on the permission-matrix branch. Rebase onto it if that bra
 
 - `runAccessPipeline` still calls `applyRowScope` only after the permission grant returns `true`, and full access still returns before that.
 - `registerRowScopeContributor` still appends to the shared list. Contributors return `Where | boolean | undefined`. `false` denies. A `Where` narrows rows. `true` is an allow only after a bounded check.
-- `RbacCollectionOptions` still lives on `custom.rbac`. `withRbac` must keep spreading `rowScope` into that object and appending the scope hooks instead of replacing collection hooks.
+- `RbacCollectionOptions` still lives on `custom.rbac`. `withRbac` stores `rowScope` on `custom.rbac`, and `withRowScope` must wrap it directly (inside any `withAuditTrail`) so the scope hooks keep their position.
 - `assertMayChangeRoleGrant` must keep receiving `granted`. The holder check runs only when that flag is `true`. The matrix route and the role-permission hooks pass it through.
 - `skipRbacPrivilegeChecks`, `userGrantsFullAccess`, and `loadUserGrants` keep their current meaning. Scope guards return without checking when the user is missing or the skip flag is set, same as the privilege hooks.
 - Export must keep evaluating access and then querying with `overrideAccess: false`.

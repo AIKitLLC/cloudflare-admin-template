@@ -1,8 +1,8 @@
 import type { PayloadRequest, Where } from 'payload'
 import { APIError } from 'payload'
 
-import type { ScopeDimension } from '../../access/types'
-import { relationIds } from '../../access/relation-id'
+import type { ScopeDimension } from '../../access'
+import { relationIds } from '../../access'
 import { MAX_SCOPE_DEPTH } from '../constants'
 import { SCOPE_REPARENT_KEYS_ERROR, SCOPE_TARGET_KEYS_ERROR } from '../errors'
 import { findEveryPage } from '../find/find-every-page'

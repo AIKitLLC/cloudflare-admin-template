@@ -1,7 +1,7 @@
 import { getPayload, type Payload } from 'payload'
 
 import config from '../../payload.config'
-import { runScheduledMaintenance } from '../runner/run-scheduled-maintenance'
+import { runScheduledMaintenance } from '@/jobs'
 
 let payloadPromise: Promise<Payload> | undefined
 
