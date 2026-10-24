@@ -22,7 +22,7 @@ Until the first admin exists, whoever completes the setup screen first becomes t
 
 - **One admin, even with concurrent requests.** The D1 table `setup_state` (migration `20261017_144000_setup_state`) holds one row with a unique key. A single SQL statement claims it, and only while `users` is empty and setup has not completed, so exactly one request or CLI run can proceed. The others get 403 (web) or 409 (CLI). If a step fails, the account is removed and the claim released, so setup can be retried.
 - **Super Admin role.** The new account is checked for the Super Admin role before setup is marked complete.
-- **Closes permanently.** On success `setup_state.completed_at` is set. The web flow stays closed after that, even if every user is later deleted; the screen may still render on an empty table, but the form is refused. Installs that already have users are recorded as set up by the migration. Use `pnpm admin:create` to recover an empty `users` table.
+- **Closes permanently.** On success `setup_state.completed_at` is set. The web flow stays closed after that, even if every user is later deleted; the screen may still render on an empty table, but the form is refused. Installs that already have users are recorded as set up by the migration. Use `pnpm admin:create` to recover an empty `users` table. If an attempt is interrupted before it completes, see [Recovering an interrupted first-run setup](#recovering-an-interrupted-first-run-setup).
 - **Same-origin form.** Requests whose `Origin` is not the Worker's own origin or a configured CSRF origin (`PAYLOAD_PUBLIC_SERVER_URL`, `PAYLOAD_ALLOWED_ORIGINS`), or whose `Sec-Fetch-Site` is not `same-origin`, are refused.
 - **Inputs.** Only the email and password are used, and the password must be at least 12 characters.
 - **Throttled and logged.** The endpoint has its own per-IP limit (see [Auth request throttling](#auth-request-throttling)). Each first admin creation is logged as `First admin created` with the user ID, the email domain, and `source` (`web` or `cli`). The password and full email address are not logged.
@@ -49,6 +49,25 @@ NODE_ENV=production PAYLOAD_SECRET=ignore FIRST_ADMIN_PASSWORD='<password>' \
 Set `CLOUDFLARE_ENV` as you do for `pnpm run deploy` if you use a Wrangler environment.
 
 On a local database that was created with `pnpm payload migrate` instead of `pnpm dev`, the CLI's development-mode schema push can fail on an index that already exists. Run `pnpm admin:create` on a database created by `pnpm dev`, or with `NODE_ENV=production` against migrated D1.
+
+### Recovering an interrupted first-run setup
+
+A setup attempt that fails in-process cleans up after itself (account removed, claim released), so a plain retry works. An attempt whose process or Worker died mid-flight cannot clean up. What to do depends on the state it left behind:
+
+| State left behind | Recovery |
+| --- | --- |
+| Claim taken, no user created | Nothing is stuck. Wait for the claim to expire (2 minutes) and submit the setup form again, or run `pnpm admin:create`. The next attempt takes the claim over automatically. |
+| User created, setup not marked complete | Submit the setup form again, or run `pnpm admin:create`. Once the dead attempt's claim is older than 2 minutes, the next attempt recognises the state — stale claim, setup not completed, exactly one user — and finishes that setup for the existing user: it makes sure the user holds the Super Admin role and marks setup complete. No second account is created and the password is not changed, so retry with the same email and password to be signed in straight away, or sign in afterwards with the original credentials. |
+| No claim, no user | Just retry the setup form or the CLI. |
+| Setup marked complete, but the response was lost | Nothing to recover. Sign in at `/admin` with the admin credentials. |
+
+The automatic recovery never runs while a claim is still live (an attempt may still be running), never with more than one user, and never after setup has completed, so it cannot create a second first admin or promote an unrelated account. The database guard trigger is unchanged.
+
+Fallback, when the states above do not match — for example the setup row was edited outside the setup flow, so the web form sealed setup but the only user does not hold the Super Admin role:
+
+1. Delete the incomplete user from D1 (Cloudflare dashboard D1 console, or `wrangler d1 execute` with your Wrangler login): `DELETE FROM users WHERE email = '<the incomplete admin email>';`
+2. Run `pnpm admin:create` with the intended admin email and `FIRST_ADMIN_PASSWORD`. No state reset is needed first: the CLI works on an empty `users` table even after setup has completed (see above).
+3. Sign in at `/admin` with the new admin credentials.
 
 ## Cloudflare Access is required in production
 

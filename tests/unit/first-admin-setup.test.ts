@@ -85,10 +85,11 @@ function fakePayload(
     },
     findByID: async ({ id }: { id: number }) => {
       await tick()
-      const row = sqlite.prepare('SELECT roles FROM users WHERE id = ?').get(id) as {
+      const row = sqlite.prepare('SELECT email, roles FROM users WHERE id = ?').get(id) as {
+        email: string
         roles: string
       }
-      return { id, roles: JSON.parse(row.roles) }
+      return { id, email: row.email, roles: JSON.parse(row.roles) }
     },
     update: async ({ id, data }: { id: number; data: { roles: number[] } }) => {
       if (failRoleUpdate) throw new Error('role update failed')
@@ -526,6 +527,92 @@ test('a failed setup with a mixed-case email removes the account it created', as
   assert.equal(await createSetupState(db).completed(), false)
   // The claim was released, so setup can be retried.
   assert.equal(await createSetupState(db).claim('retry'), true)
+})
+
+/** Simulates an attempt that claimed setup, created its user, then died before completing. */
+async function interruptedSetup(sqlite: DatabaseSync, db: SetupStateDatabase, email: string) {
+  const state = createSetupState(db)
+  assert.equal(await state.claim('dead-attempt'), true)
+  sqlite.prepare('INSERT INTO users (email, roles) VALUES (?, ?)').run(email, '[]')
+}
+
+test('the next web attempt finishes an interrupted setup without a second admin', async () => {
+  const { db, sqlite } = sqliteDatabase()
+  await interruptedSetup(sqlite, db, 'one@example.com')
+  expireClaims(sqlite)
+  const { payload, logs } = fakePayload(sqlite, db)
+  // The retry submits different credentials: recovery must keep the existing account as is.
+  const recovered = await createFirstAdminAccount(
+    payload,
+    { email: 'retry@example.com', password },
+    { source: 'web', req: webReq() },
+  )
+  const users = userRows(sqlite)
+  assert.equal(users.length, 1)
+  assert.deepEqual([recovered.id, recovered.email], [users[0].id, 'one@example.com'])
+  assert.deepEqual(JSON.parse(users[0].roles), [SUPER_ADMIN_ID])
+  assert.equal(await createSetupState(db).completed(), true)
+  assert.match(JSON.stringify(logs), /First-run setup recovered/)
+  // Setup is closed afterwards, like any completed setup.
+  await assert.rejects(
+    createFirstAdminAccount(
+      payload,
+      { email: 'three@example.com', password },
+      { source: 'web', req: webReq() },
+    ),
+    (error: { status?: number }) => error.status === 403,
+  )
+})
+
+test('the CLI finishes an interrupted setup too', async () => {
+  const { db, sqlite } = sqliteDatabase()
+  await interruptedSetup(sqlite, db, 'one@example.com')
+  expireClaims(sqlite)
+  const { payload } = fakePayload(sqlite, db)
+  const recovered = await createFirstAdmin(payload, { email: 'retry@example.com', password })
+  const users = userRows(sqlite)
+  assert.equal(users.length, 1)
+  assert.deepEqual([recovered.id, recovered.email], [users[0].id, 'one@example.com'])
+  assert.deepEqual(JSON.parse(users[0].roles), [SUPER_ADMIN_ID])
+  assert.equal(await createSetupState(db).completed(), true)
+})
+
+test('recovery never runs under a live claim or with more than one user', async () => {
+  // Live claim: the attempt may still be running, so its user is not promoted or sealed
+  // in as recovered; the request is refused and the roles stay untouched.
+  const live = sqliteDatabase()
+  await interruptedSetup(live.sqlite, live.db, 'one@example.com')
+  const livePayload = fakePayload(live.sqlite, live.db)
+  await assert.rejects(
+    createFirstAdminAccount(
+      livePayload.payload,
+      { email: 'retry@example.com', password },
+      { source: 'web', req: webReq() },
+    ),
+    (error: { status?: number }) => error.status === 403,
+  )
+  assert.deepEqual(JSON.parse(userRows(live.sqlite)[0].roles), [])
+  assert.equal(await createSetupState(live.db).interruptedUserId(), null)
+
+  // Two users: not the state an interrupted first setup leaves, so nothing is promoted.
+  const two = sqliteDatabase()
+  await interruptedSetup(two.sqlite, two.db, 'one@example.com')
+  two.sqlite.prepare("INSERT INTO users (email, roles) VALUES ('two@example.com', '[]')").run()
+  expireClaims(two.sqlite)
+  const twoPayload = fakePayload(two.sqlite, two.db)
+  await assert.rejects(
+    createFirstAdminAccount(
+      twoPayload.payload,
+      { email: 'retry@example.com', password },
+      { source: 'web', req: webReq() },
+    ),
+    (error: { status?: number }) => error.status === 403,
+  )
+  assert.deepEqual(
+    userRows(two.sqlite).map((user) => JSON.parse(user.roles)),
+    [[], []],
+  )
+  assert.equal(await createSetupState(two.db).interruptedUserId(), null)
 })
 
 test('completion requires exactly one user', async () => {
