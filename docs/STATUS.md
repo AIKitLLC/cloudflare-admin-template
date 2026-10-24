@@ -4,7 +4,7 @@ Last updated: 2026-10-24.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for review.
 
-The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-23 around 15:20 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `703d7b1`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
+The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-24 around 15:33 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `dcf0162`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
 
 ## What is on `main`
 
@@ -26,6 +26,8 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | `abad182` | #32 | First-run admin setup from the web (`src/auth/first-admin-setup.ts`, hidden collection `setup-state`, migration `20261017_144000_setup_state`). Closes #37. |
 | `29262dd` | #39 | This status page refreshed after #29 and #30. Closes #38. |
 | `63ee819` | #41 | Deploy-button inputs (`JOBS_INTERNAL_SECRET` active in `.env.example`, descriptions in `package.json`) and the isolated demo rollout guide `docs/demo-deployment.md`. Refs #40. |
+| `703d7b1` | #48 | This status page refreshed after #41. |
+| `dcf0162` | #50 | First-run setup recovery: an interrupted setup (stale claim, exactly one user) completes on the next web attempt or `pnpm admin:create` (`src/auth/first-admin-setup.ts`, `docs/admin-access.md`). Closes #47. |
 
 ## Toolchain and CI
 
@@ -40,9 +42,8 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 | Pull request | Title | Issue | Base | State |
 | --- | --- | --- | --- | --- |
-| #50 | fix: first-run setup recovery | #47 | `main` | Ready for review |
-| #51 | refactor: decouple core features into in-code modules | #45 | `main` | Ready for review (merged `main` to clear conflict) |
-| #52 | fix: dependency audit | #46 | `main` | Ready for review |
+| #51 | refactor: decouple core features into in-code modules | #45 | `main` | Ready for review |
+| #52 | deps: bump vulnerable transitive dependencies reported by pnpm audit --prod | #46 | `main` | Ready for review |
 
 #11–#15, #18, and #19 were closed as superseded by #29. #20 (plugin split, base `integration/admin-stack`) was closed on 2026-10-23; that work is on hold.
 
@@ -50,7 +51,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 A maintainer decides the merge order. Do not merge any pull request without maintainer approval.
 
-#31, #33, #32, #39, and #41 were merged in that order.
+#31, #33, #32, #39, #41, #48, and #50 were merged in that order.
 
 ## Deploy prerequisites
 
@@ -80,7 +81,8 @@ Labels exist (`type:*`, `area:*`, `status:*`, `priority:*`). No milestones exist
 | #8 | Advanced data grid | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
 | #10 | Safe script runner | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
 | #46 | Bump vulnerable transitive dependencies reported by `pnpm audit --prod` | — | — |
-| #47 | Recovery path when first-run setup is left incomplete | — | — |
+| #47 | Recovery path when first-run setup is left incomplete | — | This change |
+| #49 | Mandatory CI/CD deploy; no deploys from a local machine | — | — |
 | #40 | Deploy-button inputs and isolated demo rollout | — | #41 (merged). Stays open until a demo deploy and sign-in check succeed and the demo URL is recorded. |
 | #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | — |
 | #45 | Decouple core features into in-code modules | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | — |
@@ -102,7 +104,7 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Docs only. This page refreshed as one snapshot of 2026-10-23 after #41 was merged (`main` at `63ee819`). No code, configuration, or dependencies change.
+Module decoupling for #45 (#51). Every top-level `src/` directory is a module with one public `index.ts`; `src/payload.config.ts` and `src/app` compose them; `src/components` moved into the owning modules' `admin/` folders. `tests/unit/module-boundaries.test.ts` fails on deep cross-module imports, module cycles, `'use client'` files importing an entry, unresolved admin component paths, and runtime-limited entries (`src/jobs/worker.ts`, `src/auth/firebase.ts`, `src/client-security/client.ts`) reaching Payload or Node built-ins. Row-scope hooks come from `withRowScope`; `assertRowScopeHooks` stops boot when a row-scoped collection lacks them. No runtime behavior change. See `docs/ARCHITECTURE.md`. This page refreshed in the same pull request after merging `main` at `dcf0162`.
 
 ## Acronyms
 

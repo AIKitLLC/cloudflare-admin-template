@@ -59,6 +59,8 @@ END`
  *   and setup has not completed (the CLI passes `afterCompletion` to recover an empty table).
  * - `complete` records `completed_at` permanently; the web flow never reopens after it.
  * - `seal` records completion for installs that already have users.
+ * - `interruptedUserId` / `completeInterrupted` recover a setup whose process died after it
+ *   created the user but before it completed: a stale claim, no completion, exactly one user.
  */
 export function createSetupState(
   db: SetupStateDatabase,
@@ -136,6 +138,39 @@ export function createSetupState(
         )
         .bind(FIRST_ADMIN_SETUP_KEY, nowMs())
         .run()
+    },
+    /**
+     * Id of the only user when a setup attempt died after creating it: its claim is still
+     * stored but stale, and setup never completed. A live claim is left alone, so an
+     * attempt that is still running is never recovered underneath it.
+     */
+    async interruptedUserId(): Promise<number | string | null> {
+      const row = await db
+        .prepare(
+          `SELECT users.id AS id FROM ${SETUP_STATE_TABLE}, users
+           WHERE ${SETUP_STATE_TABLE}.singleton = ?1
+             AND ${SETUP_STATE_TABLE}.claim_token IS NOT NULL
+             AND ${SETUP_STATE_TABLE}.completed_at IS NULL
+             AND ${SETUP_STATE_TABLE}.claimed_at <= ?2
+             AND (SELECT count(*) FROM users) = 1
+           LIMIT 1`,
+        )
+        .bind(FIRST_ADMIN_SETUP_KEY, nowMs() - claimTtlMs)
+        .first<{ id: number | string }>()
+      return row?.id ?? null
+    },
+    /** Marks an interrupted setup complete, re-checking its conditions in the same statement. */
+    async completeInterrupted(): Promise<boolean> {
+      const row = await db
+        .prepare(
+          `UPDATE ${SETUP_STATE_TABLE} SET completed_at = ?2, claim_token = NULL, claimed_at = NULL
+           WHERE singleton = ?1 AND completed_at IS NULL AND claim_token IS NOT NULL
+             AND claimed_at <= ?3 AND (SELECT count(*) FROM users) = 1
+           RETURNING singleton`,
+        )
+        .bind(FIRST_ADMIN_SETUP_KEY, nowMs(), nowMs() - claimTtlMs)
+        .first<{ singleton: string }>()
+      return row?.singleton === FIRST_ADMIN_SETUP_KEY
     },
     async completed(): Promise<boolean> {
       const row = await db
@@ -223,7 +258,7 @@ async function ensureFirstAdminRole(payload: Payload, id: number | string, req?:
     req,
   })
   const current = roleIds(user.roles)
-  if (current.some((value) => String(value) === String(role.id))) return
+  if (current.some((value) => String(value) === String(role.id))) return user
   await payload.update({
     collection: 'users',
     id: Number(id),
@@ -232,6 +267,7 @@ async function ensureFirstAdminRole(payload: Payload, id: number | string, req?:
     req,
     context: { skipRbacBootstrap: true, [SKIP_RBAC_PRIVILEGE_CHECKS]: true },
   })
+  return user
 }
 
 export type FirstAdminSource = 'web' | 'cli'
@@ -239,7 +275,8 @@ export type FirstAdminSource = 'web' | 'cli'
 /**
  * Creates the first admin under the setup claim and records completion. If any step fails
  * the account created by this call is removed and the claim is released, so a later attempt
- * starts from an empty `users` table again.
+ * starts from an empty `users` table again. An attempt whose process died after creating
+ * its user is finished by the next attempt instead (see `interruptedUserId`).
  */
 export async function createFirstAdminAccount(
   payload: Payload,
@@ -250,6 +287,21 @@ export async function createFirstAdminAccount(
   if (!db) throw new APIError('First-run admin setup needs the D1 database binding.', 503)
   const state = createSetupState(db)
   await state.installGuard()
+  // A previous attempt that died after creating its user left a stale claim behind. Finish
+  // that setup for the existing user instead of refusing: no new account, no password change.
+  const interruptedId = await state.interruptedUserId()
+  if (interruptedId !== null) {
+    const existing = await ensureFirstAdminRole(payload, interruptedId, req)
+    if (await state.completeInterrupted()) {
+      payload.logger.info({
+        msg: 'First-run setup recovered',
+        userId: interruptedId,
+        emailDomain: emailDomain(existing.email),
+        source,
+      })
+      return { id: interruptedId, email: existing.email }
+    }
+  }
   if (source === 'web') await state.seal()
   const token = randomUUID()
   const refuse = () =>
