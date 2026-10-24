@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { builtinModules } from 'node:module'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -346,7 +347,24 @@ const CLIENT_SAFE_ENTRIES = [
   'src/auth/firebase.ts',
   'src/client-security/client.ts',
 ]
-const FORBIDDEN_BARE = /^(?:payload(?:\/.*)?|node:.*|next(?:\/.*)?)$/
+const FORBIDDEN_BARE = /^(?:payload(?:\/.*)?|@payloadcms\/.*|node:.*|next(?:\/.*)?)$/
+const NODE_BUILTINS = new Set(builtinModules)
+
+function isForbiddenBare(spec: string): boolean {
+  return FORBIDDEN_BARE.test(spec) || NODE_BUILTINS.has(spec.split('/')[0])
+}
+
+test('forbidden bare specifiers cover Payload packages and unprefixed Node built-ins', () => {
+  for (const spec of ['payload', 'payload/shared', 'next/headers', 'node:crypto']) {
+    assert.equal(isForbiddenBare(spec), true, spec)
+  }
+  for (const spec of ['@payloadcms/ui', '@payloadcms/db-d1-sqlite', 'crypto', 'fs', 'fs/promises']) {
+    assert.equal(isForbiddenBare(spec), true, spec)
+  }
+  for (const spec of ['jose', 'react', '@opennextjs/cloudflare', 'payloadish']) {
+    assert.equal(isForbiddenBare(spec), false, spec)
+  }
+})
 
 /** First forbidden thing reachable from `entry` (with the chain), or null. */
 function forbiddenReach(entry: string): string | null {
@@ -357,7 +375,7 @@ function forbiddenReach(entry: string): string | null {
     const file = path.join(ROOT, rel)
     const { imports } = parseImports(readFileSync(file, 'utf8'))
     for (const { spec } of imports) {
-      if (FORBIDDEN_BARE.test(spec)) return [...chain, rel, `"${spec}"`].join(' -> ')
+      if (isForbiddenBare(spec)) return [...chain, rel, `"${spec}"`].join(' -> ')
       const target = resolveSpecifier(file, spec)
       if (!target) continue
       const bad =

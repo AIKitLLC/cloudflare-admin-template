@@ -4,7 +4,7 @@ Last updated: 2026-10-24.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for review.
 
-The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-24 around 11:09 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `2468373`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
+The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-24 around 16:12 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `b12a6ed`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
 
 ## What is on `main`
 
@@ -28,7 +28,8 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | `63ee819` | #41 | Deploy-button inputs (`JOBS_INTERNAL_SECRET` active in `.env.example`, descriptions in `package.json`) and the isolated demo rollout guide `docs/demo-deployment.md`. Refs #40. |
 | `703d7b1` | #48 | This status page refreshed after #41. |
 | `dcf0162` | #50 | First-run setup recovery: an interrupted setup (stale claim, exactly one user) completes on the next web attempt or `pnpm admin:create` (`src/auth/first-admin-setup.ts`, `docs/admin-access.md`). Closes #47. |
-| `2468373` | #51 | Decouple core features into in-code modules (one public `index.ts` per top-level `src/` module; composition in `src/payload.config.ts` and `src/app`). Closes #45. |
+| `2468373` | #51 | Core features as in-code modules: one public `index.ts` per `src/` module, admin UI moved out of `src/components`, row-scope hooks via `withRowScope` with a fail-closed `assertRowScopeHooks`, and `tests/unit/module-boundaries.test.ts` enforcing the boundaries. Closes #45. |
+| `b12a6ed` | #52 | Dependencies: `pnpm.overrides` pins vulnerable transitive versions reported by `pnpm audit --prod` to patched releases; lockfile regenerated. No application code changes. Closes #46. |
 
 ## Toolchain and CI
 
@@ -43,7 +44,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 | Pull request | Title | Issue | Base | State |
 | --- | --- | --- | --- | --- |
-| #52 | deps: bump vulnerable transitive dependencies reported by `pnpm audit --prod` | #46 | `main` | Ready for review |
+| This change | test: pin the onInit row-scope assertion for plugin-added collections | #54 | `main` | Draft |
 
 #11–#15, #18, and #19 were closed as superseded by #29. #20 (plugin split, base `integration/admin-stack`) was closed on 2026-10-23; that work is on hold.
 
@@ -51,7 +52,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 A maintainer decides the merge order. Do not merge any pull request without maintainer approval.
 
-#31, #33, #32, #39, #41, #48, #50, and #51 were merged in that order.
+#31, #33, #32, #39, #41, #48, #50, #51, and #52 were merged in that order.
 
 ## Deploy prerequisites
 
@@ -102,7 +103,7 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Dependencies only, for #46. `package.json` `pnpm.overrides` now pins the vulnerable transitive versions found under `pnpm audit --prod` to their patched releases (`undici` 7.x to `7.30.1` and 6.x to `6.29.1`, `dompurify` to `3.4.17`, `glob` 10.x to `10.5.0`, `esbuild` below `0.25.0` to `0.25.12`, `fast-uri` to `3.1.9`, `body-parser` to `2.4.0`, `happy-dom` to `21.0.4`), and `pnpm-lock.yaml` was regenerated. No application code changes.
+Tests and docs for #54, a follow-up to #51. `tests/int/row-scope-rules.int.spec.ts` calls the built config's `onInit` with a plugin-added row-scoped collection that is not wrapped with `withRowScope` and expects it to throw, so removing the `onInit` `assertRowScopeHooks` call now fails a test. The runtime-entry reachability check in `tests/unit/module-boundaries.test.ts` also rejects `@payloadcms/*` and Node built-ins imported without the `node:` prefix. `docs/ARCHITECTURE.md` lists every rule the boundary test enforces. No runtime change.
 
 ## Acronyms
 
