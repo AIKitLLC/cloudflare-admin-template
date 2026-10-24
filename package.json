@@ -89,6 +89,12 @@
     "bindings": {
       "PAYLOAD_SECRET": {
         "description": "Generate a random string using `openssl rand -hex 32`"
+      },
+      "JOBS_INTERNAL_SECRET": {
+        "description": "Required for scheduled jobs. Generate a separate random value with `openssl rand -hex 32` (at least 32 characters); keep it as a Worker secret."
+      },
+      "PAYLOAD_PUBLIC_SERVER_URL": {
+        "description": "Required in production: the exact HTTPS origin of this Worker, with no path (for example https://admin.example.com). Replace the local development default before deploying."
       }
     }
   }
