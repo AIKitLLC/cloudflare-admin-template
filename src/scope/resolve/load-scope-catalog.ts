@@ -8,7 +8,7 @@ import {
   clearCatalogPromise,
 } from '../cache/scope-request-cache'
 import { findEveryPage } from '../find/find-every-page'
-import { relationId } from '../../access/relation-id'
+import { relationId } from '../../access'
 
 type CatalogDoc = {
   id: number | string

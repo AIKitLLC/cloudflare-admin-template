@@ -1,4 +1,4 @@
-import { relationIds } from '../../access/relation-id'
+import { relationIds } from '../relation-id'
 
 export function roleIdList(value: unknown): string[] {
   return relationIds(value)

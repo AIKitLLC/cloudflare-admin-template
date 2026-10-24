@@ -15,10 +15,12 @@ const sourcePath = resolve(root, 'src/auth/firebase-client.ts')
 const source = await readFile(sourcePath, 'utf8')
 const adapterPath = resolve(root, 'src/auth/firebase-client-route.ts')
 const adapterSource = await readFile(adapterPath, 'utf8')
+const firebaseEntryPath = resolve(root, 'src/auth/firebase.ts')
+const firebaseEntrySource = await readFile(firebaseEntryPath, 'utf8')
 const routePath = resolve(root, 'src/app/api/client/v1/me/route.ts')
 const routeSource = await readFile(routePath, 'utf8')
 const managedSources = await Promise.all(
-  ['client-route', 'initialize', 'schema', 'store', 'rate-limits'].map(async (name) => {
+  ['client', 'client-route', 'initialize', 'schema', 'store', 'rate-limits'].map(async (name) => {
     const path = resolve(root, `src/client-security/${name}.ts`)
     return [path, await readFile(path, 'utf8')]
   }),
@@ -258,6 +260,7 @@ const frozenRouteSources = new Map(
     [
       [sourcePath, source],
       [adapterPath, adapterSource],
+      [firebaseEntryPath, firebaseEntrySource],
       [routePath, routeSource],
       [cloudflareContextPath, cloudflareContextSource],
       ...managedSources,
@@ -888,6 +891,7 @@ assert.equal(
 )
 for (const [path, contents] of [
   [adapterPath, adapterSource],
+  [firebaseEntryPath, firebaseEntrySource],
   [routePath, routeSource],
   [cloudflareContextPath, cloudflareContextSource],
   ...managedSources,

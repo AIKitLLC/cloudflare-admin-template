@@ -1,7 +1,7 @@
 import type { CollectionBeforeDeleteHook, CollectionSlug, PayloadRequest, Where } from 'payload'
 import { APIError } from 'payload'
 
-import type { RowScopeBinding, ScopeDimension } from '../../access/types'
+import type { RowScopeBinding, ScopeDimension } from '../../access'
 import { readRowScopeBinding } from '../bindings/read-row-scope-binding'
 import {
   BRANCH_ORGANIZATION_FIELD,

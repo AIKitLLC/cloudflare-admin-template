@@ -26,7 +26,7 @@ import { defineJob } from '@/jobs/registry/define-job'
 import { processQueueBatch } from '@/jobs/runner/process-queue-batch'
 import { processJob } from '@/jobs/runner/process-job'
 import { runScheduledMaintenance } from '@/jobs/runner/run-scheduled-maintenance'
-import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
+import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/access/privilege/privilege-context'
 
 let payload: Payload
 let actor: TypedUser

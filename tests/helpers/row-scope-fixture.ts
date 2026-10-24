@@ -1,6 +1,6 @@
 import { getPayload, type CollectionSlug, type Payload } from 'payload'
 
-import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
+import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/access/privilege/privilege-context'
 import { setRoleGrant } from '@/rbac/matrix/set-role-grant'
 import {
   BRANCHES_SLUG,

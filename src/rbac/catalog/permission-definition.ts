@@ -1,13 +1,13 @@
-import type { PermissionAction } from '../../access/types'
-import { permissionKey } from '../../access/permission-key'
+import type { PermissionAction } from '../../access'
+import { permissionKey } from '../../access'
 import {
   fieldDisplayLabel,
   walkPermissionedFields,
   type WalkableField,
-} from '../../access/fields/permissioned-field'
-import { globalAccessSlug } from '../../access/global-slug'
-import { collectionEnablesRbac } from '../../access/options'
-import { COLLECTION_ACTIONS } from '../../access/constants'
+} from '../../access'
+import { globalAccessSlug } from '../../access'
+import { collectionEnablesRbac } from '../../access'
+import { COLLECTION_ACTIONS } from '../../access'
 import { extraCatalogDefinitions, suppressedPermissionKeys } from './catalog-contributors'
 
 export type CatalogAction = PermissionAction | 'trigger' | 'retry'

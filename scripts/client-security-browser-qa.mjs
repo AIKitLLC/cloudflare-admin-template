@@ -47,9 +47,9 @@ const sourceFiles = [
   'src/client-security/schema.ts',
   'src/client-security/store.ts',
   'src/client-security/rate-limits.ts',
-  'src/components/ClientSecurityView.tsx',
-  'src/components/ClientSecurityPanel.tsx',
-  'src/components/ClientSecurityNav.tsx',
+  'src/client-security/admin/ClientSecurityView.tsx',
+  'src/client-security/admin/ClientSecurityPanel.tsx',
+  'src/client-security/admin/ClientSecurityNav.tsx',
   'src/collections/ClientSecurity.ts',
   'src/collections/Users.ts',
   'src/app/api/admin/client-security/route.ts',
@@ -312,8 +312,8 @@ try {
   ownerId = (
     await seedPayload.create({ collection: 'users', data: { email: ownerEmail, password } })
   ).id
-  const { initializeClientSecuritySchema } = await import('../src/client-security/initialize.ts')
-  const { createClientSecurityStore } = await import('../src/client-security/store.ts')
+  const { initializeClientSecuritySchema } = await import('../src/client-security/index.ts')
+  const { createClientSecurityStore } = await import('../src/client-security/index.ts')
   await initializeClientSecuritySchema(runtime.platform.env.D1)
   store = createClientSecurityStore(runtime.platform.env.D1)
   const bootstrap = await runtime.platform.env.D1.prepare(

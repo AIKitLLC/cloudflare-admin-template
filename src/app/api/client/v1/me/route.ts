@@ -3,7 +3,7 @@ import { getCloudflareContext } from '@opennextjs/cloudflare'
 import {
   cloudflareClientIp,
   createManagedFirebaseClientRoute,
-} from '@/client-security/client-route'
+} from '@/client-security/client'
 
 export const dynamic = 'force-dynamic'
 

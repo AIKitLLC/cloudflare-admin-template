@@ -4,7 +4,7 @@ import { createLocalReq, type CollectionSlug, type Payload } from 'payload'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { exportCollection } from '@/access/export/create-export-endpoint'
-import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
+import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/access/privilege/privilege-context'
 import { SUPER_ADMIN_SLUG } from '@/access/constants'
 import { relationIds } from '@/access/relation-id'
 import {

@@ -4,12 +4,12 @@ import {
   CLIENT_SECURITY_SCHEMA,
   CLIENT_SECURITY_OWNER_TRIGGERS,
   CLIENT_SECURITY_RELATIONS,
-} from '../client-security/initialize'
+} from '../client-security'
 import {
   canonicalClientSecurityConfiguration,
   DEFAULT_CLIENT_SECURITY_CONFIGURATION,
   digestClientSecurityConfiguration,
-} from '../client-security/schema'
+} from '../client-security'
 
 export async function up({ db }: MigrateUpArgs): Promise<void> {
   const columns = await db.all<{ name: string }>(sql`PRAGMA table_info(users)`)

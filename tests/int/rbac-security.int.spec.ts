@@ -21,7 +21,7 @@ import {
   SUBSET_GRANT_ERROR,
   UNCONDITIONAL_GRANT_ERROR,
 } from '@/rbac/guards/privilege-errors'
-import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/rbac/guards/privilege-context'
+import { SKIP_RBAC_PRIVILEGE_CHECKS } from '@/access/privilege/privilege-context'
 import { seedRbac } from '@/rbac/seed/seed-rbac'
 import {
   markUpgradePromotionDone,

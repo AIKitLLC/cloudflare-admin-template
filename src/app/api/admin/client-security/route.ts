@@ -2,7 +2,7 @@ import { getCloudflareContext } from '@opennextjs/cloudflare'
 import { getPayload } from 'payload'
 
 import config from '@/payload.config'
-import { createClientSecurityAdminRoute } from '@/client-security/admin-route'
+import { createClientSecurityAdminRoute } from '@/client-security'
 
 export const dynamic = 'force-dynamic'
 export const { GET, POST } = createClientSecurityAdminRoute({

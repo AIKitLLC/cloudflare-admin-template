@@ -27,7 +27,7 @@ export function parseFirstAdminArguments(args, env = process.env) {
  * completed, as long as the `users` table is empty again.
  */
 export async function createFirstAdmin(payload, { email, password }) {
-  const { createFirstAdminAccount } = await import('../src/auth/first-admin-setup.ts')
+  const { createFirstAdminAccount } = await import('../src/auth/index.ts')
   return createFirstAdminAccount(payload, { email, password }, { source: 'cli' })
 }
 

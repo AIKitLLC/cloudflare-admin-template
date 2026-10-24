@@ -1,6 +1,6 @@
 import { APIError, type CollectionConfig } from 'payload'
 
-import { SETUP_STATE_SLUG } from '../auth/first-admin-setup'
+import { SETUP_STATE_SLUG } from '../auth'
 
 /**
  * First-run admin setup state: one row, keyed by a unique `singleton` value. Payload owns

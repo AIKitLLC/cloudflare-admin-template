@@ -80,16 +80,19 @@ See [First admin and admin access](#first-admin-and-admin-access).
 │   ├── app/                 # Next.js App Router (Admin & API endpoints)
 │   ├── access/              # RBAC decision pipeline and collection/field helpers
 │   ├── audit/               # Opt-in field-level audit trail (see src/audit/README.md)
+│   ├── auth/                # Firebase client auth, first-admin setup, login throttle
+│   ├── client-security/     # Firebase trust settings, rate limits, admin view
 │   ├── scope/               # Organizational row scope, hierarchy, and assignment guards
+│   ├── system-parameters/   # Typed system parameters and getParameter
+│   ├── jobs/                # Typed background jobs, runner, and monitor (jobs/admin)
 │   ├── collections/         # Payload Collection definitions
 │   │   ├── Users.ts         # User authentication collection
 │   │   └── Media.ts         # Asset upload collection (R2)
-│   ├── components/rbac/     # Permission matrix admin view
-│   ├── rbac/                # Roles, permissions, seeding, and matrix API
+│   ├── rbac/                # Roles, permissions, seeding, matrix API, and matrix admin view (rbac/admin)
 │   ├── migrations/          # D1 database migrations
 │   ├── payload.config.ts    # Main Payload CMS configuration & bindings
 │   └── payload-types.ts     # Auto-generated TypeScript types
-├── tests/                   # Integration and E2E test suites
+├── tests/                   # Unit, integration, and E2E test suites (unit includes the module boundary test)
 ├── wrangler.jsonc           # Cloudflare Workers, D1 & R2 configuration
 ├── open-next.config.ts      # OpenNext build adapter configuration
 └── package.json
@@ -103,7 +106,7 @@ Wrap collections with `withRbac` so they join the permission matrix. Startup syn
 
 ```typescript
 import type { CollectionConfig } from 'payload'
-import { withRbac } from '../access/with-rbac'
+import { withRbac } from '../access'
 
 export const Customers: CollectionConfig = withRbac({
   slug: 'customers',
@@ -161,26 +164,28 @@ Users can be assigned organizations, branches, and data classes. Organizations a
 
 A limited user can assign only scope values they already hold, including inherited ones, and cannot edit their own assignments or see user accounts outside that scope. Adding scope to someone else also requires that their permission keys are already within the actor's. Granting a permission is refused when a holder of that role can see rows outside the granter's scope. See [docs/row-scope.md](docs/row-scope.md).
 
-Opt in from `withRbac`:
+Opt in with `rowScope` on `withRbac`, and wrap the result directly in `withRowScope` from `src/scope`. `withRowScope` attaches the scope hooks to that collection, and `payload.config.ts` refuses to boot if any row-scoped collection, including one a plugin adds, lacks them:
 
 ```typescript
-export const Customers = withRbac(
-  {
-    slug: 'customers',
-    fields: [
-      { name: 'name', type: 'text', required: true },
-      { name: 'organization', type: 'relationship', relationTo: 'organizations', required: true },
-      { name: 'branch', type: 'relationship', relationTo: 'branches', required: true },
-      { name: 'dataClass', type: 'relationship', relationTo: 'data-classes', required: true },
-    ],
-  },
-  {
-    rowScope: {
-      organizationField: 'organization',
-      branchField: 'branch',
-      dataClassField: 'dataClass',
+export const Customers = withRowScope(
+  withRbac(
+    {
+      slug: 'customers',
+      fields: [
+        { name: 'name', type: 'text', required: true },
+        { name: 'organization', type: 'relationship', relationTo: 'organizations', required: true },
+        { name: 'branch', type: 'relationship', relationTo: 'branches', required: true },
+        { name: 'dataClass', type: 'relationship', relationTo: 'data-classes', required: true },
+      ],
     },
-  },
+    {
+      rowScope: {
+        organizationField: 'organization',
+        branchField: 'branch',
+        dataClassField: 'dataClass',
+      },
+    },
+  ),
 )
 ```
 

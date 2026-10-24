@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { Payload } from 'payload'
 
-import { isStoredClientSecurityOwner } from '@/auth/client-security-owner'
+import { isStoredClientSecurityOwner } from '@/auth'
 
 export async function ClientSecurityNav({ payload, user }: { payload: Payload; user: unknown }) {
   if (!(await isStoredClientSecurityOwner(payload, user))) return null

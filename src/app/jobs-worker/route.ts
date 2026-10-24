@@ -1,9 +1,9 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare'
 
-import { handleQueueBatch } from '@/jobs/runtime/handle-queue-batch'
-import { handleScheduled } from '@/jobs/runtime/handle-scheduled'
-import { decideInternalDispatch, logInternalSkipOnce } from '@/jobs/runtime/internal-secret'
-import { JOBS_INTERNAL_HEADER } from '@/jobs/runtime/worker-dispatch'
+import { decideInternalDispatch, JOBS_INTERNAL_HEADER, logInternalSkipOnce } from '@/jobs'
+
+import { handleQueueBatch } from './handle-queue-batch'
+import { handleScheduled } from './handle-scheduled'
 
 export const dynamic = 'force-dynamic'
 

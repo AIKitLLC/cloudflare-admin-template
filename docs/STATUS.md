@@ -1,10 +1,10 @@
 # Status
 
-Last updated: 2026-10-23.
+Last updated: 2026-10-24.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for review.
 
-The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-23 around 18:40 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `703d7b1`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
+The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-24 around 15:33 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `dcf0162`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
 
 ## What is on `main`
 
@@ -27,6 +27,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | `29262dd` | #39 | This status page refreshed after #29 and #30. Closes #38. |
 | `63ee819` | #41 | Deploy-button inputs (`JOBS_INTERNAL_SECRET` active in `.env.example`, descriptions in `package.json`) and the isolated demo rollout guide `docs/demo-deployment.md`. Refs #40. |
 | `703d7b1` | #48 | This status page refreshed after #41. |
+| `dcf0162` | #50 | First-run setup recovery: an interrupted setup (stale claim, exactly one user) completes on the next web attempt or `pnpm admin:create` (`src/auth/first-admin-setup.ts`, `docs/admin-access.md`). Closes #47. |
 
 ## Toolchain and CI
 
@@ -41,7 +42,8 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 | Pull request | Title | Issue | Base | State |
 | --- | --- | --- | --- | --- |
-| This change | Recovery path when first-run setup is left incomplete | #47 | `main` | Draft |
+| #51 | refactor: decouple core features into in-code modules | #45 | `main` | Ready for review |
+| #52 | deps: bump vulnerable transitive dependencies reported by pnpm audit --prod | #46 | `main` | Ready for review |
 
 #11–#15, #18, and #19 were closed as superseded by #29. #20 (plugin split, base `integration/admin-stack`) was closed on 2026-10-23; that work is on hold.
 
@@ -49,7 +51,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 A maintainer decides the merge order. Do not merge any pull request without maintainer approval.
 
-#31, #33, #32, #39, #41, and #48 were merged in that order.
+#31, #33, #32, #39, #41, #48, and #50 were merged in that order.
 
 ## Deploy prerequisites
 
@@ -102,7 +104,7 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Setup recovery for #47. `src/auth/first-admin-setup.ts` gains `interruptedUserId` / `completeInterrupted` on the setup state: when a first-run setup attempt died after creating its user (stale claim still stored, setup not completed, exactly one user), the next web setup attempt or `pnpm admin:create` run ensures that user holds the Super Admin role and marks setup complete, instead of refusing and leaving the CLI-on-an-empty-table as the only path. No new account is created, no password changes, the guard trigger and the one-first-admin guarantee are unchanged, and recovery never runs under a live claim, with more than one user, or after completion. Three unit tests cover the web recovery, the CLI recovery, and both refusal boundaries (`tests/unit/first-admin-setup.test.ts`). Recovery steps for every interrupted state, including the manual fallback, are documented in `docs/admin-access.md` and summarised in the README. This page refreshed in the same pull request (snapshot 2026-10-23, `main` at `703d7b1` before this change).
+Module decoupling for #45 (#51). Every top-level `src/` directory is a module with one public `index.ts`; `src/payload.config.ts` and `src/app` compose them; `src/components` moved into the owning modules' `admin/` folders. `tests/unit/module-boundaries.test.ts` fails on deep cross-module imports, module cycles, `'use client'` files importing an entry, unresolved admin component paths, and runtime-limited entries (`src/jobs/worker.ts`, `src/auth/firebase.ts`, `src/client-security/client.ts`) reaching Payload or Node built-ins. Row-scope hooks come from `withRowScope`; `assertRowScopeHooks` stops boot when a row-scoped collection lacks them. No runtime behavior change. See `docs/ARCHITECTURE.md`. This page refreshed in the same pull request after merging `main` at `dcf0162`.
 
 ## Acronyms
 

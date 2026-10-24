@@ -1,7 +1,7 @@
 import { getPayload, type Payload } from 'payload'
 
 import config from '../../payload.config'
-import { processQueueBatch, type JobQueueMessageLike } from '../runner/process-queue-batch'
+import { processQueueBatch, type JobQueueMessageLike } from '@/jobs'
 
 type QueueBatch = {
   messages: Array<JobQueueMessageLike & { retried?: boolean }>

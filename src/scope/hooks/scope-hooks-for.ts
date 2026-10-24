@@ -5,7 +5,7 @@ import type {
   CollectionConfig,
 } from 'payload'
 
-import type { RowScopeBinding } from '../../access/types'
+import type { RowScopeBinding } from '../../access'
 import { guardRecordScope } from '../guards/guard-record-scope'
 import {
   guardScopeAssignment,

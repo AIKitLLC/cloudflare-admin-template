@@ -1,7 +1,7 @@
 import type { FieldAccess } from 'payload'
 
-import { evaluateCollectionAccess } from '../../access/evaluate-collection-access'
-import { isAccessGranted } from '../../access/result'
+import { evaluateCollectionAccess } from '../../access'
+import { isAccessGranted } from '../../access'
 import { evaluateJobDispatch } from '../auth/evaluate-job-dispatch'
 import { JOBS_SLUG } from '../constants'
 

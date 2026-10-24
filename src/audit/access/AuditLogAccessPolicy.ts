@@ -1,6 +1,6 @@
 import type { Access, PayloadRequest, Where } from 'payload'
 
-import { evaluateCollectionAccess } from '../../access/evaluate-collection-access'
+import { evaluateCollectionAccess } from '../../access'
 import { AUDIT_LOGS_SLUG } from '../constants'
 
 /**

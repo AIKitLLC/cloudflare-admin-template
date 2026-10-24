@@ -37,9 +37,9 @@ const sourceFiles = [
   'src/client-security/schema.ts',
   'src/client-security/store.ts',
   'src/client-security/rate-limits.ts',
-  'src/components/ClientSecurityView.tsx',
-  'src/components/ClientSecurityPanel.tsx',
-  'src/components/ClientSecurityNav.tsx',
+  'src/client-security/admin/ClientSecurityView.tsx',
+  'src/client-security/admin/ClientSecurityPanel.tsx',
+  'src/client-security/admin/ClientSecurityNav.tsx',
   'src/collections/ClientSecurity.ts',
   'src/app/api/admin/client-security/route.ts',
   'src/app/api/client/v1/me/route.ts',
@@ -332,9 +332,9 @@ try {
     },
   })
   mediaFilename = media.filename
-  const { initializeClientSecuritySchema } = await import('../src/client-security/initialize.ts')
-  const { createClientSecurityStore } = await import('../src/client-security/store.ts')
-  const { digestClientSecurityConfiguration } = await import('../src/client-security/schema.ts')
+  const { initializeClientSecuritySchema } = await import('../src/client-security/index.ts')
+  const { createClientSecurityStore } = await import('../src/client-security/index.ts')
+  const { digestClientSecurityConfiguration } = await import('../src/client-security/index.ts')
   await initializeClientSecuritySchema(runtime.platform.env.D1)
   securityStore = createClientSecurityStore(runtime.platform.env.D1)
   digestSecurityConfiguration = digestClientSecurityConfiguration

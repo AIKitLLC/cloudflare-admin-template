@@ -1,7 +1,7 @@
 import type { CollectionSlug, Payload } from 'payload'
 
-import { PERMISSIONS_SLUG, ROLE_PERMISSIONS_SLUG } from '../../access/constants'
-import { relationId } from '../../access/relation-id'
+import { PERMISSIONS_SLUG, ROLE_PERMISSIONS_SLUG } from '../../access'
+import { relationId } from '../../access'
 import { setRoleGrant } from '../matrix/set-role-grant'
 
 export async function grantSuperAdminPermissions(
