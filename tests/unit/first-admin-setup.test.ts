@@ -576,6 +576,62 @@ test('a setup whose create failed after the insert removes that user', async () 
   )
 })
 
+/**
+ * `create` rejects after its insert, and `afterInsert` first changes the state so the stored
+ * row is no longer provably this call's. The cleanup must then delete nothing.
+ */
+async function failedSetupDeletesNothing(change: (sqlite: DatabaseSync) => void) {
+  const { db, sqlite } = sqliteDatabase()
+  await completedThenEmptied(sqlite, db)
+  const { payload, deletes } = fakePayload(sqlite, db, {
+    afterInsert: async () => {
+      change(sqlite)
+      throw new Error('D1_ERROR: database is locked')
+    },
+  })
+  await assert.rejects(createFirstAdmin(payload, { email: 'cli@example.com', password }))
+  assert.equal(deletes.length, 0)
+  return sqlite
+}
+
+test('a failed setup deletes nothing when a different token holds the claim', async () => {
+  const sqlite = await failedSetupDeletesNothing((db) => {
+    db.prepare("UPDATE setup_state SET claim_token = 'another-token'").run()
+  })
+  assert.deepEqual(
+    userRows(sqlite).map((user) => user.email),
+    ['cli@example.com'],
+  )
+})
+
+test("a failed setup deletes nothing when the only user's email does not match", async () => {
+  const sqlite = await failedSetupDeletesNothing((db) => {
+    db.prepare("UPDATE users SET email = 'other@example.com'").run()
+  })
+  assert.deepEqual(
+    userRows(sqlite).map((user) => user.email),
+    ['other@example.com'],
+  )
+})
+
+test('a failed setup deletes nothing when two users exist', async () => {
+  const sqlite = await failedSetupDeletesNothing((db) => {
+    // Another row the guard trigger did not stop, for example one written outside setup.
+    for (const { name } of db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'users'")
+      .all() as { name: string }[]) {
+      db.exec(`DROP TRIGGER ${name}`)
+    }
+    db.prepare("INSERT INTO users (email, roles) VALUES ('other@example.com', '[]')").run()
+  })
+  assert.deepEqual(
+    userRows(sqlite)
+      .map((user) => user.email)
+      .sort(),
+    ['cli@example.com', 'other@example.com'],
+  )
+})
+
 test('a setup whose cleanup failed keeps its claim, so the next CLI run finishes it', async () => {
   const { db, sqlite } = sqliteDatabase()
   await completedThenEmptied(sqlite, db)
