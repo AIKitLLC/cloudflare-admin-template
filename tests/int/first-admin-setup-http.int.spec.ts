@@ -242,7 +242,7 @@ describe('first-run admin setup over HTTP', () => {
     const created = (run: { code: number | null; text: string }) =>
       run.code === 0 && run.text.includes('First admin created with user ID')
     const succeeded = runs.filter(created).length
-    const detail = runs.map((run) => `${run.code}: ${run.text.slice(-400)}`).join('\n---\n')
+    const detail = runs.map((run) => `${run.code}: ${run.text.slice(-2000)}`).join('\n---\n')
     // Never two users. Local D1 shared by separate processes can also fail both runs; the
     // failed run removes its user, so a plain retry then succeeds.
     expect(succeeded, detail).toBeLessThanOrEqual(1)

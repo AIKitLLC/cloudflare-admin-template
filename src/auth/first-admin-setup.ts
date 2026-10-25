@@ -61,6 +61,8 @@ END`
  * - `seal` records completion for installs that already have users.
  * - `interruptedUserId` / `completeInterrupted` recover a setup whose process died after it
  *   created the user but before it completed: a stale claim, no completion, exactly one user.
+ *   With `afterCompletion` (the CLI) they also recover a run that claimed an emptied table.
+ * - `ownUserId` finds the row a caller's own failed `create` committed.
  */
 export function createSetupState(
   db: SetupStateDatabase,
@@ -141,36 +143,57 @@ export function createSetupState(
     },
     /**
      * Id of the only user when a setup attempt died after creating it: its claim is still
-     * stored but stale, and setup never completed. A live claim is left alone, so an
-     * attempt that is still running is never recovered underneath it.
+     * stored but stale, and setup never completed (or, with `afterCompletion`, the attempt
+     * claimed an emptied table). A live claim is left alone, so an attempt that is still
+     * running is never recovered underneath it.
      */
-    async interruptedUserId(): Promise<number | string | null> {
+    async interruptedUserId({ afterCompletion = false } = {}): Promise<number | string | null> {
       const row = await db
         .prepare(
           `SELECT users.id AS id FROM ${SETUP_STATE_TABLE}, users
            WHERE ${SETUP_STATE_TABLE}.singleton = ?1
              AND ${SETUP_STATE_TABLE}.claim_token IS NOT NULL
-             AND ${SETUP_STATE_TABLE}.completed_at IS NULL
+             AND (?3 = 1 OR ${SETUP_STATE_TABLE}.completed_at IS NULL)
              AND ${SETUP_STATE_TABLE}.claimed_at <= ?2
              AND (SELECT count(*) FROM users) = 1
            LIMIT 1`,
         )
-        .bind(FIRST_ADMIN_SETUP_KEY, nowMs() - claimTtlMs)
+        .bind(FIRST_ADMIN_SETUP_KEY, nowMs() - claimTtlMs, afterCompletion ? 1 : 0)
         .first<{ id: number | string }>()
       return row?.id ?? null
     },
     /** Marks an interrupted setup complete, re-checking its conditions in the same statement. */
-    async completeInterrupted(): Promise<boolean> {
+    async completeInterrupted({ afterCompletion = false } = {}): Promise<boolean> {
       const row = await db
         .prepare(
           `UPDATE ${SETUP_STATE_TABLE} SET completed_at = ?2, claim_token = NULL, claimed_at = NULL
-           WHERE singleton = ?1 AND completed_at IS NULL AND claim_token IS NOT NULL
+           WHERE singleton = ?1 AND (?4 = 1 OR completed_at IS NULL) AND claim_token IS NOT NULL
              AND claimed_at <= ?3 AND (SELECT count(*) FROM users) = 1
            RETURNING singleton`,
         )
-        .bind(FIRST_ADMIN_SETUP_KEY, nowMs(), nowMs() - claimTtlMs)
+        .bind(FIRST_ADMIN_SETUP_KEY, nowMs(), nowMs() - claimTtlMs, afterCompletion ? 1 : 0)
         .first<{ singleton: string }>()
       return row?.singleton === FIRST_ADMIN_SETUP_KEY
+    },
+    /**
+     * Id of the only user while `token` still holds a live claim and that user has `email`:
+     * the row this caller's own failed `create` committed. While the claim is live the guard
+     * trigger refuses any insert into a non-empty table, so the row is not another request's.
+     */
+    async ownUserId(token: string, email: string): Promise<number | string | null> {
+      const row = await db
+        .prepare(
+          `SELECT users.id AS id FROM ${SETUP_STATE_TABLE}, users
+           WHERE ${SETUP_STATE_TABLE}.singleton = ?1
+             AND ${SETUP_STATE_TABLE}.claim_token = ?2
+             AND ${SETUP_STATE_TABLE}.claimed_at > ?3
+             AND lower(users.email) = lower(?4)
+             AND (SELECT count(*) FROM users) = 1
+           LIMIT 1`,
+        )
+        .bind(FIRST_ADMIN_SETUP_KEY, token, nowMs() - claimTtlMs, email)
+        .first<{ id: number | string }>()
+      return row?.id ?? null
     },
     async completed(): Promise<boolean> {
       const row = await db
@@ -275,8 +298,9 @@ export type FirstAdminSource = 'web' | 'cli'
 /**
  * Creates the first admin under the setup claim and records completion. If any step fails
  * the account created by this call is removed and the claim is released, so a later attempt
- * starts from an empty `users` table again. An attempt whose process died after creating
- * its user is finished by the next attempt instead (see `interruptedUserId`).
+ * starts from an empty `users` table again. If that removal fails too, the claim is kept: an
+ * attempt left with its user, like one whose process died, is finished by the next attempt
+ * once the claim is stale (see `interruptedUserId`).
  */
 export async function createFirstAdminAccount(
   payload: Payload,
@@ -289,10 +313,11 @@ export async function createFirstAdminAccount(
   await state.installGuard()
   // A previous attempt that died after creating its user left a stale claim behind. Finish
   // that setup for the existing user instead of refusing: no new account, no password change.
-  const interruptedId = await state.interruptedUserId()
+  const recovery = { afterCompletion: source === 'cli' }
+  const interruptedId = await state.interruptedUserId(recovery)
   if (interruptedId !== null) {
     const existing = await ensureFirstAdminRole(payload, interruptedId, req)
-    if (await state.completeInterrupted()) {
+    if (await state.completeInterrupted(recovery)) {
       payload.logger.info({
         msg: 'First-run setup recovered',
         userId: interruptedId,
@@ -330,18 +355,20 @@ export async function createFirstAdminAccount(
       throw new APIError('First-run admin setup did not complete. Try again.', 409)
     }
   } catch (error) {
-    try {
-      // Remove only the account this call created, by its id.
-      if (created) {
-        await payload.db.deleteMany({
-          collection: USERS_SLUG as CollectionSlug,
-          where: { id: { equals: created.id } },
-          req,
-        })
-      }
-    } finally {
-      await state.release(token)
+    // D1 runs without transactions, so `create` can reject after its insert was committed
+    // (a `users` hook failed). The guard refusal means this call inserted nothing.
+    const ownId =
+      created?.id ?? (isSetupGuardError(error) ? null : await state.ownUserId(token, input.email))
+    // Remove only the account this call created, by its id. If the removal throws, the claim
+    // is kept so the next attempt recovers this account instead of finding a stuck install.
+    if (ownId !== null) {
+      await payload.db.deleteMany({
+        collection: USERS_SLUG as CollectionSlug,
+        where: { id: { equals: ownId } },
+        req,
+      })
     }
+    await state.release(token)
     if (isSetupGuardError(error)) throw refuse()
     throw error
   } finally {

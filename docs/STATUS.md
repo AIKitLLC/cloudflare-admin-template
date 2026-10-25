@@ -1,10 +1,10 @@
 # Status
 
-Last updated: 2026-10-24.
+Last updated: 2026-10-25.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for review.
 
-The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-24 around 17:10 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `a49d6c0`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
+The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-25 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `2d49bad`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
 
 ## What is on `main`
 
@@ -31,6 +31,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | `2468373` | #51 | Core features as in-code modules: one public `index.ts` per `src/` module, admin UI moved out of `src/components`, row-scope hooks via `withRowScope` with a fail-closed `assertRowScopeHooks`, and `tests/unit/module-boundaries.test.ts` enforcing the boundaries. Closes #45. |
 | `b12a6ed` | #52 | Dependencies: `pnpm.overrides` pins vulnerable transitive versions reported by `pnpm audit --prod` to patched releases; lockfile regenerated. No application code changes. Closes #46. |
 | `a49d6c0` | #55 | Tests and docs: `onInit` row-scope assertion pinned for plugin-added collections; boundary test rejects `@payloadcms/*` and un-prefixed Node built-ins in runtime-limited entries. No runtime change. Closes #54. |
+| `2d49bad` | #56 | This status page refreshed after #50, #51, #52, and #55. |
 
 ## Toolchain and CI
 
@@ -45,7 +46,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 | Pull request | Title | Issue | Base | State |
 | --- | --- | --- | --- | --- |
-| This change | docs: refresh status after #50, #51, #52, and #55 | — | `main` | Ready for review |
+| This change | fix: remove the user a failed first-admin setup committed | #53 | `main` | Draft |
 
 #11–#15, #18, and #19 were closed as superseded by #29. #20 (plugin split, base `integration/admin-stack`) was closed on 2026-10-23; that work is on hold.
 
@@ -53,7 +54,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 A maintainer decides the merge order. Do not merge any pull request without maintainer approval.
 
-#31, #33, #32, #39, #41, #48, #50, #51, #52, and #55 were merged in that order.
+#31, #33, #32, #39, #41, #48, #50, #51, #52, #55, and #56 were merged in that order.
 
 ## Deploy prerequisites
 
@@ -82,7 +83,8 @@ Labels exist (`type:*`, `area:*`, `status:*`, `priority:*`). No milestones exist
 | #7 | State machine and approval workflow | `type:feature`, `area:collections`, `status:ready`, `priority:p2` | — |
 | #8 | Advanced data grid | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
 | #10 | Safe script runner | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
-| #49 | Mandatory CI/CD deploy; no deploys from a local machine | — | — |
+| #49 | Mandatory CI/CD deploy; no deploys from a local machine | `priority:p0` | — |
+| #53 | Flaky `admin:create still recovers`: a failed CLI run left a user behind | `type:bug`, `area:tests`, `status:ready`, `priority:p2` | This change |
 | #40 | Deploy-button inputs and isolated demo rollout | — | #41 (merged). Stays open until a demo deploy and sign-in check succeed and the demo URL is recorded. |
 | #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | — |
 
@@ -103,7 +105,13 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Docs only. This page refreshed after #50 (closes #47), #51 (closes #45), #52 (closes #46), and #55 (closes #54) merged; `main` is `a49d6c0`.
+Fixes #53. D1 runs without transactions, so `payload.create` can reject after the `users` row was committed (a `users` hook failed). `createFirstAdminAccount` (`src/auth/first-admin-setup.ts`) used to skip the cleanup then and release the claim, leaving one user, no claim, and setup not completed: retries got 409 and the #50 recovery did not match. Now:
+
+- The failed attempt looks up the row it committed under its own live claim (`ownUserId`: exactly one user, with its email) and removes it by id. A guard refusal or a taken-over claim still removes nothing.
+- If the removal fails, the claim is kept, so the next attempt recovers the account once the claim is stale. `pnpm admin:create` now recovers this way after setup has completed too; the web flow stays closed.
+- `tests/int/first-admin-setup-http.int.spec.ts` keeps 2000 characters of each CLI run's output in the failure detail.
+
+Unit tests cover both paths. `docs/admin-access.md` describes the new cleanup and recovery.
 
 ## Acronyms
 

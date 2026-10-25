@@ -52,7 +52,7 @@ On a local database that was created with `pnpm payload migrate` instead of `pnp
 
 ### Recovering an interrupted first-run setup
 
-A setup attempt that fails in-process cleans up after itself (account removed, claim released), so a plain retry works. An attempt whose process or Worker died mid-flight cannot clean up. What to do depends on the state it left behind:
+A setup attempt that fails in-process cleans up after itself (account removed, claim released), so a plain retry works. This includes a failure after the account row was written but before the create call returned: D1 runs without transactions, so the attempt looks the row up under its own live claim and removes it by id. If the removal itself fails, the attempt keeps its claim and is handled like a dead attempt below. An attempt whose process or Worker died mid-flight cannot clean up. What to do depends on the state it left behind:
 
 | State left behind | Recovery |
 | --- | --- |
@@ -61,7 +61,7 @@ A setup attempt that fails in-process cleans up after itself (account removed, c
 | No claim, no user | Just retry the setup form or the CLI. |
 | Setup marked complete, but the response was lost | Nothing to recover. Sign in at `/admin` with the admin credentials. |
 
-The automatic recovery never runs while a claim is still live (an attempt may still be running), never with more than one user, and never after setup has completed, so it cannot create a second first admin or promote an unrelated account. The database guard trigger is unchanged.
+The automatic recovery never runs while a claim is still live (an attempt may still be running) and never with more than one user, so it cannot create a second first admin or promote an unrelated account. The web form never recovers after setup has completed. `pnpm admin:create` does: a CLI run on an emptied `users` table that left its user behind is finished by the next CLI run, the same way. The database guard trigger is unchanged.
 
 Fallback, when the states above do not match — for example the setup row was edited outside the setup flow, so the web form sealed setup but the only user does not hold the Super Admin role:
 
