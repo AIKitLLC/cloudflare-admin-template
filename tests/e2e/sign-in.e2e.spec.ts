@@ -49,9 +49,12 @@ test.describe('Sign-in', () => {
     await signInThroughUi(page, { ...user, ip: uniqueIp() })
     await page.waitForURL(/\/admin$/)
 
+    // Payload starts the logout from an effect after hydration and navigates to the login
+    // screen only once the request has settled, so the URL is the signal that it finished.
     await page.goto('/admin/logout')
-    await page.waitForLoadState('networkidle')
+    await expect(page).toHaveURL(/\/admin\/login/)
 
+    // Landing there does not prove the session was revoked: the client swallows a failed request.
     expect(await currentEmail(page)).toBeNull()
     await page.goto('/admin')
     await expect(page).toHaveURL(/\/admin\/login/)

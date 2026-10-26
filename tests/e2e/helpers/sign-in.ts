@@ -49,10 +49,13 @@ export async function attemptSignIn(
     headers: { 'cf-connecting-ip': ip },
     data: { email, password },
   })
-  const body = (await response.json()) as {
-    message?: string
-    token?: string
-    errors?: { message: string }[]
+  // An HTML 500 from the Worker or D1 must not surface as a bare SyntaxError that hides the status.
+  const text = await response.text()
+  let body: { message?: string; token?: string; errors?: { message: string }[] }
+  try {
+    body = JSON.parse(text)
+  } catch {
+    throw new Error(`Sign-in for ${email} answered ${response.status()} with: ${text.slice(0, 500)}`)
   }
   return {
     status: response.status(),
