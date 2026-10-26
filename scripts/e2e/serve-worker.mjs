@@ -20,11 +20,8 @@ import { join } from 'node:path'
 import { buildCloudflareWorker } from '../worker-build/build-cloudflare-worker.mjs'
 
 const port = Number(process.env.E2E_PORT ?? 8792)
-// `localhost`, not `127.0.0.1`: the Worker sees its own origin as `http://localhost:<port>` (Next builds
-// `request.url` from it), and the client security settings API only accepts a write whose `Origin`
-// equals that. A browser on `127.0.0.1` would be refused every time.
-const origin = `http://localhost:${port}`
 const secret = 'e2e-worker-secret'
+const logDir = join(process.cwd(), '.wrangler', 'e2e-logs')
 const instances = [
   ...(process.env.E2E_EXTRA_INSTANCE === '0'
     ? []
@@ -33,9 +30,10 @@ const instances = [
           name: 'interrupted',
           port: port + 1,
           stateDir: join(process.cwd(), '.wrangler', 'e2e-interrupted'),
+          log: 'worker-interrupted.log',
         },
       ]),
-  { name: 'main', port, stateDir: join(process.cwd(), '.wrangler', 'e2e') },
+  { name: 'main', port, stateDir: join(process.cwd(), '.wrangler', 'e2e'), log: 'worker.log' },
 ]
 
 const baseEnv = {
@@ -44,9 +42,6 @@ const baseEnv = {
   NEXT_TELEMETRY_DISABLED: '1',
   WRANGLER_SEND_METRICS: 'false',
   PAYLOAD_SECRET: secret,
-  // The built Worker runs with NODE_ENV=production and refuses to boot without a public
-  // origin, so admin cookies cannot fall back to localhost:3000.
-  PAYLOAD_PUBLIC_SERVER_URL: origin,
   // Do not let wrangler load `.env` as dev vars. This does not isolate a local run (the build bakes
   // `.env*` into the bundle, `payload migrate` loads `.env`, and `.dev.vars` is still read); see
   // docs/e2e.md.
@@ -67,80 +62,7 @@ if (process.env.E2E_SKIP_BUILD === '1' && existsSync('.open-next/worker.js')) {
   buildCloudflareWorker([])
 }
 
-rmSync(stateDir, { recursive: true, force: true })
-mkdirSync(stateDir, { recursive: true })
-// Same binding names and ids as wrangler.jsonc, so `wrangler dev` finds the tables the
-// Payload CLI creates here. `remote: true` in wrangler.jsonc would open a Cloudflare
-// session for the CLI, so it is left out.
-//
-// The two tools disagree on the layout: `wrangler dev --persist-to X` keeps its data in
-// `X/v3`, while the Payload CLI's platform proxy uses the path it is given as the root. The
-// CLI therefore gets `<state>/v3`, which is where the Worker reads.
-writeFileSync(
-  wranglerConfig,
-  JSON.stringify({
-    name: 'e2e',
-    compatibility_date: '2025-08-15',
-    compatibility_flags: ['nodejs_compat'],
-    d1_databases: [{ binding: 'D1', database_name: 'my-app', database_id: 'DATABASE_ID' }],
-    r2_buckets: [{ binding: 'R2', bucket_name: 'my-app' }],
-  }),
-)
-
-const migrate = spawnSync('pnpm', ['payload', 'migrate'], {
-  cwd: process.cwd(),
-  env: {
-    ...env,
-    NODE_ENV: 'development',
-    PAYLOAD_TEST_WRANGLER_CONFIG: wranglerConfig,
-    PAYLOAD_TEST_STORAGE_DIR: join(stateDir, 'v3'),
-  },
-  encoding: 'utf8',
-  shell: process.platform === 'win32',
-  timeout: 180_000,
-})
-if (migrate.status !== 0) {
-  console.error(`${migrate.stdout ?? ''}\n${migrate.stderr ?? ''}`.slice(-4000))
-  process.exit(migrate.status ?? 1)
-}
-console.log('e2e: migrated the local D1')
-
-mkdirSync(join(process.cwd(), '.wrangler', 'e2e-logs'), { recursive: true })
-const workerLog = createWriteStream(join(process.cwd(), '.wrangler', 'e2e-logs', 'worker.log'))
-
-const worker = spawn(
-  'pnpm',
-  [
-    'exec',
-    'wrangler',
-    'dev',
-    '--local',
-    '--ip',
-    'localhost',
-    '--port',
-    String(port),
-    '--inspector-port',
-    String(port + 1000),
-    '--persist-to',
-    stateDir,
-    '--var',
-    `PAYLOAD_SECRET:${secret}`,
-    '--var',
-    `PAYLOAD_PUBLIC_SERVER_URL:${origin}`,
-    '--show-interactive-dev-session',
-    'false',
-  ],
-  {
-    cwd: process.cwd(),
-    env,
-    // Piped so the log can also go to a file CI uploads when a run fails (see the pipes below).
-    stdio: ['ignore', 'pipe', 'pipe'],
-    shell: process.platform === 'win32',
-    // Not detached: Playwright stops its webServer with a SIGKILL to this process group, which
-    // cannot run a handler here. Staying in the group is what takes pnpm, wrangler and workerd
-    // down with it; a detached child would outlive the run and hold the port and Playwright's pipes.
-  },
-)
+mkdirSync(logDir, { recursive: true })
 const workers = []
 
 // Direct SIGINT/SIGTERM (a terminal, a graceful Playwright shutdown). `wrangler dev` runs under
@@ -164,22 +86,17 @@ process.on('SIGTERM', () => {
   process.exit(0)
 })
 process.on('exit', stop)
-// Everything the Worker prints is kept in `.wrangler/e2e-logs/worker.log` as well, outside the state
-// directory (which is wiped) and outside `test-results` (which Playwright empties). CI uploads it.
-worker.stdout.pipe(process.stdout)
-worker.stderr.pipe(process.stderr)
-worker.stdout.pipe(workerLog, { end: false })
-worker.stderr.pipe(workerLog, { end: false })
-// `close`, not `exit`: it fires after the child's output has been read, so a crash message is kept.
-worker.on('close', (code) => workerLog.end(() => process.exit(code ?? 0)))
 
 for (const instance of instances) {
   await start(instance, instance !== instances.at(-1))
 }
 
 /** Wipes and migrates the instance's state, then runs `wrangler dev` on it. */
-async function start({ name, port: instancePort, stateDir }, waitUntilReady) {
-  const origin = `http://127.0.0.1:${instancePort}`
+async function start({ name, port: instancePort, stateDir, log }, waitUntilReady) {
+  // `localhost`, not `127.0.0.1`: the Worker sees its own origin as `http://localhost:<port>` (Next
+  // builds `request.url` from it), and the client security settings API only accepts a write whose
+  // `Origin` equals that. A browser on `127.0.0.1` would be refused every time.
+  const origin = `http://localhost:${instancePort}`
   // The built Worker runs with NODE_ENV=production and refuses to boot without a public
   // origin, so admin cookies cannot fall back to localhost:3000.
   const env = { ...baseEnv, PAYLOAD_PUBLIC_SERVER_URL: origin }
@@ -223,6 +140,7 @@ async function start({ name, port: instancePort, stateDir }, waitUntilReady) {
   }
   console.log(`e2e: migrated the local D1 (${name})`)
 
+  const workerLog = createWriteStream(join(logDir, log))
   const worker = spawn(
     'pnpm',
     [
@@ -230,6 +148,8 @@ async function start({ name, port: instancePort, stateDir }, waitUntilReady) {
       'wrangler',
       'dev',
       '--local',
+      '--ip',
+      'localhost',
       '--port',
       String(instancePort),
       '--inspector-port',
@@ -246,7 +166,8 @@ async function start({ name, port: instancePort, stateDir }, waitUntilReady) {
     {
       cwd: process.cwd(),
       env,
-      stdio: 'inherit',
+      // Piped so the log can also go to a file CI uploads when a run fails (see the pipes below).
+      stdio: ['ignore', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
       // Not detached: Playwright stops its webServer with a SIGKILL to this process group, which
       // cannot run a handler here. Staying in the group is what takes pnpm, wrangler and workerd
@@ -254,7 +175,14 @@ async function start({ name, port: instancePort, stateDir }, waitUntilReady) {
     },
   )
   workers.push(worker)
-  worker.on('exit', (code) => process.exit(code ?? 0))
+  // Everything the Worker prints is kept in `.wrangler/e2e-logs/<log>` as well, outside the state
+  // directory (which is wiped) and outside `test-results` (which Playwright empties). CI uploads it.
+  worker.stdout.pipe(process.stdout)
+  worker.stderr.pipe(process.stderr)
+  worker.stdout.pipe(workerLog, { end: false })
+  worker.stderr.pipe(workerLog, { end: false })
+  // `close`, not `exit`: it fires after the child's output has been read, so a crash message is kept.
+  worker.on('close', (code) => workerLog.end(() => process.exit(code ?? 0)))
 
   if (waitUntilReady) await untilAnswering(`${origin}/api/users/me`, worker)
 }

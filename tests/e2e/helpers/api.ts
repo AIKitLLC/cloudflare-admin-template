@@ -34,7 +34,6 @@ export async function api(request: APIRequestContext, args: Args): Promise<ApiRe
   // meant to be anonymous or to act as the token's user. An explicit cookie header, even an empty
   // one, stops it adding the jar.
   const headers: Record<string, string> = { cookie: '', ...args.headers }
-  const headers: Record<string, string> = { ...args.headers }
   if (args.token) headers.authorization = `JWT ${args.token}`
   if (args.ip) headers['cf-connecting-ip'] = args.ip
   const response = await request.fetch(args.path, {
