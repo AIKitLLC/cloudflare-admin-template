@@ -20,7 +20,7 @@ export function uniqueEmail(prefix: string): string {
 }
 
 /** The admin session saved by the first-admin spec. */
-function adminToken(): string {
+export function adminToken(): string {
   const state = JSON.parse(readFileSync(adminStorageState, 'utf8')) as {
     cookies: { name: string; value: string }[]
   }
@@ -29,8 +29,15 @@ function adminToken(): string {
   return token
 }
 
-/** Creates a user as the admin. Sent as a JWT header because the Secure cookie is not sent over http. */
-export async function createUser(request: APIRequestContext, user: Credentials): Promise<void> {
+type NewUser = Credentials & {
+  roles?: number[]
+  organizations?: number[]
+  branches?: number[]
+  dataClasses?: number[]
+}
+
+/** Creates a user as the admin and returns its id. Sent as a JWT header because the Secure cookie is not sent over http. */
+export async function createUser(request: APIRequestContext, user: NewUser): Promise<number> {
   const response = await request.post('/api/users', {
     headers: { authorization: `JWT ${adminToken()}` },
     data: user,
@@ -38,6 +45,7 @@ export async function createUser(request: APIRequestContext, user: Credentials):
   if (response.status() !== 201) {
     throw new Error(`Creating ${user.email} answered ${response.status()}: ${await response.text()}`)
   }
+  return ((await response.json()) as { doc: { id: number } }).doc.id
 }
 
 /** One sign-in over the API from the given client address. */
