@@ -57,7 +57,7 @@ Not covered yet: admin CRUD and Media, row scope, and a valid Firebase token (se
 
 ## Client security
 
-The Worker sees its own origin as `http://localhost:<port>` (Next builds `request.url` from it), and `/api/admin/client-security` accepts a write only when `Origin` equals that. A browser on `127.0.0.1` would be refused every time, so the harness serves and tests on `http://localhost:8792`. `--local-upstream` does not change what the route sees.
+The Worker sees its own origin as `http://localhost:<port>` (Next builds `request.url` from it), and `/api/admin/client-security` accepts a write only when `Origin` equals that. A browser on `127.0.0.1` would be refused every time, so the harness serves and tests on `http://localhost:8792`. `--local-upstream` does not change what the route sees. The Worker listens on `127.0.0.1` only, while `localhost` can resolve to `::1` first, so `playwright.config.ts` pins Chromium (`--host-resolver-rules`) and the request client (`--dns-result-order=ipv4first`) to IPv4. Before that pin, one whole-suite run in about five lost the connection or stalled for 30 s in an unrelated spec; five runs in a row passed after it.
 
 The settings are shared state. The spec puts revision 0's content back after every test (`restoreDefaults`, a rollback that adds a revision), so no test asserts an absolute revision number, and the history list is capped, so it is only used for its newest row.
 
