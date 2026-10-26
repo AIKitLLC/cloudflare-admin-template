@@ -2,7 +2,13 @@ import { expect, test } from '@playwright/test'
 
 import { createRole, setGrant, signInToken, uniqueSlug } from './helpers/access'
 import { api } from './helpers/api'
-import { createScopeTree, recordTitles, scopedReaderRole, scopedUser } from './helpers/scope'
+import {
+  createScopeTree,
+  recordTitles,
+  scopedReaderRole,
+  scopedUser,
+  scopeNames,
+} from './helpers/scope'
 import { adminToken, signInThroughUi, uniqueIp } from './helpers/sign-in'
 
 const DENIED = 'You are not allowed to perform this action.'
@@ -35,12 +41,30 @@ test.describe('What a scoped user sees and may change', () => {
     const asNobody = await recordTitles(request, await signInToken(request, nobody))
     const asBranch = await recordTitles(request, await signInToken(request, branchOnly))
     const asAdmin = await recordTitles(request, adminToken(), tree.token)
+    const tokenA = await signInToken(request, inA)
+    const names = (collection: string) => scopeNames(request, tokenA, collection)
 
     // The child organization is included; the secret class and organization B are not.
     expect(sorted(asA)).toEqual(sorted([tree.titles.aPublic, tree.titles.a1Public]))
     expect(asNobody).toEqual([])
     expect(asBranch).toEqual([tree.titles.a1Public])
     expect(asAdmin).toHaveLength(4)
+
+    // The scope nodes themselves are filtered the same way: the organization and its child, the
+    // branches under them, and only the assigned class.
+    expect(sorted(await names('organizations'))).toEqual(
+      sorted([`Org A ${tree.token}`, `Org A1 ${tree.token}`]),
+    )
+    expect(sorted(await names('branches'))).toEqual(
+      sorted([`Branch A ${tree.token}`, `Branch A1 ${tree.token}`]),
+    )
+    expect(await names('data-classes')).toEqual([`Public ${tree.token}`])
+
+    // The admin screens read the same filter from /api/access.
+    const access = await api(request, { method: 'GET', path: '/api/access', token: tokenA })
+    expect(JSON.stringify(access.body.collections.records.read.where)).toContain(
+      `"organization.scopePath":{"contains":"/${tree.orgA}/"}`,
+    )
   })
 
   test('an out-of-scope record is hidden by id and refused on write', async ({ request }) => {
@@ -76,6 +100,26 @@ test.describe('What a scoped user sees and may change', () => {
       token: adminToken(),
     })
     expect(stored.body.title).toBe(tree.titles.bPublic)
+
+    const own = await api(request, {
+      method: 'POST',
+      path: '/api/records',
+      token,
+      data: {
+        title: `${tree.token} own`,
+        organization: tree.orgA,
+        branch: tree.brA,
+        dataClass: tree.classPublic,
+      },
+    })
+    expect(own.status).toBe(201)
+    // The same user can delete a record inside their scope, so the 403 above is the scope.
+    const removeOwn = await api(request, {
+      method: 'DELETE',
+      path: outside(own.body.doc.id),
+      token,
+    })
+    expect(removeOwn.status).toBe(200)
 
     const inScope = await api(request, {
       method: 'PATCH',
@@ -168,7 +212,9 @@ test.describe('What a scoped user sees and may change', () => {
     expect(widen.status).toBe(200)
 
     // The same token: scope is read on every request, not stored in the session.
-    expect(await recordTitles(request, token)).toContain(tree.titles.bPublic)
+    expect(sorted(await recordTitles(request, token))).toEqual(
+      sorted([tree.titles.aPublic, tree.titles.a1Public, tree.titles.bPublic]),
+    )
   })
 })
 
@@ -251,6 +297,7 @@ test.describe('Screens, export, users and the scope tree', () => {
         'users:readField:organizations',
         'users:readField:roles',
         'users:writeField:email',
+        'users:writeField:organizations',
         'organizations:read',
         'organizations:readField:name',
         'organizations:readField:slug',
@@ -309,17 +356,47 @@ test.describe('Screens, export, users and the scope tree', () => {
     const inUse =
       'Remove nested scope nodes, records, and user assignments that still use this scope before deleting it.'
     const cycle = 'That scope parent would create a cycle or exceed the hierarchy depth.'
+    const make = async (collection: string, data: Record<string, unknown>) => {
+      const created = await api(request, {
+        method: 'POST',
+        path: `/api/${collection}`,
+        token,
+        data,
+      })
+      expect(created.status).toBe(201)
+      return created.body.doc.id as number
+    }
+    const remove = (collection: string, id: number) =>
+      api(request, { method: 'DELETE', path: `/api/${collection}/${id}`, token })
 
-    const withChild = await api(request, {
-      method: 'DELETE',
-      path: `/api/organizations/${tree.orgA}`,
-      token,
+    // Each node below is used in exactly one way, so each refusal names one check.
+    const parent = await make('organizations', {
+      name: `Parent ${tree.token}`,
+      slug: uniqueSlug('parent'),
     })
-    const withRecords = await api(request, {
-      method: 'DELETE',
-      path: `/api/branches/${tree.brA}`,
-      token,
+    await make('organizations', {
+      name: `Child ${tree.token}`,
+      slug: uniqueSlug('child'),
+      parent,
     })
+    const assignedClass = await make('data-classes', {
+      name: `Assigned ${tree.token}`,
+      slug: uniqueSlug('assigned'),
+    })
+    await scopedUser(request, { dataClasses: [assignedClass] })
+    const unused = await make('data-classes', {
+      name: `Unused ${tree.token}`,
+      slug: uniqueSlug('unused'),
+    })
+
+    expect(await remove('organizations', parent)).toMatchObject({ status: 400, message: inUse })
+    expect(await remove('data-classes', assignedClass)).toMatchObject({
+      status: 400,
+      message: inUse,
+    })
+    expect(await remove('branches', tree.brA)).toMatchObject({ status: 400, message: inUse })
+    expect((await remove('data-classes', unused)).status).toBe(200)
+
     const underChild = await api(request, {
       method: 'PATCH',
       path: `/api/organizations/${tree.orgA}`,
@@ -332,9 +409,6 @@ test.describe('Screens, export, users and the scope tree', () => {
       token,
       data: { parent: tree.orgA },
     })
-
-    expect(withChild).toMatchObject({ status: 400, message: inUse })
-    expect(withRecords).toMatchObject({ status: 400, message: inUse })
     expect(underChild).toMatchObject({ status: 400, message: cycle })
     expect(underItself).toMatchObject({ status: 400, message: cycle })
   })

@@ -136,7 +136,7 @@ export async function scopedReaderRole(
 export async function scopedUser(
   request: APIRequestContext,
   args: {
-    /** Left out for a user with no role, the only kind a limited manager may edit. */
+    /** Left out for a user with no role: the one kind of account a limited manager may edit, since a role's keys must be a subset of the manager's. */
     roleId?: number
     organizations?: number[]
     branches?: number[]
@@ -171,4 +171,19 @@ export async function recordTitles(
   if (result.status !== 200)
     throw new Error(`Listing records answered ${result.status}: ${result.message}`)
   return (result.body.docs as { title: string }[]).map((doc) => doc.title)
+}
+
+/** Names in a scope collection as a user sees them (organizations, branches, data-classes). */
+export async function scopeNames(
+  request: APIRequestContext,
+  token: string,
+  collection: string,
+): Promise<string[]> {
+  const result = await api(request, {
+    method: 'GET',
+    path: `/api/${collection}?limit=100&sort=name&depth=0`,
+    token,
+  })
+  if (result.status !== 200) throw new Error(`Listing ${collection} answered ${result.status}`)
+  return (result.body.docs as { name: string }[]).map((doc) => doc.name)
 }

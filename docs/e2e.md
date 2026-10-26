@@ -49,7 +49,7 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | Row scope (a scoped user sees and changes only records and users inside their organization, branch and data class: by list, id, screen, export and API; cannot widen their own scope; the scope tree refuses a used node and a cycle) | `row-scope.e2e.spec.ts` |
 | Admin page loads, homepage | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 
-Not covered yet: admin CRUD and Media, row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
+Not covered yet: admin CRUD and Media, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
 
 ## Roles, grants and the owner
 
@@ -57,7 +57,7 @@ Not covered yet: admin CRUD and Media, row scope, the client API. An expired ses
 
 ## Row scope
 
-Each test builds its own tree with `createScopeTree` (`helpers/scope.ts`: organizations A with child A1 and B, a branch in each, two data classes, four records, every slug and title unique), so a scoped user's unfiltered list is exactly that test's rows. A scoped role also needs the field-read keys (`scopedReaderRole` builds them from the catalog): without them `sort=title` is a 400 and documents come back empty. A limited users manager may only edit users who hold no role (their keys must be a subset of the manager's), so those users are created without one. Out of scope, a read by id is `404 Not Found` while a write is `403`; on the screen the list shows "The document with ID <id> could not be found".
+Each test builds its own tree with `createScopeTree` (`helpers/scope.ts`: organizations A with child A1 and B, a branch in each, two data classes, four records, every slug and title unique), so a scoped user's unfiltered list is exactly that test's rows. A scoped role also needs the field-read keys (`scopedReaderRole` builds them from the catalog): without them `sort=title` is a 400 and documents come back empty. A limited users manager may only edit users whose role keys are a subset of the manager's, so the test's users are created without a role. Out of scope, a read by id is `404 Not Found` while a write is `403`; on the screen the list shows "The document with ID <id> could not be found".
 
 ## Reset tokens and the database file
 
