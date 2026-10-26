@@ -8,6 +8,8 @@ export function buildCloudflareWorker(args = process.argv.slice(2)) {
   const result = spawnSync('pnpm', ['exec', 'opennextjs-cloudflare', 'build', ...args], {
     stdio: 'inherit',
     env: process.env,
+    // `pnpm` is a .cmd shim on Windows; without a shell spawnSync cannot find it.
+    shell: process.platform === 'win32',
   })
   if (result.status !== 0) {
     process.exit(result.status ?? 1)
