@@ -96,7 +96,14 @@ test.describe('Interrupted first-admin setup', () => {
     const attempt = await register(request, interruptedAdmin, baseURL!)
 
     expect(attempt).toMatchObject({ status: 403, message: DENIED })
-    expect(await setupSnapshot()).toMatchObject({ claimToken: 'dead-attempt', roleLinks: 0 })
+    // The claim is untouched and nobody is promoted. `completed` proves the request reached the
+    // setup code (an origin refusal is the same 403): a refused web request seals setup, so after an
+    // early retry only `pnpm admin:create` can finish it.
+    expect(await setupSnapshot()).toMatchObject({
+      claimToken: 'dead-attempt',
+      completed: true,
+      roleLinks: 0,
+    })
   })
 
   test('never promotes anyone when two users exist', async ({ request, baseURL }) => {
@@ -122,6 +129,7 @@ test.describe('Interrupted first-admin setup', () => {
       expect(attempt).toMatchObject({ status: 403, message: DENIED })
       expect(await setupSnapshot()).toMatchObject({
         users: [interruptedAdmin.email, second],
+        completed: true,
         roleLinks: 0,
       })
     } finally {
@@ -134,6 +142,8 @@ test.describe('Interrupted first-admin setup', () => {
   })
 
   test('shows the login screen, not the setup screen, once a user exists', async ({ page }) => {
+    await interrupted(STALE_CLAIM_MS)
+
     await page.goto('/admin', { waitUntil: 'domcontentloaded' })
 
     await expect(page).toHaveURL(/\/admin\/login/)

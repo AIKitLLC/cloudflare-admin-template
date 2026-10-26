@@ -40,6 +40,23 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
+    ...(process.env.E2E_EXTRA_INSTANCE === '0'
+      ? []
+      : [
+          {
+            // Its own Worker and database (see scripts/e2e/serve-worker.mjs): it needs a database in the
+            // "just set up" state, which the shared one cannot give once first-admin has completed
+            // setup. It mutates that database and nothing else uses it.
+            name: 'interrupted-setup',
+            testMatch: /interrupted-first-admin\.e2e\.spec\.ts/,
+            retries: 0,
+            use: {
+              ...devices['Desktop Chrome'],
+              channel: 'chromium' as const,
+              baseURL: interruptedURL,
+            },
+          },
+        ]),
     {
       // Needs the empty `users` table, so it runs first and creates the admin the rest reuse.
       name: 'first-admin',
@@ -47,17 +64,8 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], channel: 'chromium' },
     },
     {
-      // Its own Worker and database: it needs a database in the "just set up" state, which the
-      // shared one cannot give once first-admin has completed setup. It mutates that database,
-      // so it never retries and nothing else uses it.
-      name: 'interrupted-setup',
-      testMatch: /interrupted-first-admin\.e2e\.spec\.ts/,
-      retries: 0,
-      use: { ...devices['Desktop Chrome'], channel: 'chromium', baseURL: interruptedURL },
-    },
-    {
       name: 'chromium',
-      testIgnore: /(first-admin|interrupted-first-admin)\.e2e\.spec\.ts/,
+      testIgnore: /first-admin\.e2e\.spec\.ts/,
       dependencies: ['first-admin'],
       use: {
         ...devices['Desktop Chrome'],

@@ -46,10 +46,11 @@ export function setupSnapshot(): Promise<SetupSnapshot> {
   return withDatabase(
     true,
     (db) => {
-      const state = db.prepare('SELECT claim_token, completed_at FROM setup_state').get() as {
-        claim_token: string | null
-        completed_at: number | null
-      }
+      // No row yet on a database that has never been claimed.
+      const state = (db.prepare('SELECT claim_token, completed_at FROM setup_state').get() ?? {
+        claim_token: null,
+        completed_at: null,
+      }) as { claim_token: string | null; completed_at: number | null }
       const users = db.prepare('SELECT email FROM users ORDER BY id').all() as { email: string }[]
       const links = db
         .prepare("SELECT count(*) AS n FROM users_rels WHERE path = 'roles'")
@@ -71,8 +72,8 @@ export function setupSnapshot(): Promise<SetupSnapshot> {
  * every other user.
  */
 export async function sealedSetup(request: APIRequestContext, baseURL: string): Promise<void> {
-  const before = await setupSnapshot().catch((): null => null)
-  if (!before || before.users.length === 0) {
+  const before = await setupSnapshot()
+  if (before.users.length === 0) {
     const created = await register(request, interruptedAdmin, baseURL)
     if (created.status !== 200) {
       throw new Error(`The first setup answered ${created.status}: ${created.message}`)
@@ -82,6 +83,8 @@ export async function sealedSetup(request: APIRequestContext, baseURL: string): 
     false,
     (db) => {
       db.prepare('DELETE FROM users WHERE email != ?').run(interruptedAdmin.email)
+      // A case that fails after a wrong-password sign-in must not leave the admin close to lockout.
+      db.prepare('UPDATE users SET login_attempts = 0, lock_until = NULL').run()
       const admin = db
         .prepare('SELECT id FROM users WHERE email = ?')
         .get(interruptedAdmin.email) as {

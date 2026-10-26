@@ -26,12 +26,12 @@ One shared database, so `workers: 1`.
 | Project | Specs | Why |
 | --- | --- | --- |
 | `first-admin` | `first-admin.e2e.spec.ts` | Needs an empty `users` table. Creates the admin and saves its session to `tests/e2e/.auth/admin.json` (git-ignored). Serial, no retries: a retry would find the admin already created. |
-| `interrupted-setup` | `interrupted-first-admin.e2e.spec.ts` | Needs a database in the "just set up" state, which the shared one cannot give once `first-admin` has completed setup. Runs against a second Worker (below), no `storageState`, serial, no retries: it mutates its own database. |
+| `interrupted-setup` | `interrupted-first-admin.e2e.spec.ts` | Needs a database in the "just set up" state, which the shared one cannot give once `first-admin` has completed setup. Runs against a second Worker (below), no `storageState`, serial. It mutates its own database, so it is configured without retries; a retry would still be safe because every case rebuilds its state first. |
 | `chromium` | every other spec | Depends on `first-admin`, so it is skipped if setup failed. Starts signed in as `e2eAdmin` (`tests/e2e/helpers/admin.ts`). |
 
 ## The second Worker
 
-`serve-worker.mjs` also serves a second instance on port + 1 (8793, state in `.wrangler/e2e-interrupted`), built from the same `.open-next` bundle and started first, so the main port answering means both are up. `E2E_EXTRA_INSTANCE=0` skips it. The interrupted spec builds its state from a real first-register and then three statements on that database (`helpers/interrupted-setup.ts`: clear `completed_at`, set a dead `claim_token` with a chosen `claimed_at`, delete the user's role link); the 2-minute claim age is backdated, never waited out. Recovery runs before credentials are checked, so a retry with the wrong password or another email still finishes setup and then answers 401.
+`serve-worker.mjs` also serves a second instance on port + 1 (8793, state in `.wrangler/e2e-interrupted`), built from the same `.open-next` bundle and started first, so the main port answering means both are up. `E2E_EXTRA_INSTANCE=0` skips it. The interrupted spec builds its state from a real first-register and then two statements on that database (`helpers/interrupted-setup.ts`: clear `completed_at` and set a dead `claim_token` with a chosen `claimed_at`, and delete the user's role link); the 2-minute claim age is backdated, never waited out. A refused web request (a live claim, or two users) still marks setup completed, so after an early retry only `pnpm admin:create` can finish it; the spec asserts that, which also proves the request reached the setup code. Recovery runs before credentials are checked, so a retry with the wrong password or another email still finishes setup and then answers 401.
 
 A spec that needs to be signed out uses `test.use({ storageState: { cookies: [], origins: [] } })`.
 

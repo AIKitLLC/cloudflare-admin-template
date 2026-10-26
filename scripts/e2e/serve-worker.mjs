@@ -172,7 +172,7 @@ async function untilAnswering(url, worker) {
   while (Date.now() < deadline) {
     if (worker.exitCode !== null) throw new Error(`e2e: the Worker for ${url} exited early`)
     try {
-      await fetch(url, { signal: AbortSignal.timeout(3000) })
+      await fetch(url, { signal: AbortSignal.timeout(60_000) })
       return
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 500))
