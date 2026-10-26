@@ -48,6 +48,10 @@ mkdirSync(stateDir, { recursive: true })
 // Same binding names and ids as wrangler.jsonc, so `wrangler dev` finds the tables the
 // Payload CLI creates here. `remote: true` in wrangler.jsonc would open a Cloudflare
 // session for the CLI, so it is left out.
+//
+// The two tools disagree on the layout: `wrangler dev --persist-to X` keeps its data in
+// `X/v3`, while the Payload CLI's platform proxy uses the path it is given as the root. The
+// CLI therefore gets `<state>/v3`, which is where the Worker reads.
 writeFileSync(
   wranglerConfig,
   JSON.stringify({
@@ -65,7 +69,7 @@ const migrate = spawnSync('pnpm', ['payload', 'migrate'], {
     ...env,
     NODE_ENV: 'development',
     PAYLOAD_TEST_WRANGLER_CONFIG: wranglerConfig,
-    PAYLOAD_TEST_STORAGE_DIR: stateDir,
+    PAYLOAD_TEST_STORAGE_DIR: join(stateDir, 'v3'),
   },
   encoding: 'utf8',
   shell: process.platform === 'win32',

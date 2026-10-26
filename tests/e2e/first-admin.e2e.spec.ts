@@ -51,7 +51,10 @@ test.describe('First-run admin setup', () => {
     })
     const response = await submitSetupForm(page)
 
+    // The length rule specifically, not some other 400 (email, body parsing).
     expect(response.status()).toBe(400)
+    expect(await response.text()).toMatch(/at least 12 characters/i)
+    await expect(page.getByText(/at least 12 characters/i).first()).toBeVisible()
     await expect(page).toHaveURL(/\/admin\/create-first-user/)
     // Setup did not complete, so the signed-out visitor still gets the setup screen.
     await page.goto('/admin')

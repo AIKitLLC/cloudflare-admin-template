@@ -33,8 +33,9 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     baseURL,
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: 'on-first-retry',
+    /* first-admin runs with retries: 0 and gates every other spec, so a retry-only trace would
+       never exist for the failure that matters most. See https://playwright.dev/docs/trace-viewer */
+    trace: 'retain-on-failure',
   },
   projects: [
     {
