@@ -34,7 +34,7 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 
 - Use relative URLs; `baseURL` is the Worker.
 - Assert behaviour: a status code, a message the visitor sees, a redirect. When a form posts to an API, wait for that response (`page.waitForResponse`) and check its status. A form submitted before React hydrates posts to the page itself and never reaches the API, so asserting only "still on the page" passes without testing anything.
-- Playwright's `request` fixture does not send the admin cookie: it is `Secure` and the client does not send such cookies over `http`. For API calls send `Authorization: JWT <token>` (`api()` in `tests/e2e/helpers/api.ts`, with `signInToken` or `adminToken`), or call `fetch` from the page (`page.evaluate`) to use the browser's session.
+- Playwright's `request` fixture has its own cookie jar, separate from the page's. Since the suite runs on `localhost` it sends a `Secure` session cookie from that jar (a storage state, or an earlier sign-in in the same test), which would authenticate a call meant to be anonymous. `api()` therefore sends an empty `cookie` header. For API calls send `Authorization: JWT <token>` (`api()` in `tests/e2e/helpers/api.ts`, with `signInToken` or `adminToken`), or call `fetch` from the page (`page.evaluate`) to use the browser's session.
 - Specs that create users or trigger lockouts must use their own accounts, and a distinct `cf-connecting-ip` where throttling is involved, so they cannot lock out the shared admin. `tests/e2e/helpers/sign-in.ts` has `uniqueIp()`, `uniqueEmail()`, `createUser()` (as the admin, over the API), `attemptSignIn()` and `signInThroughUi()`. A client-sent `cf-connecting-ip` overrides the one `wrangler dev` adds, and the browser helper sets it on the whole context. Generate them per attempt, not per file: CI retries a failing test, and a retry that reuses an address or email fails for the wrong reason.
 
 ## What is covered
@@ -49,7 +49,7 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | Client security: the owner-only settings API (same-origin writes, preview, save, wrong digest, stale revision, rollback, the audit list), the settings panel, and what `GET /api/client/v1/me` answers while disabled and to missing or invalid credentials once enabled | `client-security.e2e.spec.ts` |
 | Admin page loads, homepage | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 
-Not covered yet: admin CRUD and Media, row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
+Not covered yet: admin CRUD and Media, row scope, and a valid Firebase token (see Client security below). An expired session token is not covered either: forging one needs Payload's derived signing key.
 
 ## Roles, grants and the owner
 

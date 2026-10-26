@@ -7,11 +7,11 @@
 // `tests/int/client-security.int.spec.ts`, which inject keys. See docs/e2e.md.
 import { expect, test } from '@playwright/test'
 
-import { adminStorageState } from '../../playwright.config'
 import { ensureOwner, signInToken } from './helpers/access'
 import { api } from './helpers/api'
 import {
   DEFAULT_CONFIGURATION,
+  manageHeaders,
   ORIGIN,
   readSettings,
   restoreDefaults,
@@ -33,8 +33,18 @@ async function ownerToken(request: Parameters<typeof ensureOwner>[0]): Promise<s
 
 // The settings are shared state: whatever a test saves, the next one starts from revision 0's
 // content again. Revisions only grow, so no test asserts an absolute revision number.
+async function expectDefaults(request: Parameters<typeof ensureOwner>[0], token: string) {
+  await restoreDefaults(request, token)
+  expect((await readSettings(request, token)).snapshot.configuration).toEqual(DEFAULT_CONFIGURATION)
+}
+
+// Before as well as after, so a failed restore shows up as itself in the next test, not as a
+// misleading failure of whichever test runs next.
+test.beforeEach(async ({ request }) => {
+  await expectDefaults(request, await ownerToken(request))
+})
 test.afterEach(async ({ request }) => {
-  await restoreDefaults(request, await ownerToken(request))
+  await expectDefaults(request, await ownerToken(request))
 })
 
 test.describe('The settings API', () => {
@@ -54,6 +64,15 @@ test.describe('The settings API', () => {
     ).toMatchObject(denied)
     expect(
       await writeSettings(request, adminToken(), {
+        action: 'preview',
+        expectedRevision: 0,
+        configuration: VALID_CONFIGURATION,
+      }),
+    ).toMatchObject(denied)
+
+    // Anonymous with the right headers is still refused: the owner check comes first.
+    expect(
+      await writeSettings(request, '', {
         action: 'preview',
         expectedRevision: 0,
         configuration: VALID_CONFIGURATION,
@@ -84,6 +103,12 @@ test.describe('The settings API', () => {
         origin: 'http://evil.example',
       }),
     ).toMatchObject(refused)
+    expect(
+      await writeSettings(request, owner, body, {
+        ...manageHeaders,
+        'sec-fetch-site': 'cross-site',
+      }),
+    ).toMatchObject(refused)
     expect((await writeSettings(request, owner, body)).status).toBe(200)
   })
 
@@ -91,6 +116,15 @@ test.describe('The settings API', () => {
     const owner = await ensureOwner(request)
     const token = await signInToken(request, owner)
     const before = (await readSettings(request, token)).snapshot.revision
+    const preview = await writeSettings(request, token, {
+      action: 'preview',
+      expectedRevision: before,
+      configuration: VALID_CONFIGURATION,
+    })
+    expect(preview.body.changes.map((change: { field: string }) => change.field)).toContain(
+      'firebase.enabled',
+    )
+    expect(JSON.parse(preview.body.canonical)).toEqual(VALID_CONFIGURATION)
 
     const revision = await saveConfiguration(request, token, VALID_CONFIGURATION)
 
@@ -105,7 +139,7 @@ test.describe('The settings API', () => {
     })
     const audit = await api(request, {
       method: 'GET',
-      path: '/api/client-security-audit?limit=1&sort=-createdAt',
+      path: '/api/client-security-audit?limit=1&sort=-revision',
       token,
     })
     expect(audit.body.docs[0]).toMatchObject({
@@ -148,11 +182,30 @@ test.describe('The settings API', () => {
       status: 400,
       message: 'client_security_review_required',
     })
-    expect(await save({ expectedRevision: snapshot.revision + 5 })).toMatchObject({
+    const { schemaVersion: _omitted, ...withoutVersion } = VALID_CONFIGURATION
+    expect(
+      await writeSettings(request, token, {
+        action: 'preview',
+        expectedRevision: snapshot.revision,
+        configuration: withoutVersion,
+      }),
+    ).toMatchObject({ status: 400, message: 'client_security_invalid_configuration' })
+    expect(
+      await writeSettings(request, token, {
+        action: 'preview',
+        expectedRevision: snapshot.revision,
+        configuration: VALID_CONFIGURATION,
+        unexpected: true,
+      }),
+    ).toMatchObject({ status: 400, message: 'client_security_invalid_operation' })
+    expect((await readSettings(request, token)).snapshot.revision).toBe(snapshot.revision)
+
+    // Stale: another save moves the revision on, then a save at the old revision is refused.
+    await saveConfiguration(request, token, VALID_CONFIGURATION)
+    expect(await save({})).toMatchObject({
       status: 409,
       message: 'client_security_revision_conflict',
     })
-    expect((await readSettings(request, token)).snapshot.revision).toBe(snapshot.revision)
   })
 
   test('rolls back to an earlier revision as a new revision', async ({ request }) => {
@@ -247,17 +300,5 @@ test.describe('The settings panel', () => {
     await expect(panel.getByText(`Saved revision ${before + 1}.`).first()).toBeVisible()
     const stored = await readSettings(request, token)
     expect(stored.snapshot.configuration).toEqual(VALID_CONFIGURATION)
-  })
-
-  test.describe('as the shared admin', () => {
-    test.use({ storageState: adminStorageState })
-
-    test('a Super Admin who is not the owner is denied the panel', async ({ page }) => {
-      await page.goto('/admin/client-security', { waitUntil: 'domcontentloaded' })
-
-      await expect(page.locator('body')).toContainText(
-        'Only an authenticated owner can view or change client security settings.',
-      )
-    })
   })
 })

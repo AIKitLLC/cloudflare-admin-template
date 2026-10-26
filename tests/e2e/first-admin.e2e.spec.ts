@@ -93,8 +93,8 @@ test.describe('First-run admin setup', () => {
     await page.waitForURL(/\/admin$/)
     await expect(page.locator('span[title="Dashboard"]').first()).toBeVisible()
 
-    // From the page, so it uses the browser's cookie jar like every later spec does. The admin
-    // cookie is Secure, which Playwright's own request client does not send over http.
+    // From the page, so it uses the browser's cookie jar like every later spec does (Playwright's
+    // request client has its own jar and does not share it with the page).
     const body = await page.evaluate(async () => {
       const me = await fetch('/api/users/me')
       return (await me.json()) as { user: { email: string } | null }

@@ -91,6 +91,8 @@ const worker = spawn(
     'wrangler',
     'dev',
     '--local',
+    '--ip',
+    'localhost',
     '--port',
     String(port),
     '--inspector-port',
@@ -136,13 +138,16 @@ process.on('SIGTERM', () => {
 process.on('exit', stop)
 worker.on('exit', (code) => process.exit(code ?? 0))
 
-function portInUse(value) {
-  return new Promise((resolve) => {
-    const socket = connect({ port: value, host: '127.0.0.1' })
-    socket.once('connect', () => {
-      socket.destroy()
-      resolve(true)
+// `localhost` may resolve to `::1` first, so a stray server on either address counts.
+async function portInUse(value) {
+  const open = (host) =>
+    new Promise((resolve) => {
+      const socket = connect({ port: value, host })
+      socket.once('connect', () => {
+        socket.destroy()
+        resolve(true)
+      })
+      socket.once('error', () => resolve(false))
     })
-    socket.once('error', () => resolve(false))
-  })
+  return (await open('127.0.0.1')) || (await open('::1'))
 }
