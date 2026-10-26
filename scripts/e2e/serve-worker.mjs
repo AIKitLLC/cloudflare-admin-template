@@ -102,23 +102,20 @@ const worker = spawn(
     env,
     stdio: 'inherit',
     shell: process.platform === 'win32',
-    // Own process group on POSIX, so one signal reaches pnpm, wrangler and workerd.
-    detached: process.platform !== 'win32',
+    // Not detached: Playwright stops its webServer with a SIGKILL to this process group, which
+    // cannot run a handler here. Staying in the group is what takes pnpm, wrangler and workerd
+    // down with it; a detached child would outlive the run and hold the port and Playwright's pipes.
   },
 )
 
-// `wrangler dev` runs under pnpm (and a shell on Windows); killing only the direct child
-// would leave workerd holding the port for the next run.
+// Direct SIGINT/SIGTERM (a terminal, a graceful Playwright shutdown). `wrangler dev` runs under
+// pnpm, and under a shell on Windows, so Windows needs the whole tree killed.
 function stop() {
   if (worker.pid === undefined || worker.exitCode !== null) return
   if (process.platform === 'win32') {
     spawnSync('taskkill', ['/pid', String(worker.pid), '/T', '/F'], { stdio: 'ignore' })
   } else {
-    try {
-      process.kill(-worker.pid, 'SIGTERM')
-    } catch {
-      worker.kill('SIGTERM')
-    }
+    worker.kill('SIGTERM')
   }
 }
 process.on('SIGINT', () => {

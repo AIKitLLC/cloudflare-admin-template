@@ -63,5 +63,7 @@ export default defineConfig({
     timeout: 15 * 60 * 1000,
     stdout: 'pipe',
     stderr: 'pipe',
+    // Lets serve-worker.mjs run its own cleanup; Playwright's default is an immediate SIGKILL.
+    gracefulShutdown: { signal: 'SIGTERM', timeout: 5000 },
   },
 })

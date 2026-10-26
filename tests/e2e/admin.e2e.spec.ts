@@ -11,7 +11,8 @@ test.describe('Admin Panel', () => {
 
   test('can navigate to list view', async ({ page }) => {
     await page.goto('/admin/collections/users')
-    await expect(page).toHaveURL(/\/admin\/collections\/users$/)
+    // Payload appends ?depth=1&limit=10 once the list loads, so the query may or may not be there yet.
+    await expect(page).toHaveURL(/\/admin\/collections\/users(\?.*)?$/)
     const listViewArtifact = page.locator('h1', { hasText: 'Users' }).first()
     await expect(listViewArtifact).toBeVisible()
   })
