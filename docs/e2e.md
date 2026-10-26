@@ -26,7 +26,12 @@ One shared database, so `workers: 1`.
 | Project | Specs | Why |
 | --- | --- | --- |
 | `first-admin` | `first-admin.e2e.spec.ts` | Needs an empty `users` table. Creates the admin and saves its session to `tests/e2e/.auth/admin.json` (git-ignored). Serial, no retries: a retry would find the admin already created. |
+| `interrupted-setup` | `interrupted-first-admin.e2e.spec.ts` | Needs a database in the "just set up" state, which the shared one cannot give once `first-admin` has completed setup. Runs against a second Worker (below), no `storageState`, serial. It mutates its own database, so it is configured without retries; a retry would still be safe because every case rebuilds its state first. |
 | `chromium` | every other spec | Depends on `first-admin`, so it is skipped if setup failed. Starts signed in as `e2eAdmin` (`tests/e2e/helpers/admin.ts`). |
+
+## The second Worker
+
+`serve-worker.mjs` also serves a second instance on port + 1 (8793, state in `.wrangler/e2e-interrupted`), built from the same `.open-next` bundle and started first, so the main port answering means both are up. `E2E_EXTRA_INSTANCE=0` skips it. The interrupted spec builds its state from a real first-register and then two statements on that database (`helpers/interrupted-setup.ts`: clear `completed_at` and set a dead `claim_token` with a chosen `claimed_at`, and delete the user's role link); the 2-minute claim age is backdated, never waited out. A refused web request (a live claim, or two users) still marks setup completed, so after an early retry only `pnpm admin:create` can finish it; the spec asserts that, which also proves the request reached the setup code. Recovery runs before credentials are checked, so a retry with the wrong password or another email still finishes setup and then answers 401.
 
 A spec that needs to be signed out uses `test.use({ storageState: { cookies: [], origins: [] } })`.
 
@@ -51,6 +56,7 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | Users through the admin screens (create, duplicate and invalid email, edit, delete, a user deleting themselves, `users:delete` against a Super Admin) | `users-crud.e2e.spec.ts` |
 | Media through the admin screens (upload with `alt`, served file, missing `alt`, edit, delete and its file, refused HTML and scripted SVG, duplicate file name) | `media.e2e.spec.ts` |
 | The audit trail (an entry per create, update and delete with actor and IP, redacted secrets, no entry for a refused write, append-only, the Audit Logs screen) | `audit-trail.e2e.spec.ts` |
+| Recovery of an interrupted first-admin setup: finishes setup for the one existing user (also when the retry has the wrong password or another email), never takes over a live claim, never promotes anyone when two users exist | `interrupted-first-admin.e2e.spec.ts` |
 | Admin page loads, homepage | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 | Admin page loads, homepage (signed out and in, its links, a user without roles, signed out again after sign-out) | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 

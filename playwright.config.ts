@@ -12,6 +12,9 @@ const baseURL = `http://localhost:${port}`
 // first (Playwright's request client in the workers inherits NODE_OPTIONS from this process).
 process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ''} --dns-result-order=ipv4first`.trim()
 const ipv4Only = { args: ['--host-resolver-rules=MAP localhost 127.0.0.1'] }
+const baseURL = `http://127.0.0.1:${port}`
+/** The second Worker, with its own database, for the interrupted first-admin spec. */
+const interruptedURL = `http://127.0.0.1:${port + 1}`
 
 /** Written by the first-admin spec, reused by every spec that needs a signed-in admin. */
 export const adminStorageState = 'tests/e2e/.auth/admin.json'
@@ -42,11 +45,30 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   projects: [
+    ...(process.env.E2E_EXTRA_INSTANCE === '0'
+      ? []
+      : [
+          {
+            // Its own Worker and database (see scripts/e2e/serve-worker.mjs): it needs a database in the
+            // "just set up" state, which the shared one cannot give once first-admin has completed
+            // setup. It mutates that database and nothing else uses it.
+            name: 'interrupted-setup',
+            testMatch: /interrupted-first-admin\.e2e\.spec\.ts/,
+            retries: 0,
+            use: {
+              ...devices['Desktop Chrome'],
+              channel: 'chromium' as const,
+              baseURL: interruptedURL,
+            },
+          },
+        ]),
     {
       // Needs the empty `users` table, so it runs first and creates the admin the rest reuse.
       name: 'first-admin',
       testMatch: /first-admin\.e2e\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], channel: 'chromium', launchOptions: ipv4Only },
+      testMatch: /(?<!interrupted-)first-admin\.e2e\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], channel: 'chromium' },
     },
     {
       name: 'chromium',
