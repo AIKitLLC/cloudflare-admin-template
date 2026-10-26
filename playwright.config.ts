@@ -7,7 +7,14 @@ import { defineConfig, devices } from '@playwright/test'
 import 'dotenv/config'
 
 const port = Number(process.env.E2E_PORT ?? 8792)
-const baseURL = `http://127.0.0.1:${port}`
+// `localhost`, see scripts/e2e/serve-worker.mjs.
+const baseURL = `http://localhost:${port}`
+
+// The Worker listens on 127.0.0.1 only, while `localhost` can resolve to `::1` first. Pin both
+// clients to IPv4 so every connection goes straight to the server instead of failing on `::1`
+// first (Playwright's request client in the workers inherits NODE_OPTIONS from this process).
+process.env.NODE_OPTIONS = `${process.env.NODE_OPTIONS ?? ''} --dns-result-order=ipv4first`.trim()
+const ipv4Only = { args: ['--host-resolver-rules=MAP localhost 127.0.0.1'] }
 
 /** Written by the first-admin spec, reused by every spec that needs a signed-in admin. */
 export const adminStorageState = 'tests/e2e/.auth/admin.json'
@@ -42,7 +49,7 @@ export default defineConfig({
       // Needs the empty `users` table, so it runs first and creates the admin the rest reuse.
       name: 'first-admin',
       testMatch: /first-admin\.e2e\.spec\.ts/,
-      use: { ...devices['Desktop Chrome'], channel: 'chromium' },
+      use: { ...devices['Desktop Chrome'], channel: 'chromium', launchOptions: ipv4Only },
     },
     {
       name: 'chromium',
@@ -51,6 +58,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         channel: 'chromium',
+        launchOptions: ipv4Only,
         storageState: adminStorageState,
       },
     },

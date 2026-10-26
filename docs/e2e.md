@@ -13,7 +13,7 @@ pnpm test:e2e
 
 1. builds the OpenNext bundle (`E2E_SKIP_BUILD=1` reuses an existing `.open-next`),
 2. wipes `.wrangler/e2e` and applies the Payload migrations to it,
-3. serves the Worker on `http://127.0.0.1:8792` (`E2E_PORT` changes the port).
+3. serves the Worker on `http://localhost:8792` (`E2E_PORT` changes the port).
 
 It needs no secrets and no Cloudflare account. It never touches `.wrangler/state`, the database `pnpm dev` uses. It refuses to start when the port is already in use, so a leftover server cannot answer for a new run.
 
@@ -34,7 +34,7 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 
 - Use relative URLs; `baseURL` is the Worker.
 - Assert behaviour: a status code, a message the visitor sees, a redirect. When a form posts to an API, wait for that response (`page.waitForResponse`) and check its status. A form submitted before React hydrates posts to the page itself and never reaches the API, so asserting only "still on the page" passes without testing anything.
-- Playwright's `request` fixture does not send the admin cookie: it is `Secure` and the client does not send such cookies over `http`. For API calls send `Authorization: JWT <token>` (`api()` in `tests/e2e/helpers/api.ts`, with `signInToken` or `adminToken`), or call `fetch` from the page (`page.evaluate`) to use the browser's session.
+- Playwright's `request` fixture has its own cookie jar, separate from the page's. Since the suite runs on `localhost` it sends a `Secure` session cookie from that jar (a storage state, or an earlier sign-in in the same test), which would authenticate a call meant to be anonymous. `api()` therefore sends an empty `cookie` header. For API calls send `Authorization: JWT <token>` (`api()` in `tests/e2e/helpers/api.ts`, with `signInToken` or `adminToken`), or call `fetch` from the page (`page.evaluate`) to use the browser's session.
 - Specs that create users or trigger lockouts must use their own accounts, and a distinct `cf-connecting-ip` where throttling is involved, so they cannot lock out the shared admin. `tests/e2e/helpers/sign-in.ts` has `uniqueIp()`, `uniqueEmail()`, `createUser()` (as the admin, over the API), `attemptSignIn()` and `signInThroughUi()`. A client-sent `cf-connecting-ip` overrides the one `wrangler dev` adds, and the browser helper sets it on the whole context. Generate them per attempt, not per file: CI retries a failing test, and a retry that reuses an address or email fails for the wrong reason.
 
 ## What is covered
@@ -55,6 +55,9 @@ Not covered yet: row scope, the client API. An expired session token is not cove
 | Row scope (a scoped user sees and changes only records and users inside their organization, branch and data class: by list, id, screen, export and API; cannot widen their own scope; the scope tree refuses a used node and a cycle) | `row-scope.e2e.spec.ts` |
 
 Not covered yet: admin CRUD and Media, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
+| Client security: the owner-only settings API (same-origin writes, preview, save, wrong digest, stale revision, rollback, the audit list), the settings panel, and what `GET /api/client/v1/me` answers while disabled and to missing or invalid credentials once enabled | `client-security.e2e.spec.ts` |
+
+Not covered yet: admin CRUD and Media, row scope, and a valid Firebase token (see Client security below). An expired session token is not covered either: forging one needs Payload's derived signing key.
 
 ## Roles, grants and the owner
 
@@ -70,6 +73,13 @@ Not covered yet: admin CRUD and Media, the client API. An expired session token 
 ## Row scope
 
 Each test builds its own tree with `createScopeTree` (`helpers/scope.ts`: organizations A with child A1 and B, a branch in each, two data classes, four records, every slug and title unique), so a scoped user's unfiltered list is exactly that test's rows. A scoped role also needs the field-read keys (`scopedReaderRole` builds them from the catalog): without them `sort=title` is a 400 and documents come back empty. A limited users manager may only edit users whose role keys are a subset of the manager's, so the test's users are created without a role. Out of scope, a read by id is `404 Not Found` while a write is `403`; on the screen the list shows "The document with ID <id> could not be found".
+## Client security
+
+The Worker sees its own origin as `http://localhost:<port>` (Next builds `request.url` from it), and `/api/admin/client-security` accepts a write only when `Origin` equals that. A browser on `127.0.0.1` would be refused every time, so the harness serves and tests on `http://localhost:8792`. `--local-upstream` does not change what the route sees. The Worker listens on `127.0.0.1` only, while `localhost` can resolve to `::1` first, so `playwright.config.ts` pins Chromium (`--host-resolver-rules`) and the request client (`--dns-result-order=ipv4first`) to IPv4. Before that pin, one whole-suite run in about five lost the connection or stalled for 30 s in an unrelated spec; five runs in a row passed after it.
+
+The settings are shared state. The spec puts revision 0's content back after every test (`restoreDefaults`, a rollback that adds a revision), so no test asserts an absolute revision number, and the history list is capped, so it is only used for its newest row.
+
+Not covered: a valid App Check token and Firebase ID token, ownership of a record, and quota exhaustion. Verifying a token fetches signing keys from fixed Google URLs, a local Worker cannot serve keys of its own, and the product should not grow a test hook for it. Those cases stay with `pnpm test:firebase:runtime`, `pnpm test:api` and `tests/int/client-security.int.spec.ts`, which inject keys.
 
 ## Reset tokens and the database file
 

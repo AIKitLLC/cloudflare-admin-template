@@ -15,7 +15,10 @@ import { join } from 'node:path'
 import { buildCloudflareWorker } from '../worker-build/build-cloudflare-worker.mjs'
 
 const port = Number(process.env.E2E_PORT ?? 8792)
-const origin = `http://127.0.0.1:${port}`
+// `localhost`, not `127.0.0.1`: the Worker sees its own origin as `http://localhost:<port>` (Next builds
+// `request.url` from it), and the client security settings API only accepts a write whose `Origin`
+// equals that. A browser on `127.0.0.1` would be refused every time.
+const origin = `http://localhost:${port}`
 const secret = 'e2e-worker-secret'
 const stateDir = join(process.cwd(), '.wrangler', 'e2e')
 const wranglerConfig = join(stateDir, 'wrangler.json')
@@ -88,6 +91,8 @@ const worker = spawn(
     'wrangler',
     'dev',
     '--local',
+    '--ip',
+    'localhost',
     '--port',
     String(port),
     '--inspector-port',
@@ -133,13 +138,16 @@ process.on('SIGTERM', () => {
 process.on('exit', stop)
 worker.on('exit', (code) => process.exit(code ?? 0))
 
-function portInUse(value) {
-  return new Promise((resolve) => {
-    const socket = connect({ port: value, host: '127.0.0.1' })
-    socket.once('connect', () => {
-      socket.destroy()
-      resolve(true)
+// `localhost` may resolve to `::1` first, so a stray server on either address counts.
+async function portInUse(value) {
+  const open = (host) =>
+    new Promise((resolve) => {
+      const socket = connect({ port: value, host })
+      socket.once('connect', () => {
+        socket.destroy()
+        resolve(true)
+      })
+      socket.once('error', () => resolve(false))
     })
-    socket.once('error', () => resolve(false))
-  })
+  return (await open('127.0.0.1')) || (await open('::1'))
 }

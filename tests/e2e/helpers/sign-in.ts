@@ -36,7 +36,7 @@ type NewUser = Credentials & {
   dataClasses?: number[]
 }
 
-/** Creates a user as the admin and returns its id. Sent as a JWT header because the Secure cookie is not sent over http. */
+/** Creates a user as the admin and returns its id. Sent as a JWT header so the call does not depend on a cookie jar. */
 export async function createUser(request: APIRequestContext, user: NewUser): Promise<number> {
   const response = await request.post('/api/users', {
     headers: { authorization: `JWT ${adminToken()}` },
