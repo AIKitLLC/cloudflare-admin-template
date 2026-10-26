@@ -16,6 +16,8 @@ async function fillSetupForm(
 ) {
   await page.goto('/admin/create-first-user')
   // Submitting before React hydrates posts the form to the page itself and never reaches the API.
+  // `form[data-form-ready="true"]` is not enough on this screen: with it the first submit was
+  // sometimes never sent (a 30 s timeout waiting for the API), so the page is left to settle.
   await page.waitForLoadState('networkidle')
   await page.locator('#field-email').first().fill(email)
   await page.locator('#field-password').fill(password)
@@ -26,8 +28,7 @@ async function fillSetupForm(
 async function submitSetupForm(page: Page) {
   const [response] = await Promise.all([
     page.waitForResponse(
-      (candidate) =>
-        candidate.url().endsWith(SETUP_API) && candidate.request().method() === 'POST',
+      (candidate) => candidate.url().endsWith(SETUP_API) && candidate.request().method() === 'POST',
     ),
     page.click('button[type="submit"]'),
   ])
@@ -93,8 +94,8 @@ test.describe('First-run admin setup', () => {
     await page.waitForURL(/\/admin$/)
     await expect(page.locator('span[title="Dashboard"]').first()).toBeVisible()
 
-    // From the page, so it uses the browser's cookie jar like every later spec does. The admin
-    // cookie is Secure, which Playwright's own request client does not send over http.
+    // From the page, so it uses the browser's cookie jar like every later spec does (Playwright's
+    // request client has its own jar and does not share it with the page).
     const body = await page.evaluate(async () => {
       const me = await fetch('/api/users/me')
       return (await me.json()) as { user: { email: string } | null }
@@ -121,6 +122,11 @@ test.describe('First-run admin setup', () => {
       },
     })
     expect(response.status()).toBe(403)
+    // Not a missing grant or an origin refusal: nobody is signed in, and the same-origin headers
+    // pass, so this is Payload's refusal of a closed setup.
+    expect(await response.json()).toMatchObject({
+      errors: [{ message: 'You are not allowed to perform this action.' }],
+    })
 
     await context.close()
   })
