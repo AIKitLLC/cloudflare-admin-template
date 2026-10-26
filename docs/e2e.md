@@ -46,13 +46,24 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | Forgot and reset password through the admin screens, unknown email answered like a known one, invalid, reused and expired tokens, a reset unlocking an account and ending earlier sessions, who may start recovery, per-IP throttling | `password-recovery.e2e.spec.ts` |
 | Password length 12 to 256 on reset, create and update (by id and by query); a refused reset leaves the token valid and the old password working | `password-policy.e2e.spec.ts` |
 | Roles and the permission matrix: what a role grants over the API and on the admin screens (nav, forbidden URLs), grants taking effect at once, a create grant needing the field grants, only the owner changing `role`, the only owner not demotable | `roles-rbac.e2e.spec.ts` |
+| Users through the admin screens (create, duplicate and invalid email, edit, delete, a user deleting themselves, `users:delete` against a Super Admin) | `users-crud.e2e.spec.ts` |
+| Media through the admin screens (upload with `alt`, served file, missing `alt`, edit, delete and its file, refused HTML and scripted SVG, duplicate file name) | `media.e2e.spec.ts` |
+| The audit trail (an entry per create, update and delete with actor and IP, redacted secrets, no entry for a refused write, append-only, the Audit Logs screen) | `audit-trail.e2e.spec.ts` |
 | Admin page loads, homepage | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 
-Not covered yet: admin CRUD and Media, row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
+Not covered yet: row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
 
 ## Roles, grants and the owner
 
 `tests/e2e/helpers/access.ts` creates a role with exactly the permission keys a test needs (`createRole`, `setGrant`; ids are looked up by key, never hard-coded) and gives every role a unique slug. `tests/e2e/helpers/api.ts` is one REST call with an explicit `JWT` token and the status, message and body back. `helpers/media.ts` has a 1x1 `PNG` and `uploadMedia`. `ensureOwner` returns the one client security owner, `e2e-owner@example.com`. No API makes a first owner, so it is created as a Super Admin and promoted with one `UPDATE` on the local D1 file (`helpers/database.ts`, shared with the reset-token helpers). It must stay the only owner, because the "final owner cannot be demoted" case depends on it, and no test deletes or edits `e2eAdmin` or the owner. If a regression ever let a test create a second owner, `ensureOwner` fails loudly for every later spec that uses it, so look for the first failing owner test.
+
+## Users, Media and the audit trail
+
+- Never delete or edit the shared `e2eAdmin` or the owner: other full-access users exist, so the "last full-access holder" guard would not stop it and every later spec would lose its session.
+- SQLite reuses the id of a deleted row, so an audit entry looked up by `collectionSlug` and `documentId` alone also returns an earlier document's history. `auditEntries` therefore takes `since`, an ISO time read before the test's first change.
+- Payload renames a duplicate upload by incrementing a trailing number (`a-1.png` becomes `a-2.png`) and by adding `-1` otherwise, so `uniqueFilename` ends in a letter (`-pic`).
+- On the create and edit screens, wait for `form[data-form-ready="true"]` before typing (earlier input is lost on hydration), open pages with `waitUntil: 'domcontentloaded'` (a `load` wait stalled twice in 30 runs), and treat the field error and the toast as equivalent: a later form-state answer can clear the field error.
+- Delete from the screen: `button.popup-button`, `#action-delete`, `#confirm-action`.
 
 ## Reset tokens and the database file
 
