@@ -2,7 +2,6 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { adminStorageState } from '../../playwright.config'
 import {
-  createRole,
   ensureOwner,
   setGrant,
   signInToken,
@@ -11,7 +10,7 @@ import {
 } from './helpers/access'
 import { api } from './helpers/api'
 import { uploadMedia } from './helpers/media'
-import { adminToken, createUser, signInThroughUi, uniqueEmail, uniqueIp } from './helpers/sign-in'
+import { adminToken, signInThroughUi, uniqueEmail, uniqueIp } from './helpers/sign-in'
 
 const PASSWORD = 'e2e-role-user-password-123'
 const DENIED = 'You are not allowed to perform this action.'
