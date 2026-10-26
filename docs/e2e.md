@@ -46,6 +46,7 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | Forgot and reset password through the admin screens, unknown email answered like a known one, invalid, reused and expired tokens, a reset unlocking an account and ending earlier sessions, who may start recovery, per-IP throttling | `password-recovery.e2e.spec.ts` |
 | Password length 12 to 256 on reset, create and update (by id and by query); a refused reset leaves the token valid and the old password working | `password-policy.e2e.spec.ts` |
 | Roles and the permission matrix: what a role grants over the API and on the admin screens (nav, forbidden URLs), grants taking effect at once, a create grant needing the field grants, only the owner changing `role`, the only owner not demotable | `roles-rbac.e2e.spec.ts` |
+| Client security: the owner-only settings API (same-origin writes, preview, save, wrong digest, stale revision, rollback, the audit list), the settings panel, and what `GET /api/client/v1/me` answers while disabled and to missing or invalid credentials once enabled | `client-security.e2e.spec.ts` |
 | Admin page loads, homepage | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 
 Not covered yet: admin CRUD and Media, row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
@@ -53,6 +54,14 @@ Not covered yet: admin CRUD and Media, row scope, the client API. An expired ses
 ## Roles, grants and the owner
 
 `tests/e2e/helpers/access.ts` creates a role with exactly the permission keys a test needs (`createRole`, `setGrant`; ids are looked up by key, never hard-coded) and gives every role a unique slug. `tests/e2e/helpers/api.ts` is one REST call with an explicit `JWT` token and the status, message and body back. `helpers/media.ts` has a 1x1 `PNG` and `uploadMedia`. `ensureOwner` returns the one client security owner, `e2e-owner@example.com`. No API makes a first owner, so it is created as a Super Admin and promoted with one `UPDATE` on the local D1 file (`helpers/database.ts`, shared with the reset-token helpers). It must stay the only owner, because the "final owner cannot be demoted" case depends on it, and no test deletes or edits `e2eAdmin` or the owner. If a regression ever let a test create a second owner, `ensureOwner` fails loudly for every later spec that uses it, so look for the first failing owner test.
+
+## Client security
+
+The Worker sees its own origin as `http://localhost:<port>` (Next builds `request.url` from it), and `/api/admin/client-security` accepts a write only when `Origin` equals that. A browser on `127.0.0.1` would be refused every time, so the harness serves and tests on `http://localhost:8792`. `--local-upstream` does not change what the route sees.
+
+The settings are shared state. The spec puts revision 0's content back after every test (`restoreDefaults`, a rollback that adds a revision), so no test asserts an absolute revision number, and the history list is capped, so it is only used for its newest row.
+
+Not covered: a valid App Check token and Firebase ID token, ownership of a record, and quota exhaustion. Verifying a token fetches signing keys from fixed Google URLs, a local Worker cannot serve keys of its own, and the product should not grow a test hook for it. Those cases stay with `pnpm test:firebase:runtime`, `pnpm test:api` and `tests/int/client-security.int.spec.ts`, which inject keys.
 
 ## Reset tokens and the database file
 
