@@ -12,7 +12,6 @@ import { ensureOwner, signInToken } from './helpers/access'
 import { api } from './helpers/api'
 import {
   DEFAULT_CONFIGURATION,
-  manageHeaders,
   ORIGIN,
   readSettings,
   restoreDefaults,
