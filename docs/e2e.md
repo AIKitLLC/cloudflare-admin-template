@@ -46,6 +46,7 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | Forgot and reset password through the admin screens, unknown email answered like a known one, invalid, reused and expired tokens, a reset unlocking an account and ending earlier sessions, who may start recovery, per-IP throttling | `password-recovery.e2e.spec.ts` |
 | Password length 12 to 256 on reset, create and update (by id and by query); a refused reset leaves the token valid and the old password working | `password-policy.e2e.spec.ts` |
 | Roles and the permission matrix: what a role grants over the API and on the admin screens (nav, forbidden URLs), grants taking effect at once, a create grant needing the field grants, only the owner changing `role`, the only owner not demotable | `roles-rbac.e2e.spec.ts` |
+| Row scope (a scoped user sees and changes only records and users inside their organization, branch and data class: by list, id, screen, export and API; cannot widen their own scope; the scope tree refuses a used node and a cycle) | `row-scope.e2e.spec.ts` |
 | Admin page loads, homepage | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 
 Not covered yet: admin CRUD and Media, row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
@@ -53,6 +54,10 @@ Not covered yet: admin CRUD and Media, row scope, the client API. An expired ses
 ## Roles, grants and the owner
 
 `tests/e2e/helpers/access.ts` creates a role with exactly the permission keys a test needs (`createRole`, `setGrant`; ids are looked up by key, never hard-coded) and gives every role a unique slug. `tests/e2e/helpers/api.ts` is one REST call with an explicit `JWT` token and the status, message and body back. `helpers/media.ts` has a 1x1 `PNG` and `uploadMedia`. `ensureOwner` returns the one client security owner, `e2e-owner@example.com`. No API makes a first owner, so it is created as a Super Admin and promoted with one `UPDATE` on the local D1 file (`helpers/database.ts`, shared with the reset-token helpers). It must stay the only owner, because the "final owner cannot be demoted" case depends on it, and no test deletes or edits `e2eAdmin` or the owner. If a regression ever let a test create a second owner, `ensureOwner` fails loudly for every later spec that uses it, so look for the first failing owner test.
+
+## Row scope
+
+Each test builds its own tree with `createScopeTree` (`helpers/scope.ts`: organizations A with child A1 and B, a branch in each, two data classes, four records, every slug and title unique), so a scoped user's unfiltered list is exactly that test's rows. A scoped role also needs the field-read keys (`scopedReaderRole` builds them from the catalog): without them `sort=title` is a 400 and documents come back empty. A limited users manager may only edit users who hold no role (their keys must be a subset of the manager's), so those users are created without one. Out of scope, a read by id is `404 Not Found` while a write is `403`; on the screen the list shows "The document with ID <id> could not be found".
 
 ## Reset tokens and the database file
 
