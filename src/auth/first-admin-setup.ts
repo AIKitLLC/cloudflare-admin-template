@@ -17,6 +17,7 @@ import { USERS_SLUG } from '../access'
 import { SKIP_RBAC_PRIVILEGE_CHECKS } from '../access'
 import { ensureSuperAdminRole } from '../rbac'
 import { admitAuthAttempt, type LoginThrottleDatabase } from './login-throttle'
+import { USER_PASSWORD_MIN_LENGTH } from './password-policy'
 
 export const SETUP_STATE_SLUG = 'setup-state'
 export const SETUP_STATE_TABLE = 'setup_state'
@@ -26,7 +27,7 @@ export const FIRST_ADMIN_SETUP_KEY = 'first-admin'
 export const SETUP_CLAIM_TTL_MS = 2 * 60 * 1000
 /** `req.context` key that carries the active setup claim into the `users` create hooks. */
 export const FIRST_ADMIN_SETUP_CONTEXT = 'firstAdminSetupClaim'
-export const FIRST_ADMIN_PASSWORD_MIN_LENGTH = 12
+export const FIRST_ADMIN_PASSWORD_MIN_LENGTH = USER_PASSWORD_MIN_LENGTH
 
 export type SetupStateDatabase = LoginThrottleDatabase
 

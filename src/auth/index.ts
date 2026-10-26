@@ -15,3 +15,9 @@ export {
 } from './first-admin-setup'
 export { LOGIN_THROTTLE_SLUG, releaseLoginAttempt, throttleAuthOperation } from './login-throttle'
 export { usersAuthOptions } from './users-auth'
+export {
+  enforceUserPasswordPolicy,
+  USER_PASSWORD_MAX_LENGTH,
+  USER_PASSWORD_MIN_LENGTH,
+  validateUserPassword,
+} from './password-policy'

@@ -11,6 +11,7 @@ import { guardPublicUserCreation } from '../auth'
 import { firstRegisterEndpoint, holdFirstAdminSetupClaim } from '../auth'
 import { releaseLoginAttempt, throttleAuthOperation } from '../auth'
 import { usersAuthOptions } from '../auth'
+import { enforceUserPasswordPolicy } from '../auth'
 import { evaluateCollectionAccess } from '../access'
 import { isPermissionPayloadCall, permissionDocumentId } from '../access'
 import { withRbac } from '../access'
@@ -123,6 +124,7 @@ export const Users: CollectionConfig = withAuditTrail(
             guardPublicUserCreation,
             guardClientSecurityOwnerOperation,
             guardAuthCredentialOperation,
+            enforceUserPasswordPolicy,
           ],
           afterLogin: [releaseLoginAttempt],
           beforeChange: [

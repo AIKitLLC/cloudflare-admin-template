@@ -44,6 +44,7 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | First-admin setup (screen, short password, mismatch, success, closed afterwards) | `first-admin.e2e.spec.ts` |
 | Sign-in and sign-out, wrong password, unknown email, per-account lockout, per-IP throttle, successful sign-ins not counted, garbage and tampered session, token revoked after sign-out | `sign-in.e2e.spec.ts` |
 | Forgot and reset password through the admin screens, unknown email answered like a known one, invalid, reused and expired tokens, a reset unlocking an account and ending earlier sessions, who may start recovery, per-IP throttling | `password-recovery.e2e.spec.ts` |
+| Password length 12 to 256 on reset, create and update (by id and by query); a refused reset leaves the token valid and the old password working | `password-policy.e2e.spec.ts` |
 | Admin page loads, homepage | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 
 Not covered yet: roles and permissions, admin CRUD and Media, row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
