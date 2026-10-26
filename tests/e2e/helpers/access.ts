@@ -4,7 +4,7 @@ import type { APIRequestContext } from '@playwright/test'
 
 import { api } from './api'
 import { withDatabase } from './database'
-import { adminToken, attemptSignIn, createUser, uniqueIp } from './sign-in'
+import { adminToken, attemptSignIn, createUser, uniqueEmail, uniqueIp } from './sign-in'
 
 /** The only client security owner in the E2E database. */
 const ownerCredentials = { email: 'e2e-owner@example.com', password: 'e2e-owner-password-123' }
@@ -14,8 +14,9 @@ export function uniqueSlug(prefix: string): string {
   return `${prefix}-${randomBytes(4).toString('hex')}`
 }
 
-/** Permission ids by key. Ids differ per database, so they are looked up, never hard-coded. */
-export async function permissionIds(request: APIRequestContext): Promise<Map<string, number>> {
+let cachedPermissionIds: Promise<Map<string, number>> | undefined
+
+async function listPermissionIds(request: APIRequestContext): Promise<Map<string, number>> {
   const { status, body } = await api(request, {
     method: 'GET',
     path: '/api/permissions?limit=500&depth=0',
@@ -23,6 +24,17 @@ export async function permissionIds(request: APIRequestContext): Promise<Map<str
   })
   if (status !== 200) throw new Error(`Listing permissions answered ${status}`)
   return new Map((body.docs as { key: string; id: number }[]).map((doc) => [doc.key, doc.id]))
+}
+
+/** Permission ids by key, listed once per worker. Ids differ per database, so they are looked up, never hard-coded. */
+export function permissionIds(request: APIRequestContext): Promise<Map<string, number>> {
+  if (!cachedPermissionIds) {
+    cachedPermissionIds = listPermissionIds(request).catch((error: unknown) => {
+      cachedPermissionIds = undefined
+      throw error
+    })
+  }
+  return cachedPermissionIds
 }
 
 /** `POST /api/rbac/grants`. Returns the status. */
@@ -124,4 +136,26 @@ export async function ensureOwner(
     )
   }
   return { id, ...ownerCredentials }
+}
+
+const USER_PASSWORD = 'e2e-role-user-password-123'
+
+/** A role with the given keys and a user holding it, signed in over the API. */
+export async function userWithRole(
+  request: APIRequestContext,
+  keys: string[],
+): Promise<{
+  email: string
+  password: string
+  id: number
+  roleId: number
+  roleName: string
+  token: string
+}> {
+  const roleName = `Role ${uniqueSlug('r')}`
+  const roleId = await createRole(request, { name: roleName, keys })
+  const email = uniqueEmail('rbac')
+  const id = await createUser(request, { email, password: USER_PASSWORD, roles: [roleId] })
+  const token = await signInToken(request, { email, password: USER_PASSWORD })
+  return { email, password: USER_PASSWORD, id, roleId, roleName, token }
 }

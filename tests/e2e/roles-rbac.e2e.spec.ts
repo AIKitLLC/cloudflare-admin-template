@@ -7,7 +7,7 @@ import {
   setGrant,
   signInToken,
   superAdminRoleId,
-  uniqueSlug,
+  userWithRole,
 } from './helpers/access'
 import { api } from './helpers/api'
 import { uploadMedia } from './helpers/media'
@@ -22,36 +22,13 @@ const MEDIA_WRITE_FIELDS = ['alt', 'filename', 'mimeType', 'filesize', 'url'].ma
   (field) => `media:writeField:${field}`,
 )
 
-/** A role with the given keys and a user holding it, signed in over the API. */
-async function userWithRole(
-  request: Parameters<typeof createRole>[0],
-  keys: string[],
-): Promise<{
-  email: string
-  password: string
-  id: number
-  roleId: number
-  token: string
-  roleName: string
-}> {
-  const roleName = `Role ${uniqueSlug('r')}`
-  const roleId = await createRole(request, { name: roleName, keys })
-  const email = uniqueEmail('rbac')
-  const id = await createUser(request, { email, password: PASSWORD, roles: [roleId] })
-  const token = await signInToken(request, { email, password: PASSWORD })
-  return { email, password: PASSWORD, id, roleId, token, roleName }
-}
-
 /** The collection and tool links the admin navigation shows. */
 async function navLinks(page: Page): Promise<string[]> {
   const hrefs = await page
     .locator('nav a, aside a')
     .evaluateAll((links) => links.map((link) => link.getAttribute('href') ?? ''))
-  return hrefs
-    .filter((href) =>
-      /^\/admin\/(collections\/|permission-matrix|job-monitor|client-security)/.test(href),
-    )
-    .sort()
+  const chrome = new Set(['/admin', '/admin/logout', '/admin/account'])
+  return hrefs.filter((href) => href.startsWith('/admin/') && !chrome.has(href)).sort()
 }
 
 // The API cases pass explicit tokens, so no session cookie is needed. Screens that need the shared
@@ -140,7 +117,10 @@ test.describe('What a role grants', () => {
 
     const without = await uploadMedia(request, { token: user.token, alt: 'a pixel' })
     expect(without.status).toBe(400)
-    expect(without.body.errors[0].data.errors[0].path).toBe('alt')
+    expect(without.body.errors[0].data.errors[0]).toMatchObject({
+      path: 'alt',
+      message: 'This field is required.',
+    })
 
     for (const key of MEDIA_WRITE_FIELDS) {
       expect(await setGrant(request, { roleId: user.roleId, key, granted: true })).toBe(200)
@@ -246,25 +226,45 @@ test.describe('The admin screens per role', () => {
       })
     ).body.docs[0].label as string
 
-    const limited = await browser.newPage()
-    await signInThroughUi(limited, { email: user.email, password: user.password, ip: uniqueIp() })
-    await expect.poll(() => navLinks(limited)).not.toContain('/admin/collections/roles')
-
+    const limitedContext = await browser.newContext()
     const adminContext = await browser.newContext({ storageState: adminStorageState })
-    const admin = await adminContext.newPage()
-    await admin.goto('/admin/permission-matrix')
-    const checkbox = admin.getByRole('checkbox', { name: `${user.roleName} ${label}`, exact: true })
-    await expect(checkbox).toBeVisible()
-    const [response] = await Promise.all([
-      admin.waitForResponse((r) => r.url().endsWith('/api/rbac/grants')),
-      checkbox.check(),
-    ])
-    expect(response.status()).toBe(200)
-    await adminContext.close()
+    try {
+      const limited = await limitedContext.newPage()
+      await signInThroughUi(limited, {
+        email: user.email,
+        password: user.password,
+        ip: uniqueIp(),
+      })
+      await expect(limited).toHaveURL(/\/admin\/?$/)
+      await expect
+        .poll(() => navLinks(limited))
+        .toEqual(['/admin/collections/media', '/admin/collections/users'])
 
-    await limited.reload()
-    await expect.poll(() => navLinks(limited)).toContain('/admin/collections/roles')
-    await limited.close()
+      const admin = await adminContext.newPage()
+      await admin.goto('/admin/permission-matrix')
+      const checkbox = admin.getByRole('checkbox', {
+        name: `${user.roleName} ${label}`,
+        exact: true,
+      })
+      await expect(checkbox).toBeVisible()
+      const [response] = await Promise.all([
+        admin.waitForResponse((r) => r.url().endsWith('/api/rbac/grants')),
+        checkbox.check(),
+      ])
+      expect(response.status()).toBe(200)
+
+      await limited.reload()
+      await expect
+        .poll(() => navLinks(limited))
+        .toEqual([
+          '/admin/collections/media',
+          '/admin/collections/roles',
+          '/admin/collections/users',
+        ])
+    } finally {
+      await limitedContext.close()
+      await adminContext.close()
+    }
   })
 
   test.describe('as the shared admin', () => {
