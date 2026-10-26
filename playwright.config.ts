@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// No `dotenv/config` here on purpose: the suite must not pick up a developer's `.env`, which the
-// Worker started by `serve-worker.mjs` would inherit.
+// No `dotenv/config` here on purpose: the runner must not load a developer's `.env` into the
+// environment of the Worker it starts (docs/e2e.md lists what still leaks into a local run).
 
 const port = Number(process.env.E2E_PORT ?? 8792)
 const baseURL = `http://127.0.0.1:${port}`

@@ -46,7 +46,7 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | Forgot and reset password through the admin screens, unknown email answered like a known one, invalid, reused and expired tokens, a reset unlocking an account and ending earlier sessions, who may start recovery, per-IP throttling | `password-recovery.e2e.spec.ts` |
 | Password length 12 to 256 on reset, create and update (by id and by query); a refused reset leaves the token valid and the old password working | `password-policy.e2e.spec.ts` |
 | Roles and the permission matrix: what a role grants over the API and on the admin screens (nav, forbidden URLs), grants taking effect at once, a create grant needing the field grants, only the owner changing `role`, the only owner not demotable | `roles-rbac.e2e.spec.ts` |
-| Admin page loads, homepage | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
+| Admin page loads, homepage (signed out and in, its links, a user without roles, signed out again after sign-out) | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 
 Not covered yet: admin CRUD and Media, row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
 
@@ -60,7 +60,7 @@ Wait for `networkidle` after opening the login and create-first-user screens, no
 
 ## Local runs and the Worker log
 
-The config no longer loads a developer's `.env` (no `dotenv/config`), and the Worker is started with `CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false`. wrangler still reads `.dev.vars` from the working directory, so a variable set there that `serve-worker.mjs` does not override (it sets `PAYLOAD_SECRET` and `PAYLOAD_PUBLIC_SERVER_URL`) reaches the Worker; move it away to reproduce a CI run. Everything the Worker prints is also written to `.wrangler/e2e-logs/worker.log`, which CI uploads with the report and traces when a run fails.
+The config no longer loads a developer's `.env` (no `dotenv/config`), and wrangler is told not to load `.env` as dev vars (`CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false`). That does not isolate a local run: the OpenNext build bakes `.env`, `.env.production`, `.env.local` and `.env.production.local` into the bundle (`.open-next/cloudflare/next-env.mjs`, loaded at runtime with `??=`, so only `PAYLOAD_SECRET` and `PAYLOAD_PUBLIC_SERVER_URL`, passed with `--var`, win), `payload migrate` loads `.env` too, and wrangler still reads `.dev.vars`. To reproduce a CI run exactly, move those files away first. Everything the Worker prints is also written to `.wrangler/e2e-logs/worker.log`, which CI uploads with the report and traces when a run fails.
 
 ## Reset tokens and the database file
 
@@ -74,4 +74,4 @@ The OpenNext build bundles `sharp`'s native binary on Windows and fails. Run the
 
 ## CI
 
-Job `e2e` in `.github/workflows/ci.yml` runs on every pull request and push to `main`, in parallel with `verify`. On failure it uploads the Playwright report and `test-results`.
+Job `e2e` in `.github/workflows/ci.yml` runs on every pull request and push to `main`, in parallel with `verify`. On failure it uploads the Playwright report, `test-results` (traces) and the Worker log (`.wrangler/e2e-logs/worker.log`, a hidden folder, hence `include-hidden-files`).

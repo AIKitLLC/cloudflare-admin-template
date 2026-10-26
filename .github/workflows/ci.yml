@@ -63,4 +63,6 @@ jobs:
             playwright-report/
             test-results/
             .wrangler/e2e-logs/
+          # `.wrangler` is a hidden folder, which upload-artifact skips by default.
+          include-hidden-files: true
           retention-days: 7

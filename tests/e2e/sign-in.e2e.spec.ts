@@ -67,7 +67,7 @@ test.describe('Sign-in', () => {
   })
 
   test('answers an unknown email exactly like a wrong password', async ({ page, request }) => {
-    // The API gives the same status and body for both, not only the same text on the screen.
+    // The API gives the same status and message for both, not only the same text on the screen.
     const known = await newUser(request, 'known')
     const wrongPassword = await attemptSignIn(request, {
       ...known,

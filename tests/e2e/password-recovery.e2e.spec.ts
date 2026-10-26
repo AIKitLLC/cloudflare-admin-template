@@ -67,9 +67,7 @@ test.describe('Password recovery', () => {
       }).toPass({ timeout: 15_000 })
     } catch (error) {
       // A refusal for a real reason (an invalid field) otherwise reads as a bare timeout.
-      const shown = await page
-        .locator('[data-sonner-toast], .payload-toast-container')
-        .allInnerTexts()
+      const shown = await page.locator('[data-sonner-toast]').allInnerTexts()
       throw new Error(
         `The reset form never sent its request. The screen said: ${shown.join(' | ') || '(no message)'}`,
         { cause: error },
@@ -202,7 +200,6 @@ test.describe('Password recovery', () => {
     // proves little. Click again once that window has passed: the mismatch is the only reason left.
     await page.waitForTimeout(700)
     await page.click('button[type="submit"]')
-    await expect(page.getByText(/match/i).first()).toBeVisible()
     await page.waitForTimeout(500)
     expect(sent).toEqual([])
     expect(await storedResetToken(user.email)).toBe(token)

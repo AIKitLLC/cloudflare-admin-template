@@ -29,8 +29,9 @@ const env = {
   // The built Worker runs with NODE_ENV=production and refuses to boot without a public
   // origin, so admin cookies cannot fall back to localhost:3000.
   PAYLOAD_PUBLIC_SERVER_URL: origin,
-  // Do not load a developer's `.env` into the Worker. `.dev.vars` is still read by wrangler from the
-  // working directory; a variable set there that this script does not override reaches the Worker.
+  // Do not let wrangler load `.env` as dev vars. This does not isolate a local run (the build bakes
+  // `.env*` into the bundle, `payload migrate` loads `.env`, and `.dev.vars` is still read); see
+  // docs/e2e.md.
   CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false',
 }
 
@@ -144,7 +145,8 @@ worker.stdout.pipe(process.stdout)
 worker.stderr.pipe(process.stderr)
 worker.stdout.pipe(workerLog, { end: false })
 worker.stderr.pipe(workerLog, { end: false })
-worker.on('exit', (code) => process.exit(code ?? 0))
+// `close`, not `exit`: it fires after the child's output has been read, so a crash message is kept.
+worker.on('close', (code) => workerLog.end(() => process.exit(code ?? 0)))
 
 function portInUse(value) {
   return new Promise((resolve) => {
