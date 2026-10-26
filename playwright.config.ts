@@ -1,10 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
-/**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
-import 'dotenv/config'
+// No `dotenv/config` here on purpose: the runner must not load a developer's `.env` into the
+// environment of the Worker it starts (docs/e2e.md lists what still leaks into a local run).
 
 const port = Number(process.env.E2E_PORT ?? 8792)
 // `localhost`, see scripts/e2e/serve-worker.mjs.

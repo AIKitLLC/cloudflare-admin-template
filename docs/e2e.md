@@ -36,6 +36,8 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 - Assert behaviour: a status code, a message the visitor sees, a redirect. When a form posts to an API, wait for that response (`page.waitForResponse`) and check its status. A form submitted before React hydrates posts to the page itself and never reaches the API, so asserting only "still on the page" passes without testing anything.
 - Playwright's `request` fixture has its own cookie jar, separate from the page's. Since the suite runs on `localhost` it sends a `Secure` session cookie from that jar (a storage state, or an earlier sign-in in the same test), which would authenticate a call meant to be anonymous. `api()` therefore sends an empty `cookie` header. For API calls send `Authorization: JWT <token>` (`api()` in `tests/e2e/helpers/api.ts`, with `signInToken` or `adminToken`), or call `fetch` from the page (`page.evaluate`) to use the browser's session.
 - Specs that create users or trigger lockouts must use their own accounts, and a distinct `cf-connecting-ip` where throttling is involved, so they cannot lock out the shared admin. `tests/e2e/helpers/sign-in.ts` has `uniqueIp()`, `uniqueEmail()`, `createUser()` (as the admin, over the API), `attemptSignIn()` and `signInThroughUi()`. A client-sent `cf-connecting-ip` overrides the one `wrangler dev` adds, and the browser helper sets it on the whole context. Generate them per attempt, not per file: CI retries a failing test, and a retry that reuses an address or email fails for the wrong reason.
+- Playwright's `request` fixture does not send the admin cookie: it is `Secure` and the client does not send such cookies over `http`. For API calls send `Authorization: JWT <token>` (`api()` in `tests/e2e/helpers/api.ts`, with `signInToken` or `adminToken`), or call `fetch` from the page (`page.evaluate`) to use the browser's session.
+- Specs that create users or trigger lockouts must use their own accounts, and a distinct `cf-connecting-ip` where throttling is involved, so they cannot lock out the shared admin. `tests/e2e/helpers/sign-in.ts` has `uniqueIp()`, `uniqueEmail()`, `createUser()` (as the admin, over the API), `attemptSignIn()` and `signInThroughUi()`. A client-sent `cf-connecting-ip` overrides the one `wrangler dev` adds, and the browser helper sets it on the whole context. Generate them per test (and per request where a throttle counts), not per file: CI retries a failing test, and a retry that reuses an address or email fails for the wrong reason.
 
 ## What is covered
 
@@ -50,6 +52,7 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | Media through the admin screens (upload with `alt`, served file, missing `alt`, edit, delete and its file, refused HTML and scripted SVG, duplicate file name) | `media.e2e.spec.ts` |
 | The audit trail (an entry per create, update and delete with actor and IP, redacted secrets, no entry for a refused write, append-only, the Audit Logs screen) | `audit-trail.e2e.spec.ts` |
 | Admin page loads, homepage | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
+| Admin page loads, homepage (signed out and in, its links, a user without roles, signed out again after sign-out) | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 
 Not covered yet: row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
 | Row scope (a scoped user sees and changes only records and users inside their organization, branch and data class: by list, id, screen, export and API; cannot widen their own scope; the scope tree refuses a used node and a cycle) | `row-scope.e2e.spec.ts` |
@@ -80,10 +83,17 @@ The Worker sees its own origin as `http://localhost:<port>` (Next builds `reques
 The settings are shared state. The spec puts revision 0's content back after every test (`restoreDefaults`, a rollback that adds a revision), so no test asserts an absolute revision number, and the history list is capped, so it is only used for its newest row.
 
 Not covered: a valid App Check token and Firebase ID token, ownership of a record, and quota exhaustion. Verifying a token fetches signing keys from fixed Google URLs, a local Worker cannot serve keys of its own, and the product should not grow a test hook for it. Those cases stay with `pnpm test:firebase:runtime`, `pnpm test:api` and `tests/int/client-security.int.spec.ts`, which inject keys.
+## Waiting for a form to be usable
+
+Wait for `networkidle` after opening the login and create-first-user screens, not for `form[data-form-ready="true"]`. The marker is true earlier than the page is settled: with it, `first-admin` once never sent its first submit (a 30 s timeout waiting for the API) and the sign-in helper stalled two times in 285 runs on a reload or navigation, against none in 285 runs and about 200 earlier with `networkidle`. The forgot and reset screens do use the marker (they are not the ones that failed); the reset screen additionally refuses a submit within half a second of the last keystroke (above).
+
+## Local runs and the Worker log
+
+The config no longer loads a developer's `.env` (no `dotenv/config`), and wrangler is told not to load `.env` as dev vars (`CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false`). That does not isolate a local run: the OpenNext build bakes `.env`, `.env.production`, `.env.local` and `.env.production.local` into the bundle (`.open-next/cloudflare/next-env.mjs`, loaded at runtime with `??=`, so only `PAYLOAD_SECRET` and `PAYLOAD_PUBLIC_SERVER_URL`, passed with `--var`, win), `payload migrate` loads `.env` too, and wrangler still reads `.dev.vars`. To reproduce a CI run exactly, move those files away first. Everything the Worker prints is also written to `.wrangler/e2e-logs/worker.log`, which CI uploads with the report and traces when a run fails.
 
 ## Reset tokens and the database file
 
-The E2E Worker has no email adapter; it only logs that an email was attempted, without the link. `tests/e2e/helpers/recovery.ts` therefore reads the reset token from the Worker's local D1 file (`.wrangler/e2e/v3/d1/miniflare-D1DatabaseObject/*.sqlite`) with `node:sqlite`, read-only for reads (the owner promotion and the token expiry are the only writes), retrying briefly when the file is locked. Call it after the forgot-password response has arrived. Payload issues no new token for a user right after a reset, so a test must not recover the same user twice; every test creates its own.
+The E2E Worker has no email adapter; it only logs that an email was attempted, without the link. `tests/e2e/helpers/recovery.ts` therefore reads the reset token from the Worker's local D1 file (`.wrangler/e2e/v3/d1/miniflare-D1DatabaseObject/*.sqlite`) with `node:sqlite`, read-only for reads (the owner promotion and the token expiry are the only writes), retrying briefly when the file is locked (`SQLITE_BUSY` or `SQLITE_LOCKED`; any other error fails at once). Call it after the forgot-password response has arrived. Payload issues no new token for a user right after a reset, so a test must not recover the same user twice; every test creates its own.
 
 Payload's reset screen refuses a submit made within about half a second of the last keystroke ("Please correct invalid fields." and no request). `submitResetForm` in the recovery spec repeats the click until the request goes out. `form[data-form-ready="true"]` is true before this settles, so it is not a substitute.
 
@@ -93,4 +103,4 @@ The OpenNext build bundles `sharp`'s native binary on Windows and fails. Run the
 
 ## CI
 
-Job `e2e` in `.github/workflows/ci.yml` runs on every pull request and push to `main`, in parallel with `verify`. On failure it uploads the Playwright report and `test-results`.
+Job `e2e` in `.github/workflows/ci.yml` runs on every pull request and push to `main`, in parallel with `verify`. On failure it uploads the Playwright report, `test-results` (traces) and the Worker log (`.wrangler/e2e-logs/worker.log`, a hidden folder, hence `include-hidden-files`).

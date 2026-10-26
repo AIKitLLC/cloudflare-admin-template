@@ -13,8 +13,9 @@ const WRONG_CREDENTIALS = 'The email or password provided is incorrect.'
 const THROTTLED = 'Too many attempts. Try again later.'
 const PASSWORD = 'sign-in-password-123'
 
-// Every attempt that can fail uses its own IP and its own email, so a retry, a lockout or a
-// throttle here never spends the shared 127.0.0.1 counter or touches `e2eAdmin`.
+// Every test uses its own email and its own client addresses (the lockout and throttle tests
+// reuse one on purpose, within the test), so a retry, a lockout or a throttle here never spends the
+// shared 127.0.0.1 counter or touches `e2eAdmin`.
 test.describe('Sign-in', () => {
   test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -54,14 +55,33 @@ test.describe('Sign-in', () => {
 
   test('refuses a wrong password', async ({ page, request }) => {
     const user = await newUser(request, 'wrongpw')
-    await signInThroughUi(page, { email: user.email, password: 'not-the-password-1', ip: uniqueIp() })
+    await signInThroughUi(page, {
+      email: user.email,
+      password: 'not-the-password-1',
+      ip: uniqueIp(),
+    })
 
     await expect(page.getByText(WRONG_CREDENTIALS).first()).toBeVisible()
     await expect(page).toHaveURL(/\/admin\/login/)
     expect(await currentEmail(page)).toBeNull()
   })
 
-  test('answers an unknown email exactly like a wrong password', async ({ page }) => {
+  test('answers an unknown email exactly like a wrong password', async ({ page, request }) => {
+    // The API gives the same status and message for both, not only the same text on the screen.
+    const known = await newUser(request, 'known')
+    const wrongPassword = await attemptSignIn(request, {
+      ...known,
+      password: 'not-the-password-1',
+      ip: uniqueIp(),
+    })
+    const unknownEmail = await attemptSignIn(request, {
+      email: uniqueEmail('ghost'),
+      password: 'not-the-password-1',
+      ip: uniqueIp(),
+    })
+    expect(wrongPassword.status).toBe(401)
+    expect(unknownEmail).toEqual(wrongPassword)
+
     await signInThroughUi(page, {
       email: uniqueEmail('ghost'),
       password: 'not-the-password-1',
@@ -73,7 +93,9 @@ test.describe('Sign-in', () => {
   })
 
   test('treats a garbage session cookie as signed out', async ({ page, baseURL }) => {
-    await page.context().addCookies([{ name: 'payload-token', value: 'not.a.token', url: baseURL! }])
+    await page
+      .context()
+      .addCookies([{ name: 'payload-token', value: 'not.a.token', url: baseURL! }])
 
     await page.goto('/admin')
     await expect(page).toHaveURL(/\/admin\/login/)
