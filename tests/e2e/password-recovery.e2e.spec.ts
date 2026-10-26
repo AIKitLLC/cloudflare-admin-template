@@ -1,4 +1,11 @@
-import { expect, test, type APIRequestContext, type Page, type Response } from '@playwright/test'
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Page,
+  type Request,
+  type Response,
+} from '@playwright/test'
 
 import {
   expireResetToken,
@@ -40,19 +47,21 @@ test.describe('Password recovery', () => {
    * Submits the reset form and returns the reset-password response. Payload refuses a submit made
    * within about half a second of the last keystroke ("Please correct invalid fields." and no
    * request), every time and not occasionally, so the click is repeated until the request goes out.
+   * The retry signal is the request, not the response: a slow answer must not look like a refusal,
+   * and no click may be left pending to fire a second submit later.
    */
   async function submitResetForm(page: Page): Promise<Response> {
-    let response: Response | undefined
+    let sent: Request | undefined
     await expect(async () => {
-      const [sent] = await Promise.all([
-        page.waitForResponse((candidate) => candidate.url().endsWith('/api/users/reset-password'), {
+      const [outgoing] = await Promise.all([
+        page.waitForRequest((candidate) => candidate.url().endsWith('/api/users/reset-password'), {
           timeout: 2000,
         }),
-        page.click('button[type="submit"]'),
+        page.click('button[type="submit"]', { timeout: 2000 }),
       ])
-      response = sent
+      sent = outgoing
     }).toPass({ timeout: 15_000 })
-    return response!
+    return (await sent!.response())!
   }
 
   test('answers a known and an unknown email identically', async ({ request }) => {
@@ -111,6 +120,34 @@ test.describe('Password recovery', () => {
       ip: uniqueIp(),
     })
     expect(newPassword.status).toBe(200)
+  })
+
+  test('submits a reset once even when the server answers slowly', async ({ page, request }) => {
+    const user = await newUser(request, 'slow')
+    const ip = uniqueIp()
+    await requestRecovery(request, { email: user.email, ip })
+    const token = await storedResetToken(user.email)
+    expect(token).toMatch(TOKEN_SHAPE)
+
+    // A response slower than the click retry window must not trigger a second submit.
+    const posts: string[] = []
+    page.on('request', (outgoing) => {
+      if (outgoing.url().endsWith('/api/users/reset-password')) posts.push(outgoing.url())
+    })
+    await page.route('**/api/users/reset-password', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 3000))
+      await route.continue()
+    })
+
+    await openFormScreen(page, `/admin/reset/${token}`, ip)
+    await page.locator('#field-password').fill(NEW_PASSWORD)
+    await page.locator('#field-confirm-password').fill(NEW_PASSWORD)
+    const reset = await submitResetForm(page)
+
+    expect(reset.status()).toBe(200)
+    expect(posts).toHaveLength(1)
+    await page.waitForURL(/\/admin$/)
+    expect(await currentEmail(page)).toBe(user.email)
   })
 
   test('refuses a confirmation that does not match on the reset screen', async ({
