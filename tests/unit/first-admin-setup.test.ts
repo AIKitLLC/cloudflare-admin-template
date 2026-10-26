@@ -50,10 +50,12 @@ function fakePayload(
   db: SetupStateDatabase,
   {
     failRoleUpdate = false,
+    failDelete = false,
     beforeInsert,
     afterInsert,
   }: {
     failRoleUpdate?: boolean
+    failDelete?: boolean
     beforeInsert?: (email: string) => Promise<void>
     afterInsert?: (email: string) => Promise<void>
   } = {},
@@ -68,6 +70,7 @@ function fakePayload(
         deletes.push(where)
         // Only deletion by id is supported, so a cleanup by any other field fails the test.
         if (!where.id) throw new Error(`unexpected delete: ${JSON.stringify(where)}`)
+        if (failDelete) throw new Error('delete failed')
         sqlite.prepare('DELETE FROM users WHERE id = ?').run(where.id.equals)
       },
     },
@@ -535,6 +538,133 @@ async function interruptedSetup(sqlite: DatabaseSync, db: SetupStateDatabase, em
   assert.equal(await state.claim('dead-attempt'), true)
   sqlite.prepare('INSERT INTO users (email, roles) VALUES (?, ?)').run(email, '[]')
 }
+
+/** Setup completed once, then every user was removed: the state `admin:create` recovers. */
+async function completedThenEmptied(sqlite: DatabaseSync, db: SetupStateDatabase) {
+  sqlite.prepare("INSERT INTO users (email, roles) VALUES ('old@example.com', '[]')").run()
+  await createSetupState(db).seal()
+  sqlite.prepare('DELETE FROM users').run()
+}
+
+const claimToken = (sqlite: DatabaseSync) =>
+  (sqlite.prepare('SELECT claim_token FROM setup_state').get() as { claim_token: string | null })
+    .claim_token
+
+test('a setup whose create failed after the insert removes that user', async () => {
+  // D1 runs without transactions: the row is committed before the `users` hooks run, so a
+  // hook failure rejects `create` with the row already stored.
+  const { db, sqlite } = sqliteDatabase()
+  await completedThenEmptied(sqlite, db)
+  const { payload, deletes } = fakePayload(sqlite, db, {
+    afterInsert: async () => {
+      throw new Error('D1_ERROR: database is locked')
+    },
+  })
+  await assert.rejects(
+    createFirstAdmin(payload, { email: 'CLI@example.com', password }),
+    /database is locked/,
+  )
+  assert.equal(userRows(sqlite).length, 0)
+  assert.equal(deletes.length, 1)
+  assert.equal(claimToken(sqlite), null)
+  // A plain retry succeeds.
+  const { payload: retry } = fakePayload(sqlite, db)
+  await createFirstAdmin(retry, { email: 'cli@example.com', password })
+  assert.deepEqual(
+    userRows(sqlite).map((user) => [user.email, JSON.parse(user.roles)]),
+    [['cli@example.com', [SUPER_ADMIN_ID]]],
+  )
+})
+
+/**
+ * `create` rejects after its insert, and `afterInsert` first changes the state so the stored
+ * row is no longer provably this call's. The cleanup must then delete nothing.
+ */
+async function failedSetupDeletesNothing(change: (sqlite: DatabaseSync) => void) {
+  const { db, sqlite } = sqliteDatabase()
+  await completedThenEmptied(sqlite, db)
+  const { payload, deletes } = fakePayload(sqlite, db, {
+    afterInsert: async () => {
+      change(sqlite)
+      throw new Error('D1_ERROR: database is locked')
+    },
+  })
+  await assert.rejects(createFirstAdmin(payload, { email: 'cli@example.com', password }))
+  assert.equal(deletes.length, 0)
+  return sqlite
+}
+
+test('a failed setup deletes nothing when a different token holds the claim', async () => {
+  const sqlite = await failedSetupDeletesNothing((db) => {
+    db.prepare("UPDATE setup_state SET claim_token = 'another-token'").run()
+  })
+  assert.deepEqual(
+    userRows(sqlite).map((user) => user.email),
+    ['cli@example.com'],
+  )
+})
+
+test("a failed setup deletes nothing when the only user's email does not match", async () => {
+  const sqlite = await failedSetupDeletesNothing((db) => {
+    db.prepare("UPDATE users SET email = 'other@example.com'").run()
+  })
+  assert.deepEqual(
+    userRows(sqlite).map((user) => user.email),
+    ['other@example.com'],
+  )
+})
+
+test('a failed setup deletes nothing when two users exist', async () => {
+  const sqlite = await failedSetupDeletesNothing((db) => {
+    // Another row the guard trigger did not stop, for example one written outside setup.
+    for (const { name } of db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'users'")
+      .all() as { name: string }[]) {
+      db.exec(`DROP TRIGGER ${name}`)
+    }
+    db.prepare("INSERT INTO users (email, roles) VALUES ('other@example.com', '[]')").run()
+  })
+  assert.deepEqual(
+    userRows(sqlite)
+      .map((user) => user.email)
+      .sort(),
+    ['cli@example.com', 'other@example.com'],
+  )
+})
+
+test('a setup whose cleanup failed keeps its claim, so the next CLI run finishes it', async () => {
+  const { db, sqlite } = sqliteDatabase()
+  await completedThenEmptied(sqlite, db)
+  const failing = fakePayload(sqlite, db, { failRoleUpdate: true, failDelete: true })
+  await assert.rejects(createFirstAdmin(failing.payload, { email: 'cli@example.com', password }))
+  assert.equal(userRows(sqlite).length, 1)
+  assert.notEqual(claimToken(sqlite), null)
+
+  const { payload } = fakePayload(sqlite, db)
+  // The claim is still live: the failed attempt is not recovered underneath it.
+  await assert.rejects(
+    createFirstAdmin(payload, { email: 'retry@example.com', password }),
+    (error: { status?: number }) => error.status === 409,
+  )
+  expireClaims(sqlite)
+  // The web flow stays closed after completion, even over an interrupted CLI setup.
+  await assert.rejects(
+    createFirstAdminAccount(
+      payload,
+      { email: 'web@example.com', password },
+      { source: 'web', req: webReq() },
+    ),
+    (error: { status?: number }) => error.status === 403,
+  )
+  assert.deepEqual(JSON.parse(userRows(sqlite)[0].roles), [])
+  const recovered = await createFirstAdmin(payload, { email: 'retry@example.com', password })
+  const users = userRows(sqlite)
+  assert.deepEqual(
+    users.map((user) => [user.id, user.email, JSON.parse(user.roles)]),
+    [[recovered.id, 'cli@example.com', [SUPER_ADMIN_ID]]],
+  )
+  assert.equal(claimToken(sqlite), null)
+})
 
 test('the next web attempt finishes an interrupted setup without a second admin', async () => {
   const { db, sqlite } = sqliteDatabase()
