@@ -100,7 +100,7 @@ Proposed milestones, for a person with permission to create them:
 
 - D1 on `main` still uses the placeholder database id `DATABASE_ID`.
 - Workers CPU time and startup time have not been measured on a deployed Worker.
-- E2E covers first-admin setup, sign-in (wrong credentials, lockout, per-IP throttle, invalid sessions), and the admin and frontend smoke checks. Password recovery, roles, CRUD, row scope, and the client API are not covered yet.
+- E2E covers first-admin setup, sign-in (wrong credentials, lockout, per-IP throttle, invalid sessions), password recovery (forgot and reset, invalid and expired tokens, who may start it, throttling), and the admin and frontend smoke checks. Roles, CRUD, row scope, and the client API are not covered yet.
 - Cloudflare Queues for background jobs (#5) do not exist yet, so jobs run from the cron only.
 
 ## This change
