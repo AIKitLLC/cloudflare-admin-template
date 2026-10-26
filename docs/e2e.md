@@ -52,6 +52,9 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | Admin page loads, homepage | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 
 Not covered yet: row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
+| Row scope (a scoped user sees and changes only records and users inside their organization, branch and data class: by list, id, screen, export and API; cannot widen their own scope; the scope tree refuses a used node and a cycle) | `row-scope.e2e.spec.ts` |
+
+Not covered yet: admin CRUD and Media, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
 
 ## Roles, grants and the owner
 
@@ -64,6 +67,9 @@ Not covered yet: row scope, the client API. An expired session token is not cove
 - Payload renames a duplicate upload by incrementing a trailing number (`a-1.png` becomes `a-2.png`) and by adding `-1` otherwise, so `uniqueFilename` ends in a letter (`-pic`).
 - On the create and edit screens, wait for `form[data-form-ready="true"]` before typing (earlier input is lost on hydration), open pages with `waitUntil: 'domcontentloaded'` (a `load` wait stalled twice in 30 runs), and treat the field error and the toast as equivalent: a later form-state answer can clear the field error.
 - Delete from the screen: `button.popup-button`, `#action-delete`, `#confirm-action`.
+## Row scope
+
+Each test builds its own tree with `createScopeTree` (`helpers/scope.ts`: organizations A with child A1 and B, a branch in each, two data classes, four records, every slug and title unique), so a scoped user's unfiltered list is exactly that test's rows. A scoped role also needs the field-read keys (`scopedReaderRole` builds them from the catalog): without them `sort=title` is a 400 and documents come back empty. A limited users manager may only edit users whose role keys are a subset of the manager's, so the test's users are created without a role. Out of scope, a read by id is `404 Not Found` while a write is `403`; on the screen the list shows "The document with ID <id> could not be found".
 
 ## Reset tokens and the database file
 
