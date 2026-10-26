@@ -33,7 +33,7 @@ async function uploadThroughScreen(
 async function deleteThroughScreen(page: Page, id: number): Promise<Response> {
   await page.goto(`/admin/collections/media/${id}`, { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('form[data-form-ready="true"]')
-  await page.locator('button.popup-button').first().click()
+  await page.locator('.doc-controls button.popup-button').first().click()
   await page.click('#action-delete')
   const [response] = await Promise.all([
     page.waitForResponse(
@@ -64,7 +64,7 @@ test.describe('Media through the admin screens', () => {
     const { doc } = (await response.json()) as {
       doc: { id: number; url: string; filename: string }
     }
-    expect(doc.filename).toBe(filename)
+    expect(doc).toMatchObject({ filename, mimeType: 'image/png', filesize: PNG.length })
     const served = await fetchFile(request, doc.url)
     expect(served.status).toBe(200)
     expect(served.type).toContain('image/png')
@@ -107,6 +107,7 @@ test.describe('Media through the admin screens', () => {
       data: { alt: '' },
     })
     expect(cleared.status).toBe(400)
+    expect(cleared.body.errors[0].data.errors[0].message).toBe('This field is required.')
     const stored = await api(request, { method: 'GET', path: `/api/media/${id}` })
     expect(stored.body.alt).toBe('second alt')
   })
@@ -151,14 +152,16 @@ test.describe('Media through the admin screens', () => {
 
     const filename = uniqueFilename()
     const first = await uploadMedia(request, { token, alt: 'one', filename })
-    const second = await uploadMedia(request, { token, alt: 'two', filename })
+    const secondBytes = Buffer.concat([PNG, Buffer.from('second')])
+    const second = await uploadMedia(request, { token, alt: 'two', filename, buffer: secondBytes })
     expect(first.status).toBe(201)
     expect(second.status).toBe(201)
     expect(first.body.doc.filename).toBe(filename)
     expect(second.body.doc.filename).toBe(filename.replace('-pic.png', '-pic-1.png'))
-    for (const doc of [first.body.doc, second.body.doc] as { url: string }[]) {
-      const file = await request.get(doc.url)
-      expect(file.status()).toBe(200)
-    }
+    // The second upload must not have overwritten the first: each URL serves its own bytes.
+    const firstFile = await request.get(first.body.doc.url)
+    const secondFile = await request.get(second.body.doc.url)
+    expect((await firstFile.body()).equals(PNG)).toBe(true)
+    expect((await secondFile.body()).equals(secondBytes)).toBe(true)
   })
 })

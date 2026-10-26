@@ -47,11 +47,19 @@ test.describe('The audit trail', () => {
     const token = adminToken()
     const created = await uploadMedia(request, { token, alt: 'audited', ip })
     const id = created.body.doc.id as number
+    await api(request, {
+      method: 'PATCH',
+      path: `/api/media/${id}`,
+      token,
+      ip,
+      data: { alt: 'audited again' },
+    })
     await api(request, { method: 'DELETE', path: `/api/media/${id}`, token, ip })
 
     const entries = await auditEntries(request, { collection: 'media', id, since })
 
-    expect(entries.map((entry) => entry.action)).toEqual(['CREATE', 'DELETE'])
+    expect(entries.map((entry) => entry.action)).toEqual(['CREATE', 'UPDATE', 'DELETE'])
+    expect(entries.every((entry) => typeof entry.documentId === 'string')).toBe(true)
     expect(entries.every((entry) => entry.ipAddress === ip)).toBe(true)
     expect(entries.every((entry) => entry.actorEmail === e2eAdmin.email)).toBe(true)
   })
@@ -86,6 +94,7 @@ test.describe('The audit trail', () => {
       roles: [await superAdminRoleId(request)],
     })
     const before = await auditEntries(request, { collection: 'users', id: target, since })
+    expect(before.map((entry) => entry.action)).toEqual(['CREATE'])
 
     const attempt = await api(request, {
       method: 'PATCH',
@@ -129,7 +138,9 @@ test.describe('The audit trail', () => {
   test('the Audit Logs screen lists an entry', async ({ page, request }) => {
     const id = await createUser(request, { email: uniqueEmail('listed'), password: PASSWORD })
 
-    await page.goto('/admin/collections/audit-logs?limit=20&sort=-createdAt')
+    await page.goto('/admin/collections/audit-logs?limit=20&sort=-createdAt', {
+      waitUntil: 'domcontentloaded',
+    })
 
     await expect(
       page.getByRole('row', { name: new RegExp(`Create users ${id} ${e2eAdmin.email}`) }),

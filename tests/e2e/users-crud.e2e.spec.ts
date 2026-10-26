@@ -125,7 +125,7 @@ test.describe('Users through the admin screens', () => {
 
     await page.goto(`/admin/collections/users/${id}`, { waitUntil: 'domcontentloaded' })
     await page.waitForSelector('form[data-form-ready="true"]')
-    await page.locator('button.popup-button').first().click()
+    await page.locator('.doc-controls button.popup-button').first().click()
     await page.click('#action-delete')
     const [response] = await Promise.all([
       page.waitForResponse(
