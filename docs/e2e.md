@@ -45,9 +45,14 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | Sign-in and sign-out, wrong password, unknown email, per-account lockout, per-IP throttle, successful sign-ins not counted, garbage and tampered session, token revoked after sign-out | `sign-in.e2e.spec.ts` |
 | Forgot and reset password through the admin screens, unknown email answered like a known one, invalid, reused and expired tokens, a reset unlocking an account and ending earlier sessions, who may start recovery, per-IP throttling | `password-recovery.e2e.spec.ts` |
 | Password length 12 to 256 on reset, create and update (by id and by query); a refused reset leaves the token valid and the old password working | `password-policy.e2e.spec.ts` |
+| Roles and the permission matrix: what a role grants over the API and on the admin screens (nav, forbidden URLs), grants taking effect at once, a create grant needing the field grants, only the owner changing `role`, the only owner not demotable | `roles-rbac.e2e.spec.ts` |
 | Admin page loads, homepage | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 
-Not covered yet: roles and permissions, admin CRUD and Media, row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
+Not covered yet: admin CRUD and Media, row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
+
+## Roles, grants and the owner
+
+`tests/e2e/helpers/access.ts` creates a role with exactly the permission keys a test needs (`createRole`, `setGrant`; ids are looked up by key, never hard-coded) and gives every role a unique slug. `tests/e2e/helpers/api.ts` is one REST call with an explicit `JWT` token and the status, message and body back. `ensureOwner` returns the one client security owner, `e2e-owner@example.com`. No API makes a first owner, so it is created as a Super Admin and promoted with one `UPDATE` on the local D1 file (`helpers/database.ts`, shared with the reset-token helpers). It must stay the only owner, because the "final owner cannot be demoted" case depends on it, and no test deletes or edits `e2eAdmin` or `e2eOwner`.
 
 ## Reset tokens and the database file
 

@@ -43,7 +43,9 @@ export async function createUser(request: APIRequestContext, user: NewUser): Pro
     data: user,
   })
   if (response.status() !== 201) {
-    throw new Error(`Creating ${user.email} answered ${response.status()}: ${await response.text()}`)
+    throw new Error(
+      `Creating ${user.email} answered ${response.status()}: ${await response.text()}`,
+    )
   }
   return ((await response.json()) as { doc: { id: number } }).doc.id
 }
@@ -63,7 +65,9 @@ export async function attemptSignIn(
   try {
     body = JSON.parse(text)
   } catch {
-    throw new Error(`Sign-in for ${email} answered ${response.status()} with: ${text.slice(0, 500)}`)
+    throw new Error(
+      `Sign-in for ${email} answered ${response.status()} with: ${text.slice(0, 500)}`,
+    )
   }
   return {
     status: response.status(),
