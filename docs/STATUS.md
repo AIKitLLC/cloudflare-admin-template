@@ -40,7 +40,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 - `pnpm ci:local` runs `scripts/ci-local.sh`: frozen install, `typecheck`, `typecheck:firebase`, `lint`, unit tests (`tests/unit`), integration tests (`tests/int`), `next build`, and the OpenNext Worker bundle. `--maxWorkers N` caps test parallelism. It needs no secrets and no Cloudflare account, and it deploys nothing.
 - `.github/workflows/ci.yml` runs the same script in job `verify` on every pull request and on pushes to `main`. Runner `ubuntu-24.04`, Node from `.nvmrc`, actions pinned by commit SHA, `contents: read`.
 - `.github/workflows/architecture.yml` (added by #27, tightened by #28) runs a report-only architecture analysis on pull requests as an inline, hash-locked job. See `AGENTS.md`.
-- Playwright E2E tests (`tests/e2e`) are not part of `ci:local` or CI yet.
+- Playwright E2E tests (`tests/e2e`, see `docs/e2e.md`) run in CI as job `e2e`, parallel to `verify`. They are not part of `ci:local`.
 
 ## Open pull requests
 
@@ -100,7 +100,7 @@ Proposed milestones, for a person with permission to create them:
 
 - D1 on `main` still uses the placeholder database id `DATABASE_ID`.
 - Workers CPU time and startup time have not been measured on a deployed Worker.
-- E2E tests do not run in CI.
+- E2E covers first-admin setup and the admin and frontend smoke checks. Sign-in, roles, CRUD, row scope, and the client API are not covered yet.
 - Cloudflare Queues for background jobs (#5) do not exist yet, so jobs run from the cron only.
 
 ## This change

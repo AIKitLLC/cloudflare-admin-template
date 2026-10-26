@@ -306,7 +306,7 @@ pnpm test:api
 pnpm test:client-security:browser
 pnpm build:worker
 
-# Run end-to-end Playwright tests
+# Run end-to-end Playwright tests on the built Worker (Linux or WSL; see docs/e2e.md)
 pnpm test:e2e
 
 
