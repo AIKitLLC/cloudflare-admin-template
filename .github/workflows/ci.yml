@@ -62,4 +62,5 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            .wrangler/e2e-logs/
           retention-days: 7

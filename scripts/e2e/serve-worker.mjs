@@ -8,7 +8,7 @@
 // Needs no secrets and no Cloudflare account. Run `pnpm run build:worker:full` first, or
 // let Playwright's webServer do it (E2E_SKIP_BUILD=1 reuses an existing .open-next).
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { createWriteStream, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { connect } from 'node:net'
 import { join } from 'node:path'
 
@@ -29,6 +29,9 @@ const env = {
   // The built Worker runs with NODE_ENV=production and refuses to boot without a public
   // origin, so admin cookies cannot fall back to localhost:3000.
   PAYLOAD_PUBLIC_SERVER_URL: origin,
+  // Do not load a developer's `.env` into the Worker. `.dev.vars` is still read by wrangler from the
+  // working directory; a variable set there that this script does not override reaches the Worker.
+  CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false',
 }
 
 // A server left over from an earlier run would answer the suite with its old database.
@@ -81,6 +84,9 @@ if (migrate.status !== 0) {
 }
 console.log('e2e: migrated the local D1')
 
+mkdirSync(join(process.cwd(), '.wrangler', 'e2e-logs'), { recursive: true })
+const workerLog = createWriteStream(join(process.cwd(), '.wrangler', 'e2e-logs', 'worker.log'))
+
 const worker = spawn(
   'pnpm',
   [
@@ -104,7 +110,8 @@ const worker = spawn(
   {
     cwd: process.cwd(),
     env,
-    stdio: 'inherit',
+    // Piped so the log can also go to a file CI uploads when a run fails (see the pipes below).
+    stdio: ['ignore', 'pipe', 'pipe'],
     shell: process.platform === 'win32',
     // Not detached: Playwright stops its webServer with a SIGKILL to this process group, which
     // cannot run a handler here. Staying in the group is what takes pnpm, wrangler and workerd
@@ -131,6 +138,12 @@ process.on('SIGTERM', () => {
   process.exit(0)
 })
 process.on('exit', stop)
+// Everything the Worker prints is kept in `.wrangler/e2e-logs/worker.log` as well, outside the state
+// directory (which is wiped) and outside `test-results` (which Playwright empties). CI uploads it.
+worker.stdout.pipe(process.stdout)
+worker.stderr.pipe(process.stderr)
+worker.stdout.pipe(workerLog, { end: false })
+worker.stderr.pipe(workerLog, { end: false })
 worker.on('exit', (code) => process.exit(code ?? 0))
 
 function portInUse(value) {

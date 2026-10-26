@@ -1,10 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
-/**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
-import 'dotenv/config'
+// No `dotenv/config` here on purpose: the suite must not pick up a developer's `.env`, which the
+// Worker started by `serve-worker.mjs` would inherit.
 
 const port = Number(process.env.E2E_PORT ?? 8792)
 const baseURL = `http://127.0.0.1:${port}`

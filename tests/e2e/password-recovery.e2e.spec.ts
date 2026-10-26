@@ -25,8 +25,8 @@ const NOT_A_SUBSET =
   'You can only update or delete a user whose permissions are a subset of your own.'
 const OUTSIDE_SCOPE = 'You can only change a user inside your scope.'
 
-// One user and one client address per test. Payload will not issue a second token for the
-// same user right after a reset, so no test recovers the same account twice.
+// One user per test and a fresh client address for each request. Payload will not issue a second
+// token for the same user right after a reset, so no test recovers the same account twice.
 test.describe('Password recovery', () => {
   test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -52,15 +52,29 @@ test.describe('Password recovery', () => {
    */
   async function submitResetForm(page: Page): Promise<Response> {
     let sent: Request | undefined
-    await expect(async () => {
-      const [outgoing] = await Promise.all([
-        page.waitForRequest((candidate) => candidate.url().endsWith('/api/users/reset-password'), {
-          timeout: 2000,
-        }),
-        page.click('button[type="submit"]', { timeout: 2000 }),
-      ])
-      sent = outgoing
-    }).toPass({ timeout: 15_000 })
+    try {
+      await expect(async () => {
+        const [outgoing] = await Promise.all([
+          page.waitForRequest(
+            (candidate) => candidate.url().endsWith('/api/users/reset-password'),
+            {
+              timeout: 2000,
+            },
+          ),
+          page.click('button[type="submit"]', { timeout: 2000 }),
+        ])
+        sent = outgoing
+      }).toPass({ timeout: 15_000 })
+    } catch (error) {
+      // A refusal for a real reason (an invalid field) otherwise reads as a bare timeout.
+      const shown = await page
+        .locator('[data-sonner-toast], .payload-toast-container')
+        .allInnerTexts()
+      throw new Error(
+        `The reset form never sent its request. The screen said: ${shown.join(' | ') || '(no message)'}`,
+        { cause: error },
+      )
+    }
     return (await sent!.response())!
   }
 
@@ -75,6 +89,19 @@ test.describe('Password recovery', () => {
     expect(unknown).toEqual(known)
     expect(await storedResetToken(user.email)).toMatch(TOKEN_SHAPE)
     expect(await storedResetToken(stranger)).toBeNull()
+  })
+
+  test('shows the same confirmation for an unknown email on the screen', async ({ page }) => {
+    await openFormScreen(page, '/admin/forgot', uniqueIp())
+    await page.locator('#field-email').first().fill(uniqueEmail('ghost'))
+    const [forgot] = await Promise.all([
+      page.waitForResponse((response) => response.url().endsWith('/api/users/forgot-password')),
+      page.click('button[type="submit"]'),
+    ])
+
+    expect(forgot.status()).toBe(200)
+    // The same confirmation the known-email test sees, so a visitor cannot tell the two apart.
+    await expect(page.getByText(/email sent|instructions to reset/i).first()).toBeVisible()
   })
 
   test('refuses a request without an email', async ({ request }) => {
@@ -171,6 +198,12 @@ test.describe('Password recovery', () => {
 
     // Payload's form rejects the mismatch itself, so nothing is sent and the token stays usable.
     await expect(page.getByText(/match/i).first()).toBeVisible()
+    // The first click falls inside the half second in which the form refuses every submit, so it
+    // proves little. Click again once that window has passed: the mismatch is the only reason left.
+    await page.waitForTimeout(700)
+    await page.click('button[type="submit"]')
+    await expect(page.getByText(/match/i).first()).toBeVisible()
+    await page.waitForTimeout(500)
     expect(sent).toEqual([])
     expect(await storedResetToken(user.email)).toBe(token)
   })
@@ -255,9 +288,11 @@ test.describe('Password recovery', () => {
     const { token: session } = await attemptSignIn(request, { ...user, ip: uniqueIp() })
     const headers = { authorization: `JWT ${session}` }
     const me = async () =>
-      ((await (await request.get('/api/users/me', { headers })).json()) as {
-        user: { email: string } | null
-      }).user
+      (
+        (await (await request.get('/api/users/me', { headers })).json()) as {
+          user: { email: string } | null
+        }
+      ).user
 
     expect((await me())?.email).toBe(user.email)
 
@@ -302,7 +337,10 @@ test.describe('Password recovery', () => {
   test('throttles forgot-password after five requests from one IP', async ({ request }) => {
     const blockedIp = uniqueIp()
     for (let attempt = 1; attempt <= 5; attempt += 1) {
-      const allowed = await requestRecovery(request, { email: uniqueEmail('nobody'), ip: blockedIp })
+      const allowed = await requestRecovery(request, {
+        email: uniqueEmail('nobody'),
+        ip: blockedIp,
+      })
       expect(allowed.status, `request ${attempt}`).toBe(200)
     }
 

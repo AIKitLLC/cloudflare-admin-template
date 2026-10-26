@@ -14,6 +14,13 @@ export function databasePath(): string {
   return join(directory, files[0])
 }
 
+/** `SQLITE_BUSY` (5) or `SQLITE_LOCKED` (6), including their extended codes. */
+function isLockError(error: unknown): boolean {
+  const { errcode, message } = error as { errcode?: number; message?: string }
+  if (typeof errcode === 'number') return (errcode & 0xff) === 5 || (errcode & 0xff) === 6
+  return /database (table )?is locked|database is busy/i.test(message ?? '')
+}
+
 /** The Worker writes this file too, so a read or write can briefly find it locked. */
 export async function withDatabase<T>(readOnly: boolean, run: (db: DatabaseSync) => T): Promise<T> {
   let lastError: unknown
@@ -22,6 +29,8 @@ export async function withDatabase<T>(readOnly: boolean, run: (db: DatabaseSync)
     try {
       return run(db)
     } catch (error) {
+      // Only a lock is worth waiting for; a missing table or a bad statement fails at once.
+      if (!isLockError(error)) throw error
       lastError = error
       await new Promise((resolve) => setTimeout(resolve, 100))
     } finally {
