@@ -64,6 +64,15 @@ export async function attemptSignIn(
   }
 }
 
+/** The signed-in user's email, or null. From the page, so it uses the browser's cookie jar (the session cookie is Secure). */
+export async function currentEmail(page: Page): Promise<string | null> {
+  return page.evaluate(async () => {
+    const me = await fetch('/api/users/me')
+    const body = (await me.json()) as { user: { email: string } | null }
+    return body.user?.email ?? null
+  })
+}
+
 /**
  * Opens the login screen from the given client address and submits. Does not assert the
  * outcome. The address is set on the context, so every request from this page carries it and a

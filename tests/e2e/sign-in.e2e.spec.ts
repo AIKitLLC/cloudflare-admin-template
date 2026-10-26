@@ -1,8 +1,9 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext } from '@playwright/test'
 
 import {
   attemptSignIn,
   createUser,
+  currentEmail,
   signInThroughUi,
   uniqueEmail,
   uniqueIp,
@@ -21,15 +22,6 @@ test.describe('Sign-in', () => {
     const user = { email: uniqueEmail(prefix), password: PASSWORD }
     await createUser(request, user)
     return user
-  }
-
-  /** From the page, so it uses the browser's cookie jar (the session cookie is Secure). */
-  async function currentEmail(page: Page): Promise<string | null> {
-    return page.evaluate(async () => {
-      const me = await fetch('/api/users/me')
-      const body = (await me.json()) as { user: { email: string } | null }
-      return body.user?.email ?? null
-    })
   }
 
   test('signs in and stays signed in after a reload', async ({ page, request }) => {

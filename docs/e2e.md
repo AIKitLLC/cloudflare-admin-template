@@ -43,9 +43,16 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | --- | --- |
 | First-admin setup (screen, short password, mismatch, success, closed afterwards) | `first-admin.e2e.spec.ts` |
 | Sign-in and sign-out, wrong password, unknown email, per-account lockout, per-IP throttle, successful sign-ins not counted, garbage and tampered session, token revoked after sign-out | `sign-in.e2e.spec.ts` |
+| Forgot and reset password through the admin screens, unknown email answered like a known one, invalid, reused and expired tokens, a reset unlocking an account and ending earlier sessions, who may start recovery, per-IP throttling | `password-recovery.e2e.spec.ts` |
 | Admin page loads, homepage | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 
-Not covered yet: password recovery, roles and permissions, admin CRUD and Media, row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
+Not covered yet: roles and permissions, admin CRUD and Media, row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
+
+## Reset tokens and the database file
+
+The E2E Worker has no email adapter; it only logs that an email was attempted, without the link. `tests/e2e/helpers/recovery.ts` therefore reads the reset token from the Worker's local D1 file (`.wrangler/e2e/v3/d1/miniflare-D1DatabaseObject/*.sqlite`) with `node:sqlite`, read-only, retrying briefly when the file is locked. Call it after the forgot-password response has arrived. Payload issues no new token for a user right after a reset, so a test must not recover the same user twice; every test creates its own.
+
+Payload's reset screen refuses a submit made within about half a second of the last keystroke ("Please correct invalid fields." and no request). `submitResetForm` in the recovery spec repeats the click until the request goes out. `form[data-form-ready="true"]` is true before this settles, so it is not a substitute.
 
 ## Windows
 
