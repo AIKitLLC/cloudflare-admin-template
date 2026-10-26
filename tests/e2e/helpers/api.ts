@@ -8,6 +8,8 @@ type Args = {
   /** Sent as `cf-connecting-ip`. */
   ip?: string
   data?: unknown
+  /** Extra request headers, for example `origin`. */
+  headers?: Record<string, string>
   multipart?: Record<
     string,
     string | number | boolean | { name: string; mimeType: string; buffer: Buffer }
@@ -24,7 +26,7 @@ export type ApiResult = {
 
 /** One REST call. A body that is not JSON (an HTML 500, a file) throws with the status and the start of the text. */
 export async function api(request: APIRequestContext, args: Args): Promise<ApiResult> {
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = { ...args.headers }
   if (args.token) headers.authorization = `JWT ${args.token}`
   if (args.ip) headers['cf-connecting-ip'] = args.ip
   const response = await request.fetch(args.path, {

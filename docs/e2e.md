@@ -26,7 +26,12 @@ One shared database, so `workers: 1`.
 | Project | Specs | Why |
 | --- | --- | --- |
 | `first-admin` | `first-admin.e2e.spec.ts` | Needs an empty `users` table. Creates the admin and saves its session to `tests/e2e/.auth/admin.json` (git-ignored). Serial, no retries: a retry would find the admin already created. |
+| `interrupted-setup` | `interrupted-first-admin.e2e.spec.ts` | Needs a database in the "just set up" state, which the shared one cannot give once `first-admin` has completed setup. Runs against a second Worker (below), no `storageState`, serial, no retries: it mutates its own database. |
 | `chromium` | every other spec | Depends on `first-admin`, so it is skipped if setup failed. Starts signed in as `e2eAdmin` (`tests/e2e/helpers/admin.ts`). |
+
+## The second Worker
+
+`serve-worker.mjs` also serves a second instance on port + 1 (8793, state in `.wrangler/e2e-interrupted`), built from the same `.open-next` bundle and started first, so the main port answering means both are up. `E2E_EXTRA_INSTANCE=0` skips it. The interrupted spec builds its state from a real first-register and then three statements on that database (`helpers/interrupted-setup.ts`: clear `completed_at`, set a dead `claim_token` with a chosen `claimed_at`, delete the user's role link); the 2-minute claim age is backdated, never waited out. Recovery runs before credentials are checked, so a retry with the wrong password or another email still finishes setup and then answers 401.
 
 A spec that needs to be signed out uses `test.use({ storageState: { cookies: [], origins: [] } })`.
 
@@ -46,6 +51,7 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | Forgot and reset password through the admin screens, unknown email answered like a known one, invalid, reused and expired tokens, a reset unlocking an account and ending earlier sessions, who may start recovery, per-IP throttling | `password-recovery.e2e.spec.ts` |
 | Password length 12 to 256 on reset, create and update (by id and by query); a refused reset leaves the token valid and the old password working | `password-policy.e2e.spec.ts` |
 | Roles and the permission matrix: what a role grants over the API and on the admin screens (nav, forbidden URLs), grants taking effect at once, a create grant needing the field grants, only the owner changing `role`, the only owner not demotable | `roles-rbac.e2e.spec.ts` |
+| Recovery of an interrupted first-admin setup: finishes setup for the one existing user (also when the retry has the wrong password or another email), never takes over a live claim, never promotes anyone when two users exist | `interrupted-first-admin.e2e.spec.ts` |
 | Admin page loads, homepage | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 
 Not covered yet: admin CRUD and Media, row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.

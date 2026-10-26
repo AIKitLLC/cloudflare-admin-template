@@ -8,6 +8,8 @@ import 'dotenv/config'
 
 const port = Number(process.env.E2E_PORT ?? 8792)
 const baseURL = `http://127.0.0.1:${port}`
+/** The second Worker, with its own database, for the interrupted first-admin spec. */
+const interruptedURL = `http://127.0.0.1:${port + 1}`
 
 /** Written by the first-admin spec, reused by every spec that needs a signed-in admin. */
 export const adminStorageState = 'tests/e2e/.auth/admin.json'
@@ -41,12 +43,21 @@ export default defineConfig({
     {
       // Needs the empty `users` table, so it runs first and creates the admin the rest reuse.
       name: 'first-admin',
-      testMatch: /first-admin\.e2e\.spec\.ts/,
+      testMatch: /(?<!interrupted-)first-admin\.e2e\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], channel: 'chromium' },
     },
     {
+      // Its own Worker and database: it needs a database in the "just set up" state, which the
+      // shared one cannot give once first-admin has completed setup. It mutates that database,
+      // so it never retries and nothing else uses it.
+      name: 'interrupted-setup',
+      testMatch: /interrupted-first-admin\.e2e\.spec\.ts/,
+      retries: 0,
+      use: { ...devices['Desktop Chrome'], channel: 'chromium', baseURL: interruptedURL },
+    },
+    {
       name: 'chromium',
-      testIgnore: /first-admin\.e2e\.spec\.ts/,
+      testIgnore: /(first-admin|interrupted-first-admin)\.e2e\.spec\.ts/,
       dependencies: ['first-admin'],
       use: {
         ...devices['Desktop Chrome'],
