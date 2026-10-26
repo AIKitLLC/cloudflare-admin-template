@@ -7,7 +7,8 @@ import { defineConfig, devices } from '@playwright/test'
 import 'dotenv/config'
 
 const port = Number(process.env.E2E_PORT ?? 8792)
-const baseURL = `http://127.0.0.1:${port}`
+// `localhost`, see scripts/e2e/serve-worker.mjs.
+const baseURL = `http://localhost:${port}`
 
 /** Written by the first-admin spec, reused by every spec that needs a signed-in admin. */
 export const adminStorageState = 'tests/e2e/.auth/admin.json'

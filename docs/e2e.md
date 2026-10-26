@@ -13,7 +13,7 @@ pnpm test:e2e
 
 1. builds the OpenNext bundle (`E2E_SKIP_BUILD=1` reuses an existing `.open-next`),
 2. wipes `.wrangler/e2e` and applies the Payload migrations to it,
-3. serves the Worker on `http://127.0.0.1:8792` (`E2E_PORT` changes the port).
+3. serves the Worker on `http://localhost:8792` (`E2E_PORT` changes the port).
 
 It needs no secrets and no Cloudflare account. It never touches `.wrangler/state`, the database `pnpm dev` uses. It refuses to start when the port is already in use, so a leftover server cannot answer for a new run.
 
