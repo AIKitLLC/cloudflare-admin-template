@@ -352,6 +352,7 @@ describe('row-scoped collection hooks', () => {
           'guardPublicUserCreation',
           'guardClientSecurityOwnerOperation',
           'guardAuthCredentialOperation',
+          'enforceUserPasswordPolicy',
           'guardScopeAssignmentOperation',
         ],
         beforeChange: [
