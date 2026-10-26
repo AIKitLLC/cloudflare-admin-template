@@ -35,7 +35,17 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 - Use relative URLs; `baseURL` is the Worker.
 - Assert behaviour: a status code, a message the visitor sees, a redirect. When a form posts to an API, wait for that response (`page.waitForResponse`) and check its status. A form submitted before React hydrates posts to the page itself and never reaches the API, so asserting only "still on the page" passes without testing anything.
 - Do not use Playwright's `request` fixture for calls that need the admin session. The admin cookie is `Secure` and that client does not send it over `http`. Call `fetch` from the page (`page.evaluate`) instead.
-- Specs that create users or trigger lockouts must use their own accounts, and a distinct `cf-connecting-ip` where throttling is involved, so they cannot lock out the shared admin.
+- Specs that create users or trigger lockouts must use their own accounts, and a distinct `cf-connecting-ip` where throttling is involved, so they cannot lock out the shared admin. `tests/e2e/helpers/sign-in.ts` has `uniqueIp()`, `uniqueEmail()`, `createUser()` (as the admin, over the API), `attemptSignIn()` and `signInThroughUi()`. A client-sent `cf-connecting-ip` overrides the one `wrangler dev` adds, and the browser helper sets it on the whole context. Generate them per attempt, not per file: CI retries a failing test, and a retry that reuses an address or email fails for the wrong reason.
+
+## What is covered
+
+| Flow | Spec |
+| --- | --- |
+| First-admin setup (screen, short password, mismatch, success, closed afterwards) | `first-admin.e2e.spec.ts` |
+| Sign-in and sign-out, wrong password, unknown email, per-account lockout, per-IP throttle, successful sign-ins not counted, garbage and tampered session, token revoked after sign-out | `sign-in.e2e.spec.ts` |
+| Admin page loads, homepage | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
+
+Not covered yet: password recovery, roles and permissions, admin CRUD and Media, row scope, the client API. An expired session token is not covered either: forging one needs Payload's derived signing key.
 
 ## Windows
 

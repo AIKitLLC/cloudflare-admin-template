@@ -9,6 +9,7 @@ import {
 } from './helpers/sign-in'
 
 const WRONG_CREDENTIALS = 'The email or password provided is incorrect.'
+const THROTTLED = 'Too many attempts. Try again later.'
 const PASSWORD = 'sign-in-password-123'
 
 // Every attempt that can fail uses its own IP and its own email, so a retry, a lockout or a
@@ -117,5 +118,72 @@ test.describe('Sign-in', () => {
       user: { email: string } | null
     }
     expect(after.user).toBeNull()
+  })
+
+  test('locks an account after five failed sign-ins', async ({ page, request }) => {
+    const user = await newUser(request, 'locked')
+    // Each attempt comes from its own address, so the per-IP limit cannot be the cause.
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      const failed = await attemptSignIn(request, {
+        email: user.email,
+        password: 'not-the-password-1',
+        ip: uniqueIp(),
+      })
+      expect(failed.status, `failed attempt ${attempt}`).toBe(401)
+      if (attempt < 5) expect(failed.message).toBe(WRONG_CREDENTIALS)
+    }
+
+    // Even the correct password is refused while the account is locked.
+    const locked = await attemptSignIn(request, { ...user, ip: uniqueIp() })
+    expect(locked.status).toBe(401)
+    expect(locked.message).toMatch(/locked due to having too many failed login attempts/i)
+
+    await signInThroughUi(page, { ...user, ip: uniqueIp() })
+    await expect(
+      page.getByText(/locked due to having too many failed login attempts/i).first(),
+    ).toBeVisible()
+    await expect(page).toHaveURL(/\/admin\/login/)
+    expect(await currentEmail(page)).toBeNull()
+  })
+
+  test('throttles one IP after ten failures and leaves other IPs alone', async ({
+    page,
+    request,
+  }) => {
+    const user = await newUser(request, 'throttled')
+    const blockedIp = uniqueIp()
+    const otherIp = uniqueIp()
+
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
+      const failed = await attemptSignIn(request, {
+        email: uniqueEmail('nobody'),
+        password: 'not-the-password-1',
+        ip: blockedIp,
+      })
+      expect(failed.status, `failed attempt ${attempt}`).toBe(401)
+    }
+
+    // The eleventh request from that address is refused even with the right password.
+    const blocked = await attemptSignIn(request, { ...user, ip: blockedIp })
+    expect(blocked.status).toBe(429)
+    expect(blocked.message).toBe(THROTTLED)
+
+    const elsewhere = await attemptSignIn(request, { ...user, ip: otherIp })
+    expect(elsewhere.status).toBe(200)
+
+    await signInThroughUi(page, { ...user, ip: blockedIp })
+    await expect(page.getByText(THROTTLED).first()).toBeVisible()
+    await expect(page).toHaveURL(/\/admin\/login/)
+    expect(await currentEmail(page)).toBeNull()
+  })
+
+  test('does not count successful sign-ins against the IP limit', async ({ request }) => {
+    const user = await newUser(request, 'repeat')
+    const ip = uniqueIp()
+
+    for (let attempt = 1; attempt <= 12; attempt += 1) {
+      const signedIn = await attemptSignIn(request, { ...user, ip })
+      expect(signedIn.status, `sign-in ${attempt}`).toBe(200)
+    }
   })
 })
