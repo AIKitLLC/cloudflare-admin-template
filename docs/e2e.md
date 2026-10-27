@@ -52,11 +52,11 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | Password length 12 to 256 on reset, create and update (by id and by query); a refused reset leaves the token valid and the old password working | `password-policy.e2e.spec.ts` |
 | Roles and the permission matrix: what a role grants over the API and on the admin screens (nav, forbidden URLs), grants taking effect at once, a create grant needing the field grants, only the owner changing `role`, the only owner not demotable | `roles-rbac.e2e.spec.ts` |
 | Users through the admin screens (create, duplicate and invalid email, edit, delete, a user deleting themselves, `users:delete` against a Super Admin) | `users-crud.e2e.spec.ts` |
-| Media through the admin screens (upload with `alt`, served file, missing `alt`, edit, delete and its file, refused HTML and scripted SVG, duplicate file name) | `media.e2e.spec.ts` |
+| Media through the admin screens (upload with `alt`, served file, missing `alt`, edit, delete and its file, refused HTML and scripted SVG, duplicate file name, the 5 MB upload limit: exactly 5 MB accepted, one byte more answered 413 with nothing stored) | `media.e2e.spec.ts` |
 | The audit trail (an entry per create, update and delete with actor and IP, redacted secrets, no entry for a refused write, append-only, the Audit Logs screen) | `audit-trail.e2e.spec.ts` |
-| Recovery of an interrupted first-admin setup: finishes setup for the one existing user (also when the retry has the wrong password or another email), never takes over a live claim, never promotes anyone when two users exist | `interrupted-first-admin.e2e.spec.ts` |
+| Recovery of an interrupted first-admin setup: finishes setup for the one existing user (also when the retry has the wrong password or another email), never takes over a live claim (and an early retry does not seal setup, so the form recovers it once the claim is stale), never promotes anyone when two users exist | `interrupted-first-admin.e2e.spec.ts` |
 | Admin page loads, homepage (signed out and in, its links, a user without roles, signed out again after sign-out) | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
-| Row scope (a scoped user sees and changes only records and users inside their organization, branch and data class: by list, id, screen, export and API; cannot widen their own scope; the scope tree refuses a used node and a cycle; a branch and its parent share an organization, for an admin too) | `row-scope.e2e.spec.ts` |
+| Row scope (a scoped user sees and changes only records and users inside their organization, branch and data class: by list, id, screen, export and API; cannot widen their own scope; the scope tree refuses a used node and a cycle; a repeated slug is a 400 field error, not a 500; a branch and its parent share an organization, for an admin too) | `row-scope.e2e.spec.ts` |
 | Client security: the owner-only settings API (same-origin writes, preview, save, wrong digest, stale revision, rollback, the audit list), the settings panel, and what `GET /api/client/v1/me` answers while disabled and to missing or invalid credentials once enabled | `client-security.e2e.spec.ts` |
 
 Not covered yet: a valid Firebase token (see Client security below). An expired session token is not covered either: forging one needs Payload's derived signing key.
@@ -104,6 +104,8 @@ The OpenNext build bundles `sharp`'s native binary on Windows and fails. Run the
 ## CI
 
 Job `e2e` in `.github/workflows/ci.yml` runs on every pull request and push to `main`, in parallel with `verify`. On failure it uploads the Playwright report, `test-results` (traces) and the Worker logs (`.wrangler/e2e-logs/`, a hidden folder, hence `include-hidden-files`).
+
+The Worker logs are redacted line by line before they reach the job log or `.wrangler/e2e-logs/` (`scripts/e2e/redact-log.mjs`): JWTs, `Authorization` and cookie values, password, hash, salt and token fields, tokens in URLs (reset links), the bound values of a failed query, long hex strings and the fixed E2E `PAYLOAD_SECRET`. A step after the suite (`scripts/e2e/check-log-secrets.mjs`) fails the job if any rule still matches a log, and deletes that log so the upload cannot publish it. The rules are masks for patterns, not a guarantee: a secret with a shape no rule knows would pass, so add a rule when a new one appears. The Playwright report and the traces in `test-results` are not redacted; they hold the requests the tests made, with the tokens of the throwaway local database.
 
 ### Timings and the decision (15 runs on 2026-10-26, 32 to 93 tests)
 
