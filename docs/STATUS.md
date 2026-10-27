@@ -56,7 +56,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | Pull request | Title | Issue | Base | State |
 | --- | --- | --- | --- | --- |
 | #80 | fix: scope slugs, cross-organization branch parents, self-delete audit, early setup retry, Media size limit | #68–#72 (refs #76) | `main` | Draft |
-| This change | feat: Nexus CRM as its own Worker behind a service binding (ADR + prototype) | #44 (refs) | `main` | Draft |
+| This change | feat: Nexus CRM as its own Worker behind a service binding | #44 (refs) | `main` | Draft |
 
 #11–#15, #18, and #19 were closed as superseded by #29. #20 (plugin split, base `integration/admin-stack`) was closed on 2026-10-23; that work is on hold.
 
@@ -102,7 +102,7 @@ Labels exist (`type:*`, `area:*`, `status:*`, `priority:*`). No milestones exist
 | #74 | Filter tokens and secrets from `worker.log` before CI uploads it | — | — |
 | #76 | Flaky integration test: first-admin setup recovery retry | `bug` | #80 adds diagnostics only |
 | #40 | Deploy-button inputs and isolated demo rollout | — | #41 (merged). Stays open until a demo deploy and sign-in check succeed and the demo URL is recorded. |
-| #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | This change: ADR 0001 and the contacts/deals prototype. Build phases wait for Tony's ADR approval. |
+| #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | This change: ADR 0001 (accepted 2026-10-26), organizations as workspaces, the app under `/nexus`, MCP at `/api/nexus/mcp`. Open: CI for the `nexus` project, cutover runbook. |
 
 Closed on 2026-10-17 as resolved by #29 (`0180b63`): #1 (RBAC and permission matrix), #2 (row-level scope), #3 (audit trail), and #9 (system parameters). Closed by #31: #34. Closed by #33: #35 and #36. Closed by #32: #37. Closed by #39: #38. Closed by #50: #47. Closed by #51: #45. Closed by #52: #46. Closed by #55: #54. Closed by #57: #53. #41 (merged) refs #40 but does not close it.
 
@@ -121,18 +121,20 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Refs #44 (spike phase). Does not close it.
+Refs #44. It does not close it: CI for the `nexus` E2E project and the `nexus-crm-prod` cutover runbook are still open. ADR 0001 (`docs/adr/0001-nexus-crm-service-binding.md`) was accepted on 2026-10-26 and describes each phase.
 
-- `docs/adr/0001-nexus-crm-service-binding.md`: Nexus CRM installs as its own Worker behind an optional `NEXUS` service binding. This is option (c) of #44, with a service binding as the adapter. Proposed; the build phases wait for Tony's approval.
-- `src/nexus` (new module) and `src/app/api/nexus/[...path]/route.ts`: `/api/nexus/v1/*` and `/api/nexus/health` are forwarded to the binding.
+- **Proxy** (`src/nexus`, `src/app/api/nexus/[...path]`, `src/app/nexus-services.ts`):
+  - `/api/nexus/v1/*`, `/health` and `/auth/me` (read-only) are forwarded to the optional `NEXUS` binding.
   - Payload authenticates the caller.
-  - The caller's Nexus role comes from the new permission keys `nexus:read`, `nexus:write` and `nexus:admin`. Full access maps to the Nexus owner.
-  - The request carries an HMAC-signed `x-nexus-identity` header, valid for 60 s, instead of the caller's cookies or token.
-  - Nexus's own sign-in is never reachable.
-  - The keys are registered only while the binding exists.
-- `wrangler.jsonc`: the binding stays commented. An install without Nexus is unchanged, and `/api/nexus/*` answers 404.
-- Nexus side: AIKitLLC/nexus-crm#114. It verifies the header when `NEXUS_BRIDGE_SECRET` is set.
-- E2E: an optional third Worker in `scripts/e2e/serve-worker.mjs` (`E2E_NEXUS_DIR`), project `nexus`, `tests/e2e/nexus-crm.e2e.spec.ts`. The 8 cases include a template user whose email already exists in Nexus, and an email change. Not in CI yet, because the Nexus repository is private.
+  - The keys `nexus:read`, `nexus:write` and `nexus:admin` map to Nexus roles; full access maps to owner.
+  - The request carries an HMAC-signed `x-nexus-identity` header, valid for 60 s, that names the user and the workspace.
+  - The keys and the sidebar link exist only while the binding does.
+- **Organizations as workspaces** (`src/nexus/workspaces.ts`): one workspace per organization, keyed by id and creation time. The user's organizations and their descendants are open to them; with no assignment they get the default workspace. `GET /api/nexus/workspaces` lists them, and the `nexus_org` cookie or `x-nexus-org` header picks one.
+- **App** (`src/app/nexus/[[...path]]`): the embedded Nexus SPA at `/nexus` with Nexus's CSP. It needs a session and a Nexus role, and redirects to the admin login otherwise.
+- **MCP** (`/api/nexus/mcp`): the template looks up the token's owner over the binding, checks their current grants and scope, and signs the call. Nexus refuses MCP tokens without that identity.
+- Nexus side: AIKitLLC/nexus-crm#114.
+- `wrangler.jsonc`: the binding stays commented.
+- E2E: Nexus runs as its own `wrangler dev` (`E2E_NEXUS_DIR`); project `nexus`, 16 cases. Not in CI yet, because the Nexus repository is private.
 
 ## Acronyms
 

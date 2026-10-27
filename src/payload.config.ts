@@ -150,6 +150,8 @@ export default buildConfig({
         '/client-security/admin/ClientSecurityNav#ClientSecurityNav',
         '/rbac/admin/PermissionMatrixNavLink#PermissionMatrixNavLink',
         '/jobs/admin/JobsNavLink#JobsNavLink',
+        // Renders nothing unless the NEXUS binding exists and the user has a Nexus role.
+        '/nexus/admin/NexusNavLink#NexusNavLink',
       ],
       views: {
         clientSecurity: {

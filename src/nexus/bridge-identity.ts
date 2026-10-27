@@ -12,6 +12,8 @@ export type NexusIdentity = {
   userId: string
   email: string
   role: NexusRole
+  /** `default` or `org_<id>_<createdAtMs>`; see workspaces.ts. */
+  workspace: { key: string; name: string }
   exp: number
 }
 
@@ -19,6 +21,15 @@ const encoder = new TextEncoder()
 
 export async function signNexusIdentity(identity: NexusIdentity, secret: string): Promise<string> {
   const body = `v1.${base64url(JSON.stringify(identity))}`
+  return `${body}.${await hmac(body, secret)}`
+}
+
+/** Proof for Nexus's template-only token lookup: `<exp>.<hex HMAC of "lookup:<tokenHash>:<exp>">`. */
+export async function signNexusLookup(tokenHash: string, exp: number, secret: string): Promise<string> {
+  return `${exp}.${await hmac(`lookup:${tokenHash}:${exp}`, secret)}`
+}
+
+async function hmac(value: string, secret: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw',
     encoder.encode(secret),
@@ -26,8 +37,8 @@ export async function signNexusIdentity(identity: NexusIdentity, secret: string)
     false,
     ['sign'],
   )
-  const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(body)))
-  return `${body}.${[...signature].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`
+  const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(value)))
+  return [...signature].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
 function base64url(value: string): string {
