@@ -53,7 +53,18 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      # The Azure Ubuntu mirror sometimes stalls on a package; apt then waits 120 s per attempt, which
+      # took this step from ~15 s to 6-13 minutes in 6 of 15 runs. A short timeout plus retries
+      # drops a stalled connection fast and asks again.
+      - name: Make apt give up on a stalled mirror quickly
+        run: |
+          {
+            echo 'Acquire::Retries "5";'
+            echo 'Acquire::http::Timeout "15";'
+            echo 'Acquire::https::Timeout "15";'
+          } | sudo tee /etc/apt/apt.conf.d/99-ci-timeouts
       - run: pnpm exec playwright install --with-deps chromium
+        timeout-minutes: 8
       - run: pnpm test:e2e
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

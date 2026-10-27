@@ -29,7 +29,9 @@ export default defineConfig({
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
-  retries: process.env.CI ? 2 : 0,
+  // One retry, for infrastructure noise only. Fifteen CI runs had no flaky test, so a test that needs
+  // the retry is a bug to fix (docs/e2e.md, "Flaky tests").
+  retries: process.env.CI ? 1 : 0,
   /* One shared database, so specs must not race each other. */
   workers: 1,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
