@@ -105,6 +105,8 @@ The OpenNext build bundles `sharp`'s native binary on Windows and fails. Run the
 
 Job `e2e` in `.github/workflows/ci.yml` runs on every pull request and push to `main`, in parallel with `verify`. On failure it uploads the Playwright report, `test-results` (traces) and the Worker logs (`.wrangler/e2e-logs/`, a hidden folder, hence `include-hidden-files`).
 
+The Worker logs are redacted line by line before they reach the job log or `.wrangler/e2e-logs/` (`scripts/e2e/redact-log.mjs`): JWTs, `Authorization` and cookie values, password, hash, salt and token fields, tokens in URLs (reset links), the bound values of a failed query, long hex strings and the fixed E2E `PAYLOAD_SECRET`. A step after the suite (`scripts/e2e/check-log-secrets.mjs`) fails the job if any rule still matches a log, and deletes that log so the upload cannot publish it. The rules are masks for patterns, not a guarantee: a secret with a shape no rule knows would pass, so add a rule when a new one appears. The Playwright report and the traces in `test-results` are not redacted; they hold the requests the tests made, with the tokens of the throwaway local database.
+
 ### Timings and the decision (15 runs on 2026-10-26, 32 to 93 tests)
 
 | | Median | Range |
