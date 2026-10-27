@@ -21,6 +21,7 @@ import { resolvePublicServerURL } from './config/public-server-url'
 import { testRuntimeStorageDir, testRuntimeWranglerConfig } from './config/test-runtime'
 import { Jobs, retryJobMutation } from './jobs'
 import { migrations } from './migrations'
+import { registerNexusPermissions } from './nexus'
 import {
   Permissions,
   RolePermissions,
@@ -115,6 +116,8 @@ const cloudflare = isTest
     : await getCloudflareContext({ async: true })
 
 ensureRowScopeRegistered()
+// Nexus CRM permissions exist only while its Worker is bound (docs/adr/0001-nexus-crm-service-binding.md).
+if ((cloudflare.env as { NEXUS?: unknown }).NEXUS) registerNexusPermissions()
 
 const collections: CollectionConfig[] = [
   Users,

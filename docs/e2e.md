@@ -33,6 +33,16 @@ One shared database, so `workers: 1`.
 
 `serve-worker.mjs` also serves a second instance on port + 1 (`http://localhost:8793`, state in `.wrangler/e2e-interrupted`, log in `.wrangler/e2e-logs/worker-interrupted.log`), built from the same `.open-next` bundle and started first, so the main port answering means both are up. `E2E_EXTRA_INSTANCE=0` skips it. The interrupted spec builds its state from a real first-register and then two statements on that database (`helpers/interrupted-setup.ts`: clear `completed_at` and set a dead `claim_token` with a chosen `claimed_at`, and delete the user's role link); the 2-minute claim age is backdated, never waited out. A refused web request (a live claim, or two users) still marks setup completed, so after an early retry only `pnpm admin:create` can finish it; the spec asserts that, which also proves the request reached the setup code. Recovery runs before credentials are checked, so a retry with the wrong password or another email still finishes setup and then answers 401.
 
+## Nexus CRM (optional third Worker)
+
+With `E2E_NEXUS_DIR` set to a nexus-crm checkout (its `npm ci` done), `serve-worker.mjs` also serves the template on port + 2 (`http://localhost:8794`, state in `.wrangler/e2e-nexus`, log `worker-nexus.log`) with a `NEXUS` service binding to a local Nexus Worker, both in one `wrangler dev -c <template> -c <nexus>`. Both configs are written into the state directory: the template one is `wrangler.jsonc` plus the binding and a fixed test `NEXUS_BRIDGE_SECRET`, the Nexus one has no account and no remote ids, so the run cannot reach `nexus-crm-prod`. Nexus's migrations are applied to its local D1 first. Project `nexus` (`nexus-crm.e2e.spec.ts`) creates its own first admin there and calls only the template's `/api/nexus/*`.
+
+```bash
+E2E_NEXUS_DIR=../NexusCRM pnpm test:e2e
+```
+
+CI does not run it yet: the Nexus repository is private, so the job needs a read token or a published Nexus build (ADR 0001, follow-ups).
+
 A spec that needs to be signed out uses `test.use({ storageState: { cookies: [], origins: [] } })`.
 
 ## Writing a spec
@@ -57,6 +67,7 @@ A spec that needs to be signed out uses `test.use({ storageState: { cookies: [],
 | Recovery of an interrupted first-admin setup: finishes setup for the one existing user (also when the retry has the wrong password or another email), never takes over a live claim, never promotes anyone when two users exist | `interrupted-first-admin.e2e.spec.ts` |
 | Admin page loads, homepage (signed out and in, its links, a user without roles, signed out again after sign-out) | `admin.e2e.spec.ts`, `frontend.e2e.spec.ts` |
 | Row scope (a scoped user sees and changes only records and users inside their organization, branch and data class: by list, id, screen, export and API; cannot widen their own scope; the scope tree refuses a used node and a cycle) | `row-scope.e2e.spec.ts` |
+| Nexus CRM through the service binding (only with `E2E_NEXUS_DIR`): the Nexus keys in the catalog, contacts and deals created and listed as the Nexus owner, `nexus:write` / `nexus:read` / no key, a revoked grant at once, only CRM API paths forwarded, cross-origin writes refused, a forged identity header ignored, no Nexus cookie returned | `nexus-crm.e2e.spec.ts` |
 | Client security: the owner-only settings API (same-origin writes, preview, save, wrong digest, stale revision, rollback, the audit list), the settings panel, and what `GET /api/client/v1/me` answers while disabled and to missing or invalid credentials once enabled | `client-security.e2e.spec.ts` |
 
 Not covered yet: a valid Firebase token (see Client security below). An expired session token is not covered either: forging one needs Payload's derived signing key.

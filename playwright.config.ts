@@ -8,6 +8,8 @@ const port = Number(process.env.E2E_PORT ?? 8792)
 const baseURL = `http://localhost:${port}`
 /** The second Worker, with its own database, for the interrupted first-admin spec. */
 const interruptedURL = `http://localhost:${port + 1}`
+/** The template Worker with Nexus CRM bound to it, only when E2E_NEXUS_DIR is set. */
+const nexusURL = `http://localhost:${port + 2}`
 
 // The Worker listens on 127.0.0.1 only, while `localhost` can resolve to `::1` first. Pin both
 // clients to IPv4 so every connection goes straight to the server instead of failing on `::1`
@@ -64,6 +66,21 @@ export default defineConfig({
             },
           },
         ]),
+    ...(process.env.E2E_NEXUS_DIR
+      ? [
+          {
+            // Its own template Worker and database, with the Nexus Worker behind `NEXUS`.
+            name: 'nexus',
+            testMatch: /nexus-crm\.e2e\.spec\.ts/,
+            use: {
+              ...devices['Desktop Chrome'],
+              channel: 'chromium' as const,
+              launchOptions: ipv4Only,
+              baseURL: nexusURL,
+            },
+          },
+        ]
+      : []),
     {
       // Needs the empty `users` table, so it runs first and creates the admin the rest reuse.
       name: 'first-admin',
@@ -72,7 +89,7 @@ export default defineConfig({
     },
     {
       name: 'chromium',
-      testIgnore: /first-admin\.e2e\.spec\.ts/,
+      testIgnore: /first-admin\.e2e\.spec\.ts|nexus-crm\.e2e\.spec\.ts/,
       dependencies: ['first-admin'],
       use: {
         ...devices['Desktop Chrome'],

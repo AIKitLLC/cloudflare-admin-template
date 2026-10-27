@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-10-25.
+Last updated: 2026-10-26.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for review.
 
@@ -46,7 +46,8 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 | Pull request | Title | Issue | Base | State |
 | --- | --- | --- | --- | --- |
-| This change | fix: remove the user a failed first-admin setup committed | #53 | `main` | Draft |
+| #80 | fix: scope slugs, cross-organization branch parents, self-delete audit, early setup retry, Media size limit | #68–#72 | `main` | Draft |
+| This change | feat: Nexus CRM as its own Worker behind a service binding (ADR + prototype) | #44 | `main` | Draft |
 
 #11–#15, #18, and #19 were closed as superseded by #29. #20 (plugin split, base `integration/admin-stack`) was closed on 2026-10-23; that work is on hold.
 
@@ -86,7 +87,7 @@ Labels exist (`type:*`, `area:*`, `status:*`, `priority:*`). No milestones exist
 | #49 | Mandatory CI/CD deploy; no deploys from a local machine | `priority:p0` | — |
 | #53 | Flaky `admin:create still recovers`: a failed CLI run left a user behind | `type:bug`, `area:tests`, `status:ready`, `priority:p2` | This change |
 | #40 | Deploy-button inputs and isolated demo rollout | — | #41 (merged). Stays open until a demo deploy and sign-in check succeed and the demo URL is recorded. |
-| #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | — |
+| #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | This change: ADR 0001 and the contacts/deals prototype. Build phases wait for Tony's ADR approval. |
 
 Closed on 2026-10-17 as resolved by #29 (`0180b63`): #1 (RBAC and permission matrix), #2 (row-level scope), #3 (audit trail), and #9 (system parameters). Closed by #31: #34. Closed by #33: #35 and #36. Closed by #32: #37. Closed by #39: #38. Closed by #50: #47. Closed by #51: #45. Closed by #52: #46. Closed by #55: #54. #41 (merged) refs #40 but does not close it.
 
@@ -105,13 +106,13 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Fixes #53. D1 runs without transactions, so `payload.create` can reject after the `users` row was committed (a `users` hook failed). `createFirstAdminAccount` (`src/auth/first-admin-setup.ts`) used to skip the cleanup then and release the claim, leaving one user, no claim, and setup not completed: retries got 409 and the #50 recovery did not match. Now:
+Refs #44 (spike phase). Does not close it.
 
-- The failed attempt looks up the row it committed under its own live claim (`ownUserId`: exactly one user, with its email) and removes it by id. A guard refusal or a taken-over claim still removes nothing.
-- If the removal fails, the claim is kept, so the next attempt recovers the account once the claim is stale. `pnpm admin:create` now recovers this way after setup has completed too; the web flow stays closed.
-- `tests/int/first-admin-setup-http.int.spec.ts` keeps 2000 characters of each CLI run's output in the failure detail.
-
-Unit tests cover both paths. `docs/admin-access.md` describes the new cleanup and recovery.
+- `docs/adr/0001-nexus-crm-service-binding.md`: Nexus CRM installs as its own Worker behind an optional `NEXUS` service binding (option (c) of #44, with a service binding as the adapter). Proposed; the build phases wait for Tony's approval.
+- `src/nexus` (new module) and `src/app/api/nexus/[...path]/route.ts`: `/api/nexus/v1/*` and `/api/nexus/health` are forwarded to the binding. The caller is authenticated by Payload, mapped to a Nexus role from the new permission keys `nexus:read`, `nexus:write`, `nexus:admin` (full access = Nexus owner), and forwarded with an HMAC-signed `x-nexus-identity` header (60 s) instead of its cookies or token. Nexus's own sign-in is never reachable. The keys are registered only while the binding exists.
+- `wrangler.jsonc`: the binding stays commented. Nothing changes for an install without Nexus: `/api/nexus/*` answers 404.
+- Nexus side: branch `feat/template-service-binding-bridge` in `tuannx/nexus-crm` (verifies the header when `NEXUS_BRIDGE_SECRET` is set).
+- E2E: optional third Worker in `scripts/e2e/serve-worker.mjs` (`E2E_NEXUS_DIR`), project `nexus`, `tests/e2e/nexus-crm.e2e.spec.ts`. Not in CI yet (the Nexus repository is private).
 
 ## Acronyms
 

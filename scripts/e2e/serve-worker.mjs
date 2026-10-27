@@ -13,11 +13,15 @@
 // Needs no secrets and no Cloudflare account. Run `pnpm run build:worker:full` first, or
 // let Playwright's webServer do it (E2E_SKIP_BUILD=1 reuses an existing .open-next).
 import { spawn, spawnSync } from 'node:child_process'
-import { createWriteStream, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { connect } from 'node:net'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+
+import { createRequire } from 'node:module'
 
 import { buildCloudflareWorker } from '../worker-build/build-cloudflare-worker.mjs'
+
+const require = createRequire(import.meta.url)
 
 const port = Number(process.env.E2E_PORT ?? 8792)
 const secret = 'e2e-worker-secret'
@@ -33,8 +37,23 @@ const instances = [
           log: 'worker-interrupted.log',
         },
       ]),
+  // Nexus CRM behind the `NEXUS` service binding (docs/adr/0001-nexus-crm-service-binding.md), only
+  // when E2E_NEXUS_DIR points at a nexus-crm checkout with its dependencies installed.
+  ...(process.env.E2E_NEXUS_DIR
+    ? [
+        {
+          name: 'nexus',
+          port: port + 2,
+          stateDir: join(process.cwd(), '.wrangler', 'e2e-nexus'),
+          log: 'worker-nexus.log',
+          nexusDir: resolve(process.env.E2E_NEXUS_DIR),
+        },
+      ]
+    : []),
   { name: 'main', port, stateDir: join(process.cwd(), '.wrangler', 'e2e'), log: 'worker.log' },
 ]
+/** Shared by the two Workers of the nexus instance; a fixed test value, like `secret` above. */
+const nexusBridgeSecret = 'e2e-nexus-bridge-secret-0123456789abcdef'
 
 const baseEnv = {
   ...process.env,
@@ -92,7 +111,7 @@ for (const instance of instances) {
 }
 
 /** Wipes and migrates the instance's state, then runs `wrangler dev` on it. */
-async function start({ name, port: instancePort, stateDir, log }, waitUntilReady) {
+async function start({ name, port: instancePort, stateDir, log, nexusDir }, waitUntilReady) {
   // `localhost`, not `127.0.0.1`: the Worker sees its own origin as `http://localhost:<port>` (Next
   // builds `request.url` from it), and the client security settings API only accepts a write whose
   // `Origin` equals that. A browser on `127.0.0.1` would be refused every time.
@@ -140,6 +159,7 @@ async function start({ name, port: instancePort, stateDir, log }, waitUntilReady
   }
   console.log(`e2e: migrated the local D1 (${name})`)
 
+  const configArgs = nexusDir ? nexusConfigArgs(stateDir, nexusDir, env) : []
   const workerLog = createWriteStream(join(logDir, log))
   const worker = spawn(
     'pnpm',
@@ -147,6 +167,7 @@ async function start({ name, port: instancePort, stateDir, log }, waitUntilReady
       'exec',
       'wrangler',
       'dev',
+      ...configArgs,
       '--local',
       '--ip',
       'localhost',
@@ -185,6 +206,73 @@ async function start({ name, port: instancePort, stateDir, log }, waitUntilReady
   worker.on('close', (code) => workerLog.end(() => process.exit(code ?? 0)))
 
   if (waitUntilReady) await untilAnswering(`${origin}/api/users/me`, worker)
+}
+
+/**
+ * `-c` arguments for the template Worker with a `NEXUS` binding plus the Nexus Worker, both on
+ * local D1/R2/Queues under `stateDir`. The template config is wrangler.jsonc with the binding and
+ * the bridge secret added; the Nexus one is written here, with no account and no remote ids, so it
+ * cannot reach nexus-crm-prod. Nexus's migrations are applied to its local D1 first.
+ */
+function nexusConfigArgs(stateDir, nexusDir, env) {
+  const ts = require('typescript')
+  const root = process.cwd()
+  const template = ts.parseConfigFileTextToJson('wrangler.jsonc', readFileSync('wrangler.jsonc', 'utf8')).config
+  template.main = join(root, template.main)
+  template.assets.directory = join(root, template.assets.directory)
+  template.d1_databases = template.d1_databases.map(({ remote: _remote, ...database }) => database)
+  template.services = [{ binding: 'NEXUS', service: 'nexus-crm-e2e' }]
+  template.vars = { ...template.vars, NEXUS_BRIDGE_SECRET: nexusBridgeSecret }
+  delete template.$schema
+  const templateConfig = join(stateDir, 'wrangler.template.json')
+  writeFileSync(templateConfig, JSON.stringify(template))
+
+  const nexusConfig = join(stateDir, 'wrangler.nexus.json')
+  writeFileSync(
+    nexusConfig,
+    JSON.stringify({
+      name: 'nexus-crm-e2e',
+      main: join(nexusDir, 'src/server.ts'),
+      compatibility_date: '2026-07-18',
+      compatibility_flags: ['nodejs_compat'],
+      workers_dev: false,
+      vars: {
+        APP_NAME: 'Nexus CRM (e2e)',
+        APP_ENV: 'development',
+        OWNER_EMAIL: 'nexus-owner@example.test',
+        // Not a usable password: nobody signs in to Nexus directly in this suite.
+        OWNER_PASSWORD_HASH: '0'.repeat(64),
+        SESSION_SECRET: 'e2e-nexus-session-secret',
+        DEFAULT_WORKSPACE_SLUG: 'e2e-crm',
+        DELIVERY_MODE: 'disabled',
+        NEXUS_BRIDGE_SECRET: nexusBridgeSecret,
+      },
+      d1_databases: [
+        {
+          binding: 'DB',
+          database_name: 'nexus-crm-e2e',
+          database_id: 'nexus-crm-e2e',
+          migrations_dir: join(nexusDir, 'migrations'),
+        },
+      ],
+      r2_buckets: [{ binding: 'FILES', bucket_name: 'nexus-crm-e2e-files' }],
+      queues: {
+        producers: [{ binding: 'EVENTS', queue: 'nexus-crm-e2e-events' }],
+        consumers: [{ queue: 'nexus-crm-e2e-events', max_batch_size: 10, max_batch_timeout: 1 }],
+      },
+    }),
+  )
+  const migrate = spawnSync(
+    'pnpm',
+    ['exec', 'wrangler', 'd1', 'migrations', 'apply', 'nexus-crm-e2e', '--local', '--persist-to', stateDir, '-c', nexusConfig],
+    { cwd: root, env: { ...env, CI: 'true' }, encoding: 'utf8', shell: process.platform === 'win32', timeout: 180_000 },
+  )
+  if (migrate.status !== 0) {
+    console.error(`${migrate.stdout ?? ''}\n${migrate.stderr ?? ''}`.slice(-4000))
+    process.exit(migrate.status ?? 1)
+  }
+  console.log('e2e: migrated the local Nexus D1')
+  return ['-c', templateConfig, '-c', nexusConfig]
 }
 
 /** Resolves once the URL answers with anything, so the next instance (and Playwright) start after it. */
