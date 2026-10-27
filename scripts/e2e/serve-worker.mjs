@@ -15,11 +15,12 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { connect } from 'node:net'
-import { join, resolve } from 'node:path'
-
 import { createRequire } from 'node:module'
+import { join, resolve } from 'node:path'
+import { createInterface } from 'node:readline'
 
 import { buildCloudflareWorker } from '../worker-build/build-cloudflare-worker.mjs'
+import { redact } from './redact-log.mjs'
 
 const require = createRequire(import.meta.url)
 
@@ -197,11 +198,15 @@ async function start({ name, port: instancePort, stateDir, log, nexusDir }, wait
   )
   workers.push(worker)
   // Everything the Worker prints is kept in `.wrangler/e2e-logs/<log>` as well, outside the state
-  // directory (which is wiped) and outside `test-results` (which Playwright empties). CI uploads it.
-  worker.stdout.pipe(process.stdout)
-  worker.stderr.pipe(process.stderr)
-  worker.stdout.pipe(workerLog, { end: false })
-  worker.stderr.pipe(workerLog, { end: false })
+  // directory (which is wiped) and outside `test-results` (which Playwright empties). CI uploads it,
+  // and the job log is public too, so each line is redacted (redact-log.mjs) before either copy.
+  for (const stream of [worker.stdout, worker.stderr]) {
+    createInterface({ input: stream }).on('line', (line) => {
+      const clean = redact(line) + '\n'
+      process.stdout.write(clean)
+      workerLog.write(clean)
+    })
+  }
   // `close`, not `exit`: it fires after the child's output has been read, so a crash message is kept.
   worker.on('close', (code) => workerLog.end(() => process.exit(code ?? 0)))
 

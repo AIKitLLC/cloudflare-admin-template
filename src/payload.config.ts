@@ -16,7 +16,14 @@ import {
   rbacCoveragePlugin,
 } from './access'
 import { AuditLogs, withAuditTrail } from './audit'
-import { ClientSecurityCollections, LoginThrottle, Media, SetupState, Users } from './collections'
+import {
+  ClientSecurityCollections,
+  LoginThrottle,
+  Media,
+  MEDIA_MAX_BYTES,
+  SetupState,
+  Users,
+} from './collections'
 import { resolvePublicServerURL } from './config/public-server-url'
 import { testRuntimeStorageDir, testRuntimeWranglerConfig } from './config/test-runtime'
 import { Jobs, retryJobMutation } from './jobs'
@@ -181,6 +188,14 @@ export default buildConfig({
   endpoints: [matrixEndpoint, grantEndpoint],
   graphQL: {
     mutations: retryJobMutation,
+  },
+  // The parser stops reading at the limit and answers 413. Without `abortOnLimit` it would cut the
+  // file short and store the part it read. Busboy reports the limit as soon as a file reaches
+  // `fileSize` bytes, so one more byte keeps a file of exactly MEDIA_MAX_BYTES allowed.
+  upload: {
+    limits: { fileSize: MEDIA_MAX_BYTES + 1 },
+    abortOnLimit: true,
+    responseOnLimit: `A file can be at most ${MEDIA_MAX_BYTES / 1024 / 1024} MB.`,
   },
   serverURL,
   cors: allowedOrigins,

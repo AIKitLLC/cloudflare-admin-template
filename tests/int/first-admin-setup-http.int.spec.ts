@@ -247,7 +247,21 @@ describe('first-run admin setup over HTTP', () => {
     // failed run removes its user, so a plain retry then succeeds.
     expect(succeeded, detail).toBeLessThanOrEqual(1)
     expect(await count('SELECT count(*) AS n FROM users'), detail).toBe(succeeded)
-    if (succeeded === 0) expect(created(await adminCreate('cli-retry@example.com'))).toBe(true)
+    if (succeeded === 0) {
+      // #76: this retry failed once on CI, with nothing in the message to say why. Its own output and
+      // the setup row now go in the failure.
+      const retry = await adminCreate('cli-retry@example.com')
+      const state = await db()
+        .prepare('SELECT claim_token, claimed_at, completed_at FROM setup_state')
+        .bind()
+        .first()
+      expect(
+        created(retry),
+        `${detail}
+--- retry ${retry.code}: ${retry.text.slice(-2000)}
+--- setup_state: ${JSON.stringify(state)}`,
+      ).toBe(true)
+    }
     expect(await count('SELECT count(*) AS n FROM users')).toBe(1)
     const admins = await superAdminUsers()
     expect(admins.length).toBe(1)

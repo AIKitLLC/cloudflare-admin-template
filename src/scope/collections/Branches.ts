@@ -4,6 +4,7 @@ import { withRbac } from '../../access'
 import { withRowScope } from '../hooks/with-row-scope'
 import { BRANCHES_SLUG, BRANCH_ORGANIZATION_FIELD, ORGANIZATIONS_SLUG } from '../constants'
 import { scopePathField } from '../path/scope-path-field'
+import { uniqueSlug } from '../validation/unique-slug'
 
 export const Branches: CollectionConfig = withRowScope(
   withRbac(
@@ -32,6 +33,7 @@ export const Branches: CollectionConfig = withRowScope(
           required: true,
           unique: true,
           index: true,
+          validate: uniqueSlug(BRANCHES_SLUG, 'A branch'),
         },
         {
           name: BRANCH_ORGANIZATION_FIELD,

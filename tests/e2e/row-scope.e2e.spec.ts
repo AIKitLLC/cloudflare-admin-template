@@ -412,4 +412,89 @@ test.describe('Screens, export, users and the scope tree', () => {
     expect(underChild).toMatchObject({ status: 400, message: cycle })
     expect(underItself).toMatchObject({ status: 400, message: cycle })
   })
+
+  test('a repeated organization, branch or data class slug is a field error, not a 500', async ({
+    request,
+  }) => {
+    const tree = await createScopeTree(request)
+    const token = adminToken()
+    const post = (collection: string, data: Record<string, unknown>) =>
+      api(request, { method: 'POST', path: `/api/${collection}`, token, data })
+    const patch = (collection: string, id: number, data: Record<string, unknown>) =>
+      api(request, { method: 'PATCH', path: `/api/${collection}/${id}`, token, data })
+    const slugError = (result: Awaited<ReturnType<typeof post>>) =>
+      result.body.errors[0].data.errors.find((error: { path: string }) => error.path === 'slug')
+        ?.message
+
+    const cases = [
+      { collection: 'organizations', subject: 'An organization', extra: {} },
+      { collection: 'branches', subject: 'A branch', extra: { organization: tree.orgA } },
+      { collection: 'data-classes', subject: 'A data class', extra: {} },
+    ]
+    for (const { collection, subject, extra } of cases) {
+      const slug = uniqueSlug('dup')
+      const first = await post(collection, { name: `First ${tree.token}`, slug, ...extra })
+      expect(first.status, collection).toBe(201)
+
+      const second = await post(collection, { name: `Second ${tree.token}`, slug, ...extra })
+      expect(second.status, collection).toBe(400)
+      expect(slugError(second), collection).toBe(`${subject} with this slug already exists.`)
+
+      // Saving a row under its own slug is not a clash; taking another row's slug is.
+      const other = await post(collection, {
+        name: `Other ${tree.token}`,
+        slug: uniqueSlug('other'),
+        ...extra,
+      })
+      expect(other.status, collection).toBe(201)
+      expect((await patch(collection, other.body.doc.id, { name: 'Renamed' })).status).toBe(200)
+      const taken = await patch(collection, other.body.doc.id, { slug })
+      expect(taken.status, collection).toBe(400)
+      expect(slugError(taken), collection).toBe(`${subject} with this slug already exists.`)
+    }
+  })
+
+  test('a branch and its parent share an organization, for an admin too', async ({ request }) => {
+    const tree = await createScopeTree(request)
+    const token = adminToken()
+    const sameOrganization = 'A branch must stay in its organization.'
+    const post = (data: Record<string, unknown>) =>
+      api(request, { method: 'POST', path: '/api/branches', token, data })
+    const patch = (id: number, data: Record<string, unknown>) =>
+      api(request, { method: 'PATCH', path: `/api/branches/${id}`, token, data })
+    const branch = (organization: number, parent?: number) => ({
+      name: `Branch ${tree.token}`,
+      slug: uniqueSlug('br'),
+      organization,
+      ...(parent === undefined ? {} : { parent }),
+    })
+
+    // A parent from another organization is refused on create and on update.
+    expect(await post(branch(tree.orgA, tree.brB))).toMatchObject({
+      status: 400,
+      message: sameOrganization,
+    })
+    const child = await post(branch(tree.orgA, tree.brA))
+    expect(child.status).toBe(201)
+    const childId = child.body.doc.id as number
+    const loose = await post(branch(tree.orgA))
+    expect(loose.status).toBe(201)
+    expect(await patch(loose.body.doc.id, { parent: tree.brB })).toMatchObject({
+      status: 400,
+      message: sameOrganization,
+    })
+    expect((await patch(loose.body.doc.id, { parent: tree.brA })).status).toBe(200)
+
+    // Moving a branch to another organization may not leave it under, or over, the old one.
+    expect(await patch(childId, { organization: tree.orgB })).toMatchObject({
+      status: 400,
+      message: sameOrganization,
+    })
+    expect(await patch(tree.brA, { organization: tree.orgB })).toMatchObject({
+      status: 400,
+      message: sameOrganization,
+    })
+    // Clearing the parent first makes the move legal.
+    expect((await patch(childId, { parent: null, organization: tree.orgB })).status).toBe(200)
+  })
 })

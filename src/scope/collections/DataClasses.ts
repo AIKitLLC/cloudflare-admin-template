@@ -4,6 +4,7 @@ import { withRbac } from '../../access'
 import { withRowScope } from '../hooks/with-row-scope'
 import { DATA_CLASSES_SLUG } from '../constants'
 import { scopePathField } from '../path/scope-path-field'
+import { uniqueSlug } from '../validation/unique-slug'
 
 export const DataClasses: CollectionConfig = withRowScope(
   withRbac(
@@ -32,6 +33,7 @@ export const DataClasses: CollectionConfig = withRowScope(
           required: true,
           unique: true,
           index: true,
+          validate: uniqueSlug(DATA_CLASSES_SLUG, 'A data class'),
         },
         {
           name: 'parent',

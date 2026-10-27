@@ -40,6 +40,17 @@ export const guardScopeNode: CollectionBeforeChangeHook = async ({
   }
 
   if (skipsPrivilegeChecks(req.context) || !req.user || (await userGrantsFullAccess(req))) {
+    // The scope checks below are about who may write; "a branch and its parent share an
+    // organization" is about the data, so it holds for every actor.
+    if (binding.dimension === 'branch') {
+      assertBranchOrganizations({
+        catalog: await loadScopeCatalog(req),
+        nodeId,
+        original,
+        parentId: nextParentId,
+        record,
+      })
+    }
     return data
   }
 
@@ -152,6 +163,33 @@ async function assertBranchWrite(args: {
   const parentOrganizationId = args.catalog.branches.get(args.nextParentId)?.organizationId
   if (!organizationId || !parentOrganizationId || organizationId !== parentOrganizationId) {
     throw new APIError(SCOPE_BRANCH_ORG_ERROR, 400)
+  }
+}
+
+/** The branch's organization after this write, and the organizations of everything it links to. */
+function assertBranchOrganizations(args: {
+  catalog: ScopeCatalog
+  nodeId: string | undefined
+  original: Record<string, unknown> | undefined
+  parentId: string | undefined
+  record: Record<string, unknown>
+}): void {
+  const organizationId = relationId(
+    args.record.organization === undefined ? args.original?.organization : args.record.organization,
+  )
+  if (args.parentId) {
+    const parentOrganizationId = args.catalog.branches.get(args.parentId)?.organizationId
+    if (!organizationId || !parentOrganizationId || organizationId !== parentOrganizationId) {
+      throw new APIError(SCOPE_BRANCH_ORG_ERROR, 400)
+    }
+  }
+  // Moving a branch to another organization must not strand its children in the old one.
+  if (args.nodeId && organizationId !== relationId(args.original?.organization)) {
+    for (const branch of args.catalog.branches.values()) {
+      if (branch.parentId === args.nodeId && branch.organizationId !== organizationId) {
+        throw new APIError(SCOPE_BRANCH_ORG_ERROR, 400)
+      }
+    }
   }
 }
 
