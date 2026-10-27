@@ -104,3 +104,21 @@ The OpenNext build bundles `sharp`'s native binary on Windows and fails. Run the
 ## CI
 
 Job `e2e` in `.github/workflows/ci.yml` runs on every pull request and push to `main`, in parallel with `verify`. On failure it uploads the Playwright report, `test-results` (traces) and the Worker logs (`.wrangler/e2e-logs/`, a hidden folder, hence `include-hidden-files`).
+
+### Timings and the decision (15 runs on 2026-10-26, 32 to 93 tests)
+
+| | Median | Range |
+|---|---|---|
+| `verify` job | 12 min | 9 to 13 min |
+| `e2e` job | 3.8 min | 2.7 to 16 min |
+| `pnpm test:e2e` step (build included) | 2.7 min | 2.1 to 3.9 min |
+| OpenNext build inside it | about 65 s | 65 to 100 s |
+
+The suite is not what varies: six runs took 10 to 16 minutes because `playwright install --with-deps` waited on a stalled Ubuntu mirror (368 to 786 s against about 15 s). So:
+
+- **Every pull request runs the full suite.** The step takes under 4 minutes and `e2e` runs in parallel with `verify`, so no smoke subset is needed. The `apt` timeouts and the 8-minute step limit in `ci.yml` bound the mirror stalls.
+- **No `.next/cache` cache.** The build is about a minute, so a cache could save less than the install stalls cost, and a stale build cache would be a new way to test the wrong code.
+
+### Flaky tests
+
+None of the 15 runs had a flaky or failed test (`N flaky` never appeared in the summary), so CI retries once, for infrastructure noise, and a test that needs the retry is a bug. Playwright prints the retried test as `flaky`; treat that as a failure to fix, not a pass. Turn on `failOnFlakyTests` in `playwright.config.ts` after ten consecutive runs of the current suite with none: the suite has 93 tests now, so that count starts at the first run after this change.
