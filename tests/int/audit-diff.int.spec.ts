@@ -465,6 +465,55 @@ describe('partial audit batches', () => {
   })
 })
 
+describe('an entry whose operator row was just deleted', () => {
+  const withActor = (): AuditLogEntry => {
+    const base = wideEntry()
+    return {
+      ...base,
+      action: 'DELETE',
+      changes: [],
+      metadata: { ...base.metadata, actorRelationshipId: 7, actorId: '7' },
+    }
+  }
+
+  it('is written again without the relationship when the driver error is on the cause', async () => {
+    const created: { actor?: number | null; operatorId?: string | null }[] = []
+    const writer = new PayloadAuditLogWriter({
+      create: async (args: { data: { actor?: number | null; operatorId?: string | null } }) => {
+        created.push({ actor: args.data.actor, operatorId: args.data.operatorId })
+        if (args.data.actor != null) {
+          // What drizzle throws: the message has the SQL, the driver's text is on `cause`.
+          throw new Error('Failed query: insert into "audit_logs" ...', {
+            cause: new Error('D1_ERROR: FOREIGN KEY constraint failed: SQLITE_CONSTRAINT'),
+          })
+        }
+        return { id: 3 }
+      },
+      logger: { error() {} },
+    } as never)
+
+    await writer.write(withActor())
+    expect(created).toEqual([
+      { actor: 7, operatorId: '7' },
+      { actor: null, operatorId: '7' },
+    ])
+  })
+
+  it('does not retry an error that is not a foreign key failure', async () => {
+    let calls = 0
+    const writer = new PayloadAuditLogWriter({
+      create: async () => {
+        calls += 1
+        throw new Error('Failed query: ...', { cause: new Error('D1_ERROR: database is locked') })
+      },
+      logger: { error() {} },
+    } as never)
+
+    await expect(writer.write(withActor())).rejects.toThrow(/Failed query/)
+    expect(calls).toBe(1)
+  })
+})
+
 function wideEntry(): AuditLogEntry {
   const changes = Array.from({ length: CHANGE_ROW_INSERT_CHUNK + 1 }, (_, index) => ({
     path: `field${index}`,
