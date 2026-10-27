@@ -90,19 +90,37 @@ test.describe('Interrupted first-admin setup', () => {
     })
   }
 
-  test('does not take over a live claim', async ({ request, baseURL }) => {
+  test('does not take over a live claim, and an early retry does not block recovery', async ({
+    request,
+    baseURL,
+  }) => {
     await interrupted(LIVE_CLAIM_MS)
 
-    const attempt = await register(request, interruptedAdmin, baseURL!)
+    const early = await register(request, interruptedAdmin, baseURL!)
 
-    expect(attempt).toMatchObject({ status: 403, message: DENIED })
-    // The claim is untouched and nobody is promoted. `completed` proves the request reached the
-    // setup code (an origin refusal is the same 403): a refused web request seals setup, so after an
-    // early retry only `pnpm admin:create` can finish it.
-    expect(await setupSnapshot()).toMatchObject({
+    // Refused, and nothing changed: the claim is untouched, nobody is promoted, and setup is not
+    // sealed while the claim is live (#71), so web recovery still runs once it is stale.
+    expect(early).toMatchObject({ status: 403, message: DENIED })
+    expect(await setupSnapshot()).toEqual({
       claimToken: 'dead-attempt',
-      completed: true,
+      completed: false,
+      users: [interruptedAdmin.email],
       roleLinks: 0,
+    })
+
+    await withDatabase(
+      false,
+      (db) => db.prepare('UPDATE setup_state SET claimed_at = ?').run(Date.now() - STALE_CLAIM_MS),
+      STATE_DIR,
+    )
+    const later = await register(request, interruptedAdmin, baseURL!)
+
+    expect(later).toMatchObject({ status: 200, message: 'Successfully registered first user.' })
+    expect(await setupSnapshot()).toEqual({
+      claimToken: null,
+      completed: true,
+      users: [interruptedAdmin.email],
+      roleLinks: 1,
     })
   })
 

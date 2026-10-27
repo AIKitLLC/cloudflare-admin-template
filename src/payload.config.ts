@@ -178,6 +178,8 @@ export default buildConfig({
     mutations: retryJobMutation,
   },
   serverURL,
+  // One file per upload, at most 5 MiB; a larger one answers 413 before it reaches R2 (#72).
+  upload: { limits: { fileSize: 5 * 1024 * 1024 } },
   cors: allowedOrigins,
   csrf: allowedOrigins,
   onInit: async (payload) => {

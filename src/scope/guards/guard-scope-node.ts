@@ -37,6 +37,10 @@ export const guardScopeNode: CollectionBeforeChangeHook = async ({
   if (nextParentId || parentProvided) {
     const catalog = await loadScopeCatalog(req)
     treeFor(binding.dimension, catalog).assertParentDoesNotCycle(nodeId, nextParentId)
+    // Data integrity, not authorization: applies to full-access and internal writes too.
+    if (binding.dimension === 'branch' && nextParentId) {
+      assertParentInSameOrganization(catalog, branchOrganizationId(operation, record, original), nextParentId)
+    }
   }
 
   if (skipsPrivilegeChecks(req.context) || !req.user || (await userGrantsFullAccess(req))) {
@@ -119,14 +123,7 @@ async function assertBranchWrite(args: {
     operation: args.operation,
     parentProvided: args.parentProvided,
   })
-  const organizationId =
-    args.operation === 'create'
-      ? relationId(args.record.organization)
-      : relationId(
-          args.record.organization === undefined
-            ? args.original?.organization
-            : args.record.organization,
-        )
+  const organizationId = branchOrganizationId(args.operation, args.record, args.original)
   const originalOrganizationId = relationId(args.original?.organization)
   if (
     args.operation === 'update' &&
@@ -146,10 +143,25 @@ async function assertBranchWrite(args: {
       req: args.req,
     })
   }
-  if (!args.nextParentId) {
-    return
+}
+
+function branchOrganizationId(
+  operation: 'create' | 'update',
+  record: Record<string, unknown>,
+  original: Record<string, unknown> | undefined,
+): string | undefined {
+  if (operation === 'create' || record.organization !== undefined) {
+    return relationId(record.organization)
   }
-  const parentOrganizationId = args.catalog.branches.get(args.nextParentId)?.organizationId
+  return relationId(original?.organization)
+}
+
+function assertParentInSameOrganization(
+  catalog: ScopeCatalog,
+  organizationId: string | undefined,
+  parentId: string,
+): void {
+  const parentOrganizationId = catalog.branches.get(parentId)?.organizationId
   if (!organizationId || !parentOrganizationId || organizationId !== parentOrganizationId) {
     throw new APIError(SCOPE_BRANCH_ORG_ERROR, 400)
   }

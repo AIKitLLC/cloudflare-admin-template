@@ -4,6 +4,7 @@ import { withRbac } from '../../access'
 import { withRowScope } from '../hooks/with-row-scope'
 import { BRANCHES_SLUG, BRANCH_ORGANIZATION_FIELD, ORGANIZATIONS_SLUG } from '../constants'
 import { scopePathField } from '../path/scope-path-field'
+import { scopeSlugField } from './scope-slug-field'
 
 export const Branches: CollectionConfig = withRowScope(
   withRbac(
@@ -26,13 +27,7 @@ export const Branches: CollectionConfig = withRowScope(
           type: 'text',
           required: true,
         },
-        {
-          name: 'slug',
-          type: 'text',
-          required: true,
-          unique: true,
-          index: true,
-        },
+        scopeSlugField(),
         {
           name: BRANCH_ORGANIZATION_FIELD,
           type: 'relationship',

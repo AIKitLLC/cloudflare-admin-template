@@ -153,6 +153,19 @@ test('seal records completion only when users already exist', async () => {
   assert.equal(await state.claim('a'), false)
 })
 
+test('seal leaves a live claim alone and seals once it is stale (#71)', async () => {
+  const { db, sqlite } = sqliteDatabase()
+  let now = 1_000_000
+  const state = createSetupState(db, { nowMs: () => now, claimTtlMs: 1000 })
+  assert.equal(await state.claim('live'), true)
+  sqlite.prepare("INSERT INTO users (email) VALUES ('x@example.com')").run()
+  await state.seal()
+  assert.equal(await state.completed(), false)
+  now += 1000
+  await state.seal()
+  assert.equal(await state.completed(), true)
+})
+
 test('concurrent CLI runs create one user and that user is Super Admin', async () => {
   const { db, sqlite } = sqliteDatabase()
   const { payload, logs } = fakePayload(sqlite, db)

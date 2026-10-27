@@ -413,3 +413,92 @@ test.describe('Screens, export, users and the scope tree', () => {
     expect(underItself).toMatchObject({ status: 400, message: cycle })
   })
 })
+
+test.describe('Scope tree integrity', () => {
+  const UNIQUE = 'The following field is invalid: Slug'
+  const OTHER_ORG = 'A branch must stay in its organization.'
+
+  // #68: D1 does not report the unique violation the way Payload maps it, so this was a 500.
+  for (const collection of ['organizations', 'branches', 'data-classes'] as const) {
+    test(`a duplicate ${collection} slug is a 400 on create and update`, async ({ request }) => {
+      const tree = await createScopeTree(request)
+      const token = adminToken()
+      const extra = collection === 'branches' ? { organization: tree.orgA } : {}
+      const slug = uniqueSlug('dup')
+      const post = (data: Record<string, unknown>) =>
+        api(request, { method: 'POST', path: `/api/${collection}`, token, data })
+
+      const first = await post({ name: `First ${tree.token}`, slug, ...extra })
+      expect(first.status).toBe(201)
+      const duplicate = await post({ name: `Second ${tree.token}`, slug, ...extra })
+      expect(duplicate).toMatchObject({ status: 400, message: UNIQUE })
+
+      const other = await post({ name: `Other ${tree.token}`, slug: uniqueSlug('other'), ...extra })
+      expect(other.status).toBe(201)
+      const renamed = await api(request, {
+        method: 'PATCH',
+        path: `/api/${collection}/${other.body.doc.id}`,
+        token,
+        data: { slug },
+      })
+      expect(renamed).toMatchObject({ status: 400, message: UNIQUE })
+
+      // Saving a node with its own slug unchanged is not a duplicate.
+      const same = await api(request, {
+        method: 'PATCH',
+        path: `/api/${collection}/${first.body.doc.id}`,
+        token,
+        data: { slug, name: `First renamed ${tree.token}` },
+      })
+      expect(same.status).toBe(200)
+    })
+  }
+
+  // #69: the guard used to be skipped for full-access users.
+  test('an admin cannot give a branch a parent from another organization', async ({ request }) => {
+    const tree = await createScopeTree(request)
+    const token = adminToken()
+
+    const created = await api(request, {
+      method: 'POST',
+      path: '/api/branches',
+      token,
+      data: {
+        name: `Cross ${tree.token}`,
+        slug: uniqueSlug('cross'),
+        organization: tree.orgA,
+        parent: tree.brB,
+      },
+    })
+    expect(created).toMatchObject({ status: 400, message: OTHER_ORG })
+
+    const reparented = await api(request, {
+      method: 'PATCH',
+      path: `/api/branches/${tree.brA}`,
+      token,
+      data: { parent: tree.brB },
+    })
+    expect(reparented).toMatchObject({ status: 400, message: OTHER_ORG })
+
+    // Moving a branch that has a parent into another organization strands the parent link.
+    const child = await api(request, {
+      method: 'POST',
+      path: '/api/branches',
+      token,
+      data: {
+        name: `Child ${tree.token}`,
+        slug: uniqueSlug('child'),
+        organization: tree.orgA,
+        parent: tree.brA,
+      },
+    })
+    expect(child.status).toBe(201)
+    const moved = await api(request, {
+      method: 'PATCH',
+      path: `/api/branches/${child.body.doc.id}`,
+      token,
+      data: { organization: tree.orgB },
+    })
+    expect(moved).toMatchObject({ status: 400, message: OTHER_ORG })
+  })
+})

@@ -59,7 +59,9 @@ END`
  * - `claim` succeeds for exactly one caller while `users` is empty, no other claim is live,
  *   and setup has not completed (the CLI passes `afterCompletion` to recover an empty table).
  * - `complete` records `completed_at` permanently; the web flow never reopens after it.
- * - `seal` records completion for installs that already have users.
+ * - `seal` records completion for installs that already have users. It leaves a live claim
+ *   alone, so an early retry of an interrupted setup only refuses and recovery still runs once
+ *   the claim is stale (#71).
  * - `interruptedUserId` / `completeInterrupted` recover a setup whose process died after it
  *   created the user but before it completed: a stale claim, no completion, exactly one user.
  *   With `afterCompletion` (the CLI) they also recover a run that claimed an emptied table.
@@ -137,9 +139,10 @@ export function createSetupState(
           `INSERT INTO ${SETUP_STATE_TABLE} (singleton, completed_at)
            SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM users)
            ON CONFLICT(singleton) DO UPDATE SET
-             completed_at = COALESCE(${SETUP_STATE_TABLE}.completed_at, excluded.completed_at)`,
+             completed_at = COALESCE(${SETUP_STATE_TABLE}.completed_at, excluded.completed_at)
+           WHERE ${SETUP_STATE_TABLE}.claim_token IS NULL OR ${SETUP_STATE_TABLE}.claimed_at <= ?3`,
         )
-        .bind(FIRST_ADMIN_SETUP_KEY, nowMs())
+        .bind(FIRST_ADMIN_SETUP_KEY, nowMs(), nowMs() - claimTtlMs)
         .run()
     },
     /**

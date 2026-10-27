@@ -164,4 +164,34 @@ test.describe('Media through the admin screens', () => {
     expect((await firstFile.body()).equals(PNG)).toBe(true)
     expect((await secondFile.body()).equals(secondBytes)).toBe(true)
   })
+
+  // #72: 5 MiB per file (upload.limits in payload.config.ts); a larger one never reaches R2.
+  test('refuses a file over 5 MiB and keeps one under it', async ({ request }) => {
+    const token = adminToken()
+    const big = uniqueFilename('bin')
+    const tooLarge = await uploadMedia(request, {
+      token,
+      alt: 'too large',
+      filename: big,
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.alloc(5 * 1024 * 1024 + 1),
+    })
+    expect(tooLarge).toMatchObject({ status: 413, message: 'File size limit has been reached' })
+    const stored = await api(request, {
+      method: 'GET',
+      path: `/api/media?where[filename][equals]=${big}&depth=0`,
+      token,
+    })
+    expect(stored.body.totalDocs).toBe(0)
+
+    const underLimit = await uploadMedia(request, {
+      token,
+      alt: 'under the limit',
+      filename: uniqueFilename('bin'),
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.alloc(5 * 1024 * 1024 - 1024),
+    })
+    expect(underLimit.status).toBe(201)
+    await api(request, { method: 'DELETE', path: `/api/media/${underLimit.body.doc.id}`, token })
+  })
 })

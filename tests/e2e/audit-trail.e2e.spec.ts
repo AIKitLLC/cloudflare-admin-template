@@ -41,6 +41,31 @@ test.describe('The audit trail', () => {
     expect(entries[1].summary).toBe(`UPDATE users #${id} (email)`)
   })
 
+  // #70: the entry used to be dropped because its actor relationship pointed at the deleted row.
+  test('a user deleting their own account leaves a DELETE entry', async ({ request }) => {
+    const since = new Date().toISOString()
+    const ip = uniqueIp()
+    const user = await userWithRole(request, ['users:read', 'users:delete'])
+
+    const deleted = await api(request, {
+      method: 'DELETE',
+      path: `/api/users/${user.id}`,
+      token: user.token,
+      ip,
+    })
+    expect(deleted.status).toBe(200)
+
+    const entries = await auditEntries(request, { collection: 'users', id: user.id, since })
+    const entry = entries.at(-1)
+    expect(entry).toMatchObject({ action: 'DELETE', actorEmail: user.email, ipAddress: ip })
+    const { body } = await api(request, {
+      method: 'GET',
+      path: `/api/audit-logs/${entry!.id}?depth=0`,
+      token: adminToken(),
+    })
+    expect(body).toMatchObject({ actor: null, operatorId: String(user.id) })
+  })
+
   test('a Media upload and delete are recorded', async ({ request }) => {
     const since = new Date().toISOString()
     const ip = uniqueIp()
