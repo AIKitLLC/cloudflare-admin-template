@@ -99,7 +99,7 @@ Labels exist (`type:*`, `area:*`, `status:*`, `priority:*`). No milestones exist
 | #71 | An early first-run setup retry seals setup and blocks web recovery | — | This change |
 | #72 | Media has no upload size limit | — | This change |
 | #74 | Filter tokens and secrets from `worker.log` before CI uploads it | — | — |
-| #76 | Flaky integration test: first-admin setup recovery retry | `bug` | — |
+| #76 | Flaky integration test: first-admin setup recovery retry | `bug` | This change adds diagnostics only |
 | #40 | Deploy-button inputs and isolated demo rollout | — | #41 (merged). Stays open until a demo deploy and sign-in check succeed and the demo URL is recorded. |
 | #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | — |
 
@@ -126,6 +126,7 @@ Fixes #68, #69, #70, #71 and #72, found while writing the E2E suite. Each has an
 - #69: a branch parent must be in the branch's organization for every actor, including full-access users and internal writes (`src/scope/guards/guard-scope-node.ts`). Moving a branch that has a parent into another organization is refused too.
 - #70: when a user deletes their own account, the DELETE audit entry keeps the id and email snapshots and clears the actor relationship, which pointed at the deleted row and failed validation (`src/audit/hooks/recordAuditDelete.ts`).
 - #71: `seal()` no longer completes setup while a setup claim is live, so an early web retry only refuses and web recovery still runs once the claim is stale (`src/auth/first-admin-setup.ts`). Unit case added.
+- #76 (refs, not fixed): the `admin:create` retry in `tests/int/first-admin-setup-http.int.spec.ts` now reports its output and the setup row when it fails.
 - #72: uploads are limited to 5 MiB per file (`upload.limits.fileSize` in `src/payload.config.ts`); a larger file answers 413 before it reaches R2. Payload's default was 20 MiB.
 
 ## Acronyms
