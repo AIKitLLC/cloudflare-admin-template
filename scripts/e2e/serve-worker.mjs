@@ -239,7 +239,8 @@ function nexusConfigArgs(stateDir, nexusDir, env) {
       vars: {
         APP_NAME: 'Nexus CRM (e2e)',
         APP_ENV: 'development',
-        OWNER_EMAIL: 'nexus-owner@example.test',
+        // Also the template admin of nexus-crm.e2e.spec.ts (see the seeded user below).
+        OWNER_EMAIL: 'nexus-admin@example.com',
         // Not a usable password: nobody signs in to Nexus directly in this suite.
         OWNER_PASSWORD_HASH: '0'.repeat(64),
         SESSION_SECRET: 'e2e-nexus-session-secret',
@@ -262,15 +263,21 @@ function nexusConfigArgs(stateDir, nexusDir, env) {
       },
     }),
   )
-  const migrate = spawnSync(
-    'pnpm',
-    ['exec', 'wrangler', 'd1', 'migrations', 'apply', 'nexus-crm-e2e', '--local', '--persist-to', stateDir, '-c', nexusConfig],
-    { cwd: root, env: { ...env, CI: 'true' }, encoding: 'utf8', shell: process.platform === 'win32', timeout: 180_000 },
-  )
-  if (migrate.status !== 0) {
-    console.error(`${migrate.stdout ?? ''}\n${migrate.stderr ?? ''}`.slice(-4000))
-    process.exit(migrate.status ?? 1)
+  const d1 = (...args) => {
+    const run = spawnSync(
+      'pnpm',
+      ['exec', 'wrangler', 'd1', ...args, 'nexus-crm-e2e', '--local', '--persist-to', stateDir, '-c', nexusConfig],
+      { cwd: root, env: { ...env, CI: 'true' }, encoding: 'utf8', shell: process.platform === 'win32', timeout: 180_000 },
+    )
+    if (run.status !== 0) {
+      console.error(`${run.stdout ?? ''}\n${run.stderr ?? ''}`.slice(-4000))
+      process.exit(run.status ?? 1)
+    }
   }
+  d1('migrations', 'apply')
+  // The owner as a real install has it after signing in to Nexus once: an existing user, under
+  // Nexus's own id, whose email is also a template user's.
+  d1('execute', '--command', "INSERT INTO users (id, email, display_name, status, created_at, updated_at) VALUES ('usr_owner', 'nexus-admin@example.com', 'Owner', 'active', '2026-01-01', '2026-01-01')")
   console.log('e2e: migrated the local Nexus D1')
   return ['-c', templateConfig, '-c', nexusConfig]
 }

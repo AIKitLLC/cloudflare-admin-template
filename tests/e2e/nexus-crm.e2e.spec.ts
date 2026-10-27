@@ -1,7 +1,8 @@
 // Nexus CRM installed as its own Worker behind the `NEXUS` service binding (#44, ADR 0001). Runs
 // against the third Worker (project `nexus`, only when E2E_NEXUS_DIR is set): its own template
 // database with its own first admin, and a Nexus Worker on an empty local D1. Every call goes
-// through the template's `/api/nexus/*`; nothing here talks to Nexus directly.
+// through the template's `/api/nexus/*`; nothing here talks to Nexus directly. The admin's email is
+// also Nexus's OWNER_EMAIL, so its first bridged request meets an existing Nexus user.
 import { randomBytes } from 'node:crypto'
 
 import { expect, test, type APIRequestContext } from '@playwright/test'
@@ -142,6 +143,20 @@ test.describe('Nexus CRM through the service binding', () => {
 
     expect(await listRecords(request, outsider.token, 'contact')).toMatchObject({ status: 403, message: DENIED })
     expect(await listRecords(request, '', 'contact')).toMatchObject({ status: 401, message: DENIED })
+  })
+
+  test('a user who changes their email keeps working in the CRM', async ({ request }) => {
+    const writer = await userWith(request, ['nexus:write'])
+    expect((await createRecord(request, writer.token, { objectKey: 'contact', title: 'before' })).status).toBe(201)
+    const { body: me } = await api(request, { method: 'GET', path: '/api/users/me', token: writer.token })
+    const renamed = await api(request, {
+      method: 'PATCH',
+      path: `/api/users/${me.user.id}`,
+      token: adminJwt,
+      data: { email: uniqueEmail('renamed') },
+    })
+    expect(renamed.status).toBe(200)
+    expect((await createRecord(request, writer.token, { objectKey: 'contact', title: 'after' })).status).toBe(201)
   })
 
   test('a grant removed takes effect on the next request', async ({ request }) => {
