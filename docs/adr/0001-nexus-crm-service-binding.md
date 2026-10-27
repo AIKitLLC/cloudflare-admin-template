@@ -22,9 +22,9 @@ Option (c), with the adapter being a Cloudflare service binding instead of Paylo
 2. The template gets one optional service binding, `NEXUS`, in `wrangler.jsonc`. Installing the CRM is: deploy the Nexus Worker, add the binding, set one shared secret on both Workers. Removing the binding uninstalls it; Nexus data stays in its own D1.
 3. The template answers `/nexus/*` and `/api/nexus/*`. For each request it:
    - authenticates the caller with Payload (`payload.auth`), the same session the admin uses;
-   - checks the template permission keys `nexus:access` (read and work in the CRM) and `nexus:admin` (Nexus admin screens, MCP tokens), added through `registerCatalogContributor`, so the permission matrix and roles govern the CRM like every other feature;
+   - checks the template permission keys `nexus:read` (view the CRM), `nexus:write` (create and edit) and `nexus:admin` (Nexus admin screens, MCP tokens), added through `registerCatalogContributor`, so the permission matrix and roles govern the CRM like every other feature;
    - forwards the request to `env.NEXUS.fetch()` with the path prefix removed, the caller's cookies and `Authorization` header stripped, and one header, `x-nexus-identity`, carrying `{userId, email, role, workspace, exp}` signed with HMAC-SHA256 over the shared secret `NEXUS_BRIDGE_SECRET`, valid for 60 seconds.
-4. Nexus accepts `x-nexus-identity` as a session only when the signature and expiry check out. Role mapping: `nexus:admin` becomes Nexus `admin`, `nexus:access` alone becomes `member`. Template Super Admins become Nexus `owner`. A template user whose email already exists in Nexus (the owner, on a cutover) is matched to that Nexus user by email, and an email changed in the template follows to Nexus. The workspace is the installation's `DEFAULT_WORKSPACE_SLUG` for now; mapping template organizations to Nexus workspaces is a later step.
+4. Nexus accepts `x-nexus-identity` as a session only when the signature and expiry check out. Role mapping: `nexus:admin` becomes Nexus `admin`, `nexus:write` becomes `member`, `nexus:read` alone becomes `viewer`. Template Super Admins become Nexus `owner`. A template user whose email already exists in Nexus (the owner, on a cutover) is matched to that Nexus user by email, and an email changed in the template follows to Nexus. The workspace is the installation's `DEFAULT_WORKSPACE_SLUG` for now; mapping template organizations to Nexus workspaces is a later step.
 5. The Nexus SPA is served under `/nexus/` (Vite `base`, router `basename`, API base). It stays the CRM UI. Rewriting it as Payload admin views (the long-term idea in #44) is not part of this decision.
 
 ## Why not (a) or (b)
@@ -49,7 +49,7 @@ Option (c), with the adapter being a Cloudflare service binding instead of Paylo
 
 ## Prototype (this pull request)
 
-Contacts and deals end to end through the binding: list and create, refused without `nexus:access`, read-only Nexus role refused on create. Covered by an E2E project that starts both Workers locally (`wrangler dev -c wrangler.jsonc -c <nexus>/wrangler.e2e.jsonc`) with empty local D1 databases. It never touches `nexus-crm-prod`.
+Contacts and deals end to end through the binding: list and create, refused without `nexus:read`, read-only Nexus role refused on create. Covered by an E2E project that starts both Workers locally (`wrangler dev -c wrangler.jsonc -c <nexus>/wrangler.e2e.jsonc`) with empty local D1 databases. It never touches `nexus-crm-prod`.
 
 ## Build phases
 
