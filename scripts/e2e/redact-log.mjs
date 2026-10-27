@@ -49,6 +49,11 @@ export const RULES = [
     replace: '$1[redacted]',
   },
   {
+    name: 'reset link',
+    pattern: /(\/reset\/)[0-9a-f]{16,}/gi,
+    replace: '$1[hex]',
+  },
+  {
     name: 'long hex string',
     pattern: /\b[0-9a-f]{32,}\b/gi,
     replace: '[hex]',
@@ -60,13 +65,20 @@ export const RULES = [
   },
 ]
 
-export function redact(text) {
-  return RULES.reduce((current, rule) => current.replace(rule.pattern, rule.replace), text)
+/**
+ * The rules for Playwright's traces and report. Those are full of 32 to 40 character hex ids that
+ * are not secrets and that the viewer needs to find files (resource sha1 names, page ids), so the
+ * blanket hex rule is left out; the reset link rule still masks a reset token in a URL.
+ */
+export const ARTIFACT_RULES = RULES.filter((rule) => rule.name !== 'long hex string')
+
+export function redact(text, rules = RULES) {
+  return rules.reduce((current, rule) => current.replace(rule.pattern, rule.replace), text)
 }
 
 /** Names of the rules that still change `text`, so empty means it is already redacted. */
-export function unredactedRules(text) {
-  return RULES.filter((rule) => text.replace(rule.pattern, rule.replace) !== text).map(
-    (rule) => rule.name,
-  )
+export function unredactedRules(text, rules = RULES) {
+  return rules
+    .filter((rule) => text.replace(rule.pattern, rule.replace) !== text)
+    .map((rule) => rule.name)
 }
