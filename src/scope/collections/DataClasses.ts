@@ -33,7 +33,7 @@ export const DataClasses: CollectionConfig = withRowScope(
           required: true,
           unique: true,
           index: true,
-          validate: uniqueSlug(DATA_CLASSES_SLUG, 'data class'),
+          validate: uniqueSlug(DATA_CLASSES_SLUG, 'A data class'),
         },
         {
           name: 'parent',

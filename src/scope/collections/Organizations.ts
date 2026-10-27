@@ -35,7 +35,7 @@ export const Organizations: CollectionConfig = withRowScope(
           required: true,
           unique: true,
           index: true,
-          validate: uniqueSlug(ORGANIZATIONS_SLUG, 'organization'),
+          validate: uniqueSlug(ORGANIZATIONS_SLUG, 'An organization'),
         },
         {
           name: SCOPE_PARENT_FIELD,

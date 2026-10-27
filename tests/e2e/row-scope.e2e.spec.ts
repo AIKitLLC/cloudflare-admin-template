@@ -427,18 +427,18 @@ test.describe('Screens, export, users and the scope tree', () => {
         ?.message
 
     const cases = [
-      { collection: 'organizations', label: 'organization', extra: {} },
-      { collection: 'branches', label: 'branch', extra: { organization: tree.orgA } },
-      { collection: 'data-classes', label: 'data class', extra: {} },
+      { collection: 'organizations', subject: 'An organization', extra: {} },
+      { collection: 'branches', subject: 'A branch', extra: { organization: tree.orgA } },
+      { collection: 'data-classes', subject: 'A data class', extra: {} },
     ]
-    for (const { collection, label, extra } of cases) {
+    for (const { collection, subject, extra } of cases) {
       const slug = uniqueSlug('dup')
       const first = await post(collection, { name: `First ${tree.token}`, slug, ...extra })
       expect(first.status, collection).toBe(201)
 
       const second = await post(collection, { name: `Second ${tree.token}`, slug, ...extra })
       expect(second.status, collection).toBe(400)
-      expect(slugError(second), collection).toBe(`A ${label} with this slug already exists.`)
+      expect(slugError(second), collection).toBe(`${subject} with this slug already exists.`)
 
       // Saving a row under its own slug is not a clash; taking another row's slug is.
       const other = await post(collection, {
@@ -450,7 +450,7 @@ test.describe('Screens, export, users and the scope tree', () => {
       expect((await patch(collection, other.body.doc.id, { name: 'Renamed' })).status).toBe(200)
       const taken = await patch(collection, other.body.doc.id, { slug })
       expect(taken.status, collection).toBe(400)
-      expect(slugError(taken), collection).toBe(`A ${label} with this slug already exists.`)
+      expect(slugError(taken), collection).toBe(`${subject} with this slug already exists.`)
     }
   })
 })

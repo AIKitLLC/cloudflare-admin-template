@@ -33,7 +33,7 @@ export const Branches: CollectionConfig = withRowScope(
           required: true,
           unique: true,
           index: true,
-          validate: uniqueSlug(BRANCHES_SLUG, 'branch'),
+          validate: uniqueSlug(BRANCHES_SLUG, 'A branch'),
         },
         {
           name: BRANCH_ORGANIZATION_FIELD,

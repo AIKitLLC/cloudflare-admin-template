@@ -5,7 +5,7 @@ import type { CollectionSlug, TextFieldSingleValidation } from 'payload'
  * caller got a 500. This checks first and answers a normal field error instead. The unique index
  * stays as the backstop for two requests racing each other.
  */
-export function uniqueSlug(collection: CollectionSlug, label: string): TextFieldSingleValidation {
+export function uniqueSlug(collection: CollectionSlug, subject: string): TextFieldSingleValidation {
   return async (value, { id, req }) => {
     if (typeof value !== 'string' || value === '') return 'This field is required.'
     const { totalDocs } = await req.payload.count({
@@ -18,6 +18,6 @@ export function uniqueSlug(collection: CollectionSlug, label: string): TextField
         ...(id === undefined ? {} : { id: { not_equals: id } }),
       },
     })
-    return totalDocs === 0 ? true : `A ${label} with this slug already exists.`
+    return totalDocs === 0 ? true : `${subject} with this slug already exists.`
   }
 }
