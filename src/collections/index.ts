@@ -1,5 +1,5 @@
 export { ClientSecurityCollections } from './ClientSecurity'
 export { LoginThrottle } from './LoginThrottle'
-export { Media } from './Media'
+export { Media, MEDIA_MAX_BYTES } from './Media'
 export { SetupState } from './SetupState'
 export { Users } from './Users'

@@ -707,6 +707,17 @@ test('the CLI finishes an interrupted setup too', async () => {
   assert.equal(await createSetupState(db).completed(), true)
 })
 
+test('seal leaves a live claim alone and seals once it is stale', async () => {
+  const { db, sqlite } = sqliteDatabase()
+  await interruptedSetup(sqlite, db, 'one@example.com')
+  const state = createSetupState(db)
+  await state.seal()
+  assert.equal(await state.completed(), false)
+  expireClaims(sqlite)
+  await state.seal()
+  assert.equal(await state.completed(), true)
+})
+
 test('recovery never runs under a live claim or with more than one user', async () => {
   // Live claim: the attempt may still be running, so its user is not promoted or sealed
   // in as recovered; the request is refused and the roles stay untouched.
@@ -723,6 +734,16 @@ test('recovery never runs under a live claim or with more than one user', async 
   )
   assert.deepEqual(JSON.parse(userRows(live.sqlite)[0].roles), [])
   assert.equal(await createSetupState(live.db).interruptedUserId(), null)
+  // The refusal did not seal setup, so the same request recovers it once the claim is stale.
+  assert.equal(await createSetupState(live.db).completed(), false)
+  expireClaims(live.sqlite)
+  const recovered = await createFirstAdminAccount(
+    livePayload.payload,
+    { email: 'retry@example.com', password },
+    { source: 'web', req: webReq() },
+  )
+  assert.equal(recovered.email, 'one@example.com')
+  assert.equal(await createSetupState(live.db).completed(), true)
 
   // Two users: not the state an interrupted first setup leaves, so nothing is promoted.
   const two = sqliteDatabase()
