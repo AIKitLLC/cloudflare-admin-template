@@ -195,28 +195,56 @@ async function handleMcp(request: Request, payload: Payload, nexus: Fetcher, sec
 }
 
 /**
- * `/nexus/*` → the Nexus SPA (built with `--base /nexus/`) from the Nexus Worker's asset store. The
- * page needs a template session and a Nexus role; without a session it redirects to the admin login.
+ * Paths under `/nexus/*` that may be fetched from the Nexus asset store. Only static assets and the
+ * SPA index (for client-side navigation) are allowed; API and other Worker routes are never
+ * forwarded here (those go through the authenticated `/api/nexus/*` bridge).
+ */
+const NEXUS_SPA_ASSET_EXT = /\.(?:js|mjs|css|html|svg|png|jpe?g|gif|webp|ico|woff2?|map)$/i
+
+/**
+ * Map a `/nexus…` pathname to the upstream asset path, or `null` when the request must 404.
+ * SPA deep links (no file extension) resolve to `/` so the asset store's index is served; they
+ * never reach Nexus Worker routes such as `/api/*` or `/mcp`.
+ */
+export function resolveNexusSpaUpstreamPath(pathname: string): string | null {
+  const path = pathname.replace(/^\/nexus/, '') || '/'
+  if (path === '/' || path === '/index.html') return path
+  if (NEXUS_SPA_ASSET_EXT.test(path)) return path
+  const last = path.split('/').pop() ?? ''
+  if (last.includes('.')) return null
+  if (path === '/api' || path.startsWith('/api/') || path === '/mcp' || path.startsWith('/mcp/')) {
+    return null
+  }
+  return '/'
+}
+
+/**
+ * `/nexus/*` → static assets and the SPA index from the Nexus Worker's asset store. The page needs
+ * a template session and a Nexus role; without a session it redirects to the admin login. Non-asset
+ * paths (including `/nexus/api/*`) return 404 — API traffic uses the authenticated `/api/nexus/*`
+ * bridge instead.
  */
 export function createNexusAppRoute({ getServices }: Options) {
   return async function handle(request: Request): Promise<Response> {
     const { payload, nexus, secret } = await getServices()
     if (!nexus || !secret) return new Response('Not Found', { status: 404 })
     const url = new URL(request.url)
+    const upstreamPath = resolveNexusSpaUpstreamPath(url.pathname)
+    if (upstreamPath === null) return new Response('Not Found', { status: 404 })
     const caller = await authorize(request, payload)
     if (caller === 'anonymous') {
       const redirect = encodeURIComponent(`${url.pathname}${url.search}`)
       return new Response(null, { status: 302, headers: { location: `/admin/login?redirect=${redirect}` } })
     }
     if (caller === 'denied') return new Response(DENIED, { status: 403 })
-    const path = url.pathname.replace(/^\/nexus/, '') || '/'
-    const upstream = await nexus.fetch(`${NEXUS_ORIGIN}${path}${url.search}`, {
+    const upstream = await nexus.fetch(`${NEXUS_ORIGIN}${upstreamPath}${url.search}`, {
       method: request.method,
       headers: copyHeaders(request, ['accept', 'if-none-match']),
     })
     return relay(upstream, {
       'Content-Security-Policy': NEXUS_CSP,
-      'Cache-Control': path.startsWith('/assets/') ? 'private, max-age=31536000, immutable' : 'private, no-store',
+      'Cache-Control':
+        upstreamPath.startsWith('/assets/') ? 'private, max-age=31536000, immutable' : 'private, no-store',
       'X-Content-Type-Options': 'nosniff',
     })
   }

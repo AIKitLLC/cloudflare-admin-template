@@ -346,6 +346,18 @@ test.describe('The Nexus app under /nexus/', () => {
     expect(refused.status()).toBe(403)
   })
 
+  test('a non-asset /nexus/ path returns 404 and never reaches Nexus Worker routes', async ({ request }) => {
+    const headers = { cookie: `payload-token=${adminJwt}`, 'sec-fetch-site': 'none' }
+    for (const path of ['/nexus/api/health', '/nexus/api/v1/records', '/nexus/api/auth/login', '/nexus/mcp']) {
+      const response = await request.get(path, { headers, maxRedirects: 0 })
+      expect(response.status(), path).toBe(404)
+      expect(await response.text(), path).toMatch(/not found/i)
+    }
+    // API traffic still uses the authenticated bridge.
+    const bridged = await api(request, { method: 'GET', path: '/api/nexus/health', token: adminJwt })
+    expect(bridged).toMatchObject({ status: 200, body: { ok: true } })
+  })
+
   test('the app runs in the browser with the template session', async ({ page }: { page: Page }) => {
     // page.request shares the browser's cookie jar, so userWith's sign-in is the page's session.
     const user = await userWith(page.request, ['nexus:write'])
