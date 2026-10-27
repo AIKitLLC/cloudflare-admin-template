@@ -66,6 +66,10 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
         timeout-minutes: 8
       - run: pnpm test:e2e
+      # The Worker log is redacted as it is written; this fails the job, and removes the log so the
+      # upload below cannot publish it, if anything the redaction rules mask is still in it.
+      - if: always()
+        run: node scripts/e2e/check-log-secrets.mjs
       - if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
