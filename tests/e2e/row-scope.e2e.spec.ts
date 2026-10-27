@@ -453,4 +453,48 @@ test.describe('Screens, export, users and the scope tree', () => {
       expect(slugError(taken), collection).toBe(`${subject} with this slug already exists.`)
     }
   })
+
+  test('a branch and its parent share an organization, for an admin too', async ({ request }) => {
+    const tree = await createScopeTree(request)
+    const token = adminToken()
+    const sameOrganization = 'A branch must stay in its organization.'
+    const post = (data: Record<string, unknown>) =>
+      api(request, { method: 'POST', path: '/api/branches', token, data })
+    const patch = (id: number, data: Record<string, unknown>) =>
+      api(request, { method: 'PATCH', path: `/api/branches/${id}`, token, data })
+    const branch = (organization: number, parent?: number) => ({
+      name: `Branch ${tree.token}`,
+      slug: uniqueSlug('br'),
+      organization,
+      ...(parent === undefined ? {} : { parent }),
+    })
+
+    // A parent from another organization is refused on create and on update.
+    expect(await post(branch(tree.orgA, tree.brB))).toMatchObject({
+      status: 400,
+      message: sameOrganization,
+    })
+    const child = await post(branch(tree.orgA, tree.brA))
+    expect(child.status).toBe(201)
+    const childId = child.body.doc.id as number
+    const loose = await post(branch(tree.orgA))
+    expect(loose.status).toBe(201)
+    expect(await patch(loose.body.doc.id, { parent: tree.brB })).toMatchObject({
+      status: 400,
+      message: sameOrganization,
+    })
+    expect((await patch(loose.body.doc.id, { parent: tree.brA })).status).toBe(200)
+
+    // Moving a branch to another organization may not leave it under, or over, the old one.
+    expect(await patch(childId, { organization: tree.orgB })).toMatchObject({
+      status: 400,
+      message: sameOrganization,
+    })
+    expect(await patch(tree.brA, { organization: tree.orgB })).toMatchObject({
+      status: 400,
+      message: sameOrganization,
+    })
+    // Clearing the parent first makes the move legal.
+    expect((await patch(childId, { parent: null, organization: tree.orgB })).status).toBe(200)
+  })
 })
