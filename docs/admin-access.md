@@ -57,7 +57,7 @@ A setup attempt that fails in-process cleans up after itself (account removed, c
 | State left behind | Recovery |
 | --- | --- |
 | Claim taken, no user created | Nothing is stuck. Wait for the claim to expire (2 minutes) and submit the setup form again, or run `pnpm admin:create`. The next attempt takes the claim over automatically. |
-| User created, setup not marked complete | Submit the setup form again, or run `pnpm admin:create`. Once the dead attempt's claim is older than 2 minutes, the next attempt recognises the state — stale claim, setup not completed, exactly one user — and finishes that setup for the existing user: it makes sure the user holds the Super Admin role and marks setup complete. No second account is created and the password is not changed, so retry with the same email and password to be signed in straight away, or sign in afterwards with the original credentials. |
+| User created, setup not marked complete | Submit the setup form again, or run `pnpm admin:create`. A retry within the first 2 minutes is refused and changes nothing, so it does not block a later retry. Once the dead attempt's claim is older than 2 minutes, the next attempt recognises the state — stale claim, setup not completed, exactly one user — and finishes that setup for the existing user: it makes sure the user holds the Super Admin role and marks setup complete. No second account is created and the password is not changed, so retry with the same email and password to be signed in straight away, or sign in afterwards with the original credentials. |
 | No claim, no user | Just retry the setup form or the CLI. |
 | Setup marked complete, but the response was lost | Nothing to recover. Sign in at `/admin` with the admin credentials. |
 
