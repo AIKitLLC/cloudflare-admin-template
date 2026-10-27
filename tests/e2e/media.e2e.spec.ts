@@ -164,4 +164,36 @@ test.describe('Media through the admin screens', () => {
     expect((await firstFile.body()).equals(PNG)).toBe(true)
     expect((await secondFile.body()).equals(secondBytes)).toBe(true)
   })
+
+  test('accepts a file of exactly 5 MB and refuses one byte more, storing nothing', async ({
+    request,
+  }) => {
+    const token = adminToken()
+    const limit = 5 * 1024 * 1024
+    const upload = (bytes: number, filename: string) =>
+      uploadMedia(request, {
+        token,
+        alt: 'size',
+        filename,
+        mimeType: 'application/octet-stream',
+        buffer: Buffer.alloc(bytes, 1),
+      })
+
+    const atLimit = await upload(limit, uniqueFilename('bin'))
+    expect(atLimit.status).toBe(201)
+    expect(atLimit.body.doc.filesize).toBe(limit)
+
+    const tooBigName = uniqueFilename('bin')
+    const tooBig = await upload(limit + 1, tooBigName)
+    expect(tooBig.status).toBe(413)
+    expect(tooBig.body.errors[0].message).toBe('A file can be at most 5 MB.')
+    // Refused while reading, so no row and no file is left behind.
+    const stored = await api(request, {
+      method: 'GET',
+      path: `/api/media?where[filename][equals]=${tooBigName}`,
+      token,
+    })
+    expect(stored.body.totalDocs).toBe(0)
+    await api(request, { method: 'DELETE', path: `/api/media/${atLimit.body.doc.id}`, token })
+  })
 })
