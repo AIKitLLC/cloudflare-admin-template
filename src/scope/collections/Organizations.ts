@@ -4,6 +4,7 @@ import { withRbac } from '../../access'
 import { withRowScope } from '../hooks/with-row-scope'
 import { ORGANIZATIONS_SLUG, SCOPE_PARENT_FIELD } from '../constants'
 import { scopePathField } from '../path/scope-path-field'
+import { uniqueSlug } from '../validation/unique-slug'
 
 const parentDescription =
   'Parent organization. Assignment to an organization includes every descendant. A parent cannot be this organization or one of its descendants.'
@@ -34,6 +35,7 @@ export const Organizations: CollectionConfig = withRowScope(
           required: true,
           unique: true,
           index: true,
+          validate: uniqueSlug(ORGANIZATIONS_SLUG, 'organization'),
         },
         {
           name: SCOPE_PARENT_FIELD,

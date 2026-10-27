@@ -412,4 +412,45 @@ test.describe('Screens, export, users and the scope tree', () => {
     expect(underChild).toMatchObject({ status: 400, message: cycle })
     expect(underItself).toMatchObject({ status: 400, message: cycle })
   })
+
+  test('a repeated organization, branch or data class slug is a field error, not a 500', async ({
+    request,
+  }) => {
+    const tree = await createScopeTree(request)
+    const token = adminToken()
+    const post = (collection: string, data: Record<string, unknown>) =>
+      api(request, { method: 'POST', path: `/api/${collection}`, token, data })
+    const patch = (collection: string, id: number, data: Record<string, unknown>) =>
+      api(request, { method: 'PATCH', path: `/api/${collection}/${id}`, token, data })
+    const slugError = (result: Awaited<ReturnType<typeof post>>) =>
+      result.body.errors[0].data.errors.find((error: { path: string }) => error.path === 'slug')
+        ?.message
+
+    const cases = [
+      { collection: 'organizations', label: 'organization', extra: {} },
+      { collection: 'branches', label: 'branch', extra: { organization: tree.orgA } },
+      { collection: 'data-classes', label: 'data class', extra: {} },
+    ]
+    for (const { collection, label, extra } of cases) {
+      const slug = uniqueSlug('dup')
+      const first = await post(collection, { name: `First ${tree.token}`, slug, ...extra })
+      expect(first.status, collection).toBe(201)
+
+      const second = await post(collection, { name: `Second ${tree.token}`, slug, ...extra })
+      expect(second.status, collection).toBe(400)
+      expect(slugError(second), collection).toBe(`A ${label} with this slug already exists.`)
+
+      // Saving a row under its own slug is not a clash; taking another row's slug is.
+      const other = await post(collection, {
+        name: `Other ${tree.token}`,
+        slug: uniqueSlug('other'),
+        ...extra,
+      })
+      expect(other.status, collection).toBe(201)
+      expect((await patch(collection, other.body.doc.id, { name: 'Renamed' })).status).toBe(200)
+      const taken = await patch(collection, other.body.doc.id, { slug })
+      expect(taken.status, collection).toBe(400)
+      expect(slugError(taken), collection).toBe(`A ${label} with this slug already exists.`)
+    }
+  })
 })
