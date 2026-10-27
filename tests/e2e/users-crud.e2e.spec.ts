@@ -2,6 +2,7 @@ import { expect, test, type Page, type Response } from '@playwright/test'
 
 import { superAdminRoleId, userWithRole } from './helpers/access'
 import { api } from './helpers/api'
+import { auditEntries } from './helpers/media'
 import { adminToken, attemptSignIn, createUser, uniqueEmail, uniqueIp } from './helpers/sign-in'
 
 const PASSWORD = 'e2e-crud-user-password-123'
@@ -165,6 +166,7 @@ test.describe('Users through the admin screens', () => {
       message: 'You are not allowed to perform this action.',
     })
 
+    const since = new Date().toISOString()
     const self = await api(request, {
       method: 'DELETE',
       path: `/api/users/${manager.id}`,
@@ -173,5 +175,11 @@ test.describe('Users through the admin screens', () => {
     expect(self.status).toBe(200)
     const me = await api(request, { method: 'GET', path: '/api/users/me', token: manager.token })
     expect(me.body.user).toBeNull()
+
+    // The trail keeps the deletion although its operator is the row that was just removed: the
+    // relationship is cleared, the id and email snapshots stay.
+    const entries = await auditEntries(request, { collection: 'users', id: manager.id, since })
+    expect(entries.map((entry) => entry.action)).toEqual(['DELETE'])
+    expect(entries[0].actorEmail).toBe(manager.email)
   })
 })

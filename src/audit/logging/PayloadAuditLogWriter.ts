@@ -194,9 +194,17 @@ function toAuditData(entry: AuditLogEntry): AuditLogData {
   }
 }
 
+/**
+ * Drizzle wraps the driver's error in "Failed query: ...", and the driver's own message ("FOREIGN
+ * KEY constraint failed") is only on `cause`, so the whole chain is searched.
+ */
 function isForeignKeyError(error: unknown): boolean {
-  const message = error instanceof Error ? `${error.name} ${error.message}` : String(error)
-  return /foreign key/i.test(message)
+  for (let current = error, depth = 0; current != null && depth < 5; depth += 1) {
+    const message = current instanceof Error ? `${current.name} ${current.message}` : String(current)
+    if (/foreign key/i.test(message)) return true
+    current = current instanceof Error ? current.cause : undefined
+  }
+  return false
 }
 
 function toJsonValue(value: unknown): JsonValue {
