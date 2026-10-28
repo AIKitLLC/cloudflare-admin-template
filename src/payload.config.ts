@@ -45,6 +45,8 @@ import {
   ensureRowScopeRegistered,
 } from './scope'
 import { SystemParameters } from './system-parameters'
+// SPIKE #44 (throwaway, never merges): plugin under test.
+import { createNexusSpikePlugin } from '../spike/nexus-crm/plugin'
 
 /**
  * Vitest setup assigns this before the config module loads. Production and
@@ -225,6 +227,7 @@ export default buildConfig({
       bucket: cloudflare.env.R2,
       collections: { media: true },
     }),
+    createNexusSpikePlugin(),
     rbacCoveragePlugin,
   ],
 })
