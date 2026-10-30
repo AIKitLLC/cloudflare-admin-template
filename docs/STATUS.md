@@ -1,10 +1,10 @@
 # Status
 
-Last updated: 2026-10-25.
+Last updated: 2026-10-26.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for review.
 
-The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-25 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `2d49bad`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
+The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-26 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `43fa610`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
 
 ## What is on `main`
 
@@ -32,6 +32,15 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | `b12a6ed` | #52 | Dependencies: `pnpm.overrides` pins vulnerable transitive versions reported by `pnpm audit --prod` to patched releases; lockfile regenerated. No application code changes. Closes #46. |
 | `a49d6c0` | #55 | Tests and docs: `onInit` row-scope assertion pinned for plugin-added collections; boundary test rejects `@payloadcms/*` and un-prefixed Node built-ins in runtime-limited entries. No runtime change. Closes #54. |
 | `2d49bad` | #56 | This status page refreshed after #50, #51, #52, and #55. |
+| `39bd78a` | #57 | A failed first-admin setup removes the user it committed; if that fails the claim is kept so the next attempt recovers it. Closes #53. |
+| `cc5b117` | #58 | Playwright E2E harness on the built Worker (`scripts/e2e/serve-worker.mjs`, job `e2e`) and the first-admin flow. |
+| `112189c` | #59 | E2E: sign-in, lockout and throttling. |
+| `d21702c` | #60 | E2E: password recovery. |
+| `59f997b` | #61 | 12 to 256 character password on every `users` write. |
+| `8f5a6a1` | #62 | E2E: roles, the permission matrix and the owner-only `role` field. |
+| `91abbc3` | #63 | E2E: users and Media through the admin screens, and the audit trail. |
+| `da4476c` | #75 | E2E: row scope, client security, homepage cleanup and interrupted setup (#64, #65, #73, #66). |
+| `43fa610` | #77 | CI: bounded apt stalls in the `e2e` job and one retry. |
 
 ## Toolchain and CI
 
@@ -46,7 +55,8 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 | Pull request | Title | Issue | Base | State |
 | --- | --- | --- | --- | --- |
-| This change | fix: remove the user a failed first-admin setup committed | #53 | `main` | Draft |
+| #80 | fix: scope slugs, cross-organization branch parents, self-delete audit, early setup retry, Media size limit | #68–#72 (refs #76) | `main` | Draft |
+| This change | feat: Nexus CRM as its own Worker behind a service binding | #44 (refs) | `main` | Draft |
 
 #11–#15, #18, and #19 were closed as superseded by #29. #20 (plugin split, base `integration/admin-stack`) was closed on 2026-10-23; that work is on hold.
 
@@ -54,7 +64,7 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 
 A maintainer decides the merge order. Do not merge any pull request without maintainer approval.
 
-#31, #33, #32, #39, #41, #48, #50, #51, #52, #55, and #56 were merged in that order.
+#31, #33, #32, #39, #41, #48, #50, #51, #52, #55, #56, #57, #58, #59, #60, #61, #62, #63, #75, and #77 were merged in that order.
 
 ## Deploy prerequisites
 
@@ -84,11 +94,17 @@ Labels exist (`type:*`, `area:*`, `status:*`, `priority:*`). No milestones exist
 | #8 | Advanced data grid | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
 | #10 | Safe script runner | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
 | #49 | Mandatory CI/CD deploy; no deploys from a local machine | `priority:p0` | — |
-| #53 | Flaky `admin:create still recovers`: a failed CLI run left a user behind | `type:bug`, `area:tests`, `status:ready`, `priority:p2` | This change |
+| #68 | Duplicate organization, branch or data-class slug answers 500 | — | #80 |
+| #69 | A branch can have a parent from another organization | — | #80 |
+| #70 | Deleting your own account drops its DELETE audit entry | — | #80 |
+| #71 | An early first-run setup retry seals setup and blocks web recovery | — | #80 |
+| #72 | Media has no upload size limit | — | #80 |
+| #74 | Filter tokens and secrets from `worker.log` before CI uploads it | — | — |
+| #76 | Flaky integration test: first-admin setup recovery retry | `bug` | #80 adds diagnostics only |
 | #40 | Deploy-button inputs and isolated demo rollout | — | #41 (merged). Stays open until a demo deploy and sign-in check succeed and the demo URL is recorded. |
-| #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | — |
+| #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | This change: ADR 0001 (accepted 2026-10-26), organizations as workspaces, the app under `/nexus`, MCP at `/api/nexus/mcp`. Open: CI for the `nexus` project, cutover runbook. |
 
-Closed on 2026-10-17 as resolved by #29 (`0180b63`): #1 (RBAC and permission matrix), #2 (row-level scope), #3 (audit trail), and #9 (system parameters). Closed by #31: #34. Closed by #33: #35 and #36. Closed by #32: #37. Closed by #39: #38. Closed by #50: #47. Closed by #51: #45. Closed by #52: #46. Closed by #55: #54. #41 (merged) refs #40 but does not close it.
+Closed on 2026-10-17 as resolved by #29 (`0180b63`): #1 (RBAC and permission matrix), #2 (row-level scope), #3 (audit trail), and #9 (system parameters). Closed by #31: #34. Closed by #33: #35 and #36. Closed by #32: #37. Closed by #39: #38. Closed by #50: #47. Closed by #51: #45. Closed by #52: #46. Closed by #55: #54. Closed by #57: #53. #41 (merged) refs #40 but does not close it.
 
 Proposed milestones, for a person with permission to create them:
 
@@ -105,13 +121,20 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Fixes #53. D1 runs without transactions, so `payload.create` can reject after the `users` row was committed (a `users` hook failed). `createFirstAdminAccount` (`src/auth/first-admin-setup.ts`) used to skip the cleanup then and release the claim, leaving one user, no claim, and setup not completed: retries got 409 and the #50 recovery did not match. Now:
+Refs #44. It does not close it: CI for the `nexus` E2E project and the `nexus-crm-prod` cutover runbook are still open. ADR 0001 (`docs/adr/0001-nexus-crm-service-binding.md`) was accepted on 2026-10-26 and describes each phase.
 
-- The failed attempt looks up the row it committed under its own live claim (`ownUserId`: exactly one user, with its email) and removes it by id. A guard refusal or a taken-over claim still removes nothing.
-- If the removal fails, the claim is kept, so the next attempt recovers the account once the claim is stale. `pnpm admin:create` now recovers this way after setup has completed too; the web flow stays closed.
-- `tests/int/first-admin-setup-http.int.spec.ts` keeps 2000 characters of each CLI run's output in the failure detail.
-
-Unit tests cover both paths. `docs/admin-access.md` describes the new cleanup and recovery.
+- **Proxy** (`src/nexus`, `src/app/api/nexus/[...path]`, `src/app/nexus-services.ts`):
+  - `/api/nexus/v1/*`, `/health` and `/auth/me` (read-only) are forwarded to the optional `NEXUS` binding.
+  - Payload authenticates the caller.
+  - The keys `nexus:read`, `nexus:write` and `nexus:admin` map to Nexus roles; full access maps to owner.
+  - The request carries an HMAC-signed `x-nexus-identity` header, valid for 60 s, that names the user and the workspace.
+  - The keys and the sidebar link exist only while the binding does.
+- **Organizations as workspaces** (`src/nexus/workspaces.ts`): one workspace per organization, keyed by id and creation time. The user's organizations and their descendants are open to them; with no assignment they get the default workspace. `GET /api/nexus/workspaces` lists them, and the `nexus_org` cookie or `x-nexus-org` header picks one.
+- **App** (`src/app/nexus/[[...path]]`): the embedded Nexus SPA at `/nexus` with Nexus's CSP. It needs a session and a Nexus role, and redirects to the admin login otherwise.
+- **MCP** (`/api/nexus/mcp`): the template looks up the token's owner over the binding, checks their current grants and scope, and signs the call. Nexus refuses MCP tokens without that identity.
+- Nexus side: AIKitLLC/nexus-crm#114.
+- `wrangler.jsonc`: the binding stays commented.
+- E2E: Nexus runs as its own `wrangler dev` (`E2E_NEXUS_DIR`); project `nexus`, 16 cases. Not in CI yet, because the Nexus repository is private.
 
 ## Acronyms
 

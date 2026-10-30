@@ -49,6 +49,14 @@
     //   "binding": "WORKER_SELF_REFERENCE",
     //   "service": "my-app"
     // },
+    // Optional: Nexus CRM as its own Worker (docs/adr/0001-nexus-crm-service-binding.md).
+    // Deploy the nexus-crm Worker first, then uncomment this and set the same
+    // NEXUS_BRIDGE_SECRET on both Workers (`wrangler secret put NEXUS_BRIDGE_SECRET`).
+    // Wrangler refuses to deploy a binding to a Worker that does not exist.
+    // {
+    //   "binding": "NEXUS",
+    //   "service": "nexus-crm"
+    // },
   ],
   // Optional cache for system parameters. Leave this commented until a KV namespace
   // exists. Binding name: SYSTEM_PARAMETERS_KV. Do not replace the placeholder with a

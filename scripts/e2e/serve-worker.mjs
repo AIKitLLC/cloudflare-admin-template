@@ -13,13 +13,16 @@
 // Needs no secrets and no Cloudflare account. Run `pnpm run build:worker:full` first, or
 // let Playwright's webServer do it (E2E_SKIP_BUILD=1 reuses an existing .open-next).
 import { spawn, spawnSync } from 'node:child_process'
-import { createWriteStream, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { connect } from 'node:net'
-import { join } from 'node:path'
+import { createRequire } from 'node:module'
+import { join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 
 import { buildCloudflareWorker } from '../worker-build/build-cloudflare-worker.mjs'
 import { redact } from './redact-log.mjs'
+
+const require = createRequire(import.meta.url)
 
 const port = Number(process.env.E2E_PORT ?? 8792)
 const secret = 'e2e-worker-secret'
@@ -35,8 +38,23 @@ const instances = [
           log: 'worker-interrupted.log',
         },
       ]),
+  // Nexus CRM behind the `NEXUS` service binding (docs/adr/0001-nexus-crm-service-binding.md), only
+  // when E2E_NEXUS_DIR points at a nexus-crm checkout with its dependencies installed.
+  ...(process.env.E2E_NEXUS_DIR
+    ? [
+        {
+          name: 'nexus',
+          port: port + 2,
+          stateDir: join(process.cwd(), '.wrangler', 'e2e-nexus'),
+          log: 'worker-nexus.log',
+          nexusDir: resolve(process.env.E2E_NEXUS_DIR),
+        },
+      ]
+    : []),
   { name: 'main', port, stateDir: join(process.cwd(), '.wrangler', 'e2e'), log: 'worker.log' },
 ]
+/** Shared by the two Workers of the nexus instance; a fixed test value, like `secret` above. */
+const nexusBridgeSecret = 'e2e-nexus-bridge-secret-0123456789abcdef'
 
 const baseEnv = {
   ...process.env,
@@ -94,7 +112,7 @@ for (const instance of instances) {
 }
 
 /** Wipes and migrates the instance's state, then runs `wrangler dev` on it. */
-async function start({ name, port: instancePort, stateDir, log }, waitUntilReady) {
+async function start({ name, port: instancePort, stateDir, log, nexusDir }, waitUntilReady) {
   // `localhost`, not `127.0.0.1`: the Worker sees its own origin as `http://localhost:<port>` (Next
   // builds `request.url` from it), and the client security settings API only accepts a write whose
   // `Origin` equals that. A browser on `127.0.0.1` would be refused every time.
@@ -142,6 +160,7 @@ async function start({ name, port: instancePort, stateDir, log }, waitUntilReady
   }
   console.log(`e2e: migrated the local D1 (${name})`)
 
+  const configArgs = nexusDir ? await startNexus(stateDir, nexusDir, env, instancePort + 2, log) : []
   const workerLog = createWriteStream(join(logDir, log))
   const worker = spawn(
     'pnpm',
@@ -149,6 +168,7 @@ async function start({ name, port: instancePort, stateDir, log }, waitUntilReady
       'exec',
       'wrangler',
       'dev',
+      ...configArgs,
       '--local',
       '--ip',
       'localhost',
@@ -191,6 +211,121 @@ async function start({ name, port: instancePort, stateDir, log }, waitUntilReady
   worker.on('close', (code) => workerLog.end(() => process.exit(code ?? 0)))
 
   if (waitUntilReady) await untilAnswering(`${origin}/api/users/me`, worker)
+}
+
+/**
+ * Starts the Nexus Worker in its own `wrangler dev` (local D1/R2/Queues under `stateDir`) and
+ * returns the `-c` argument for the template Worker: wrangler.jsonc with the `NEXUS` binding and
+ * the bridge secret added. The binding reaches the Nexus process through wrangler's local dev
+ * registry. One `wrangler dev -c a -c b` would be simpler, but there an auxiliary Worker's assets
+ * answer 500 whenever the primary Worker has assets too (wrangler 4.116), which the template does.
+ * The Nexus config is written here, with no account and no remote ids, so it cannot reach
+ * nexus-crm-prod. Nexus's migrations are applied to its local D1 first.
+ */
+async function startNexus(stateDir, nexusDir, env, nexusPort, log) {
+  const ts = require('typescript')
+  const root = process.cwd()
+  const template = ts.parseConfigFileTextToJson('wrangler.jsonc', readFileSync('wrangler.jsonc', 'utf8')).config
+  template.main = join(root, template.main)
+  template.assets.directory = join(root, template.assets.directory)
+  template.d1_databases = template.d1_databases.map(({ remote: _remote, ...database }) => database)
+  template.services = [{ binding: 'NEXUS', service: 'nexus-crm-e2e' }]
+  template.vars = { ...template.vars, NEXUS_BRIDGE_SECRET: nexusBridgeSecret }
+  delete template.$schema
+  const templateConfig = join(stateDir, 'wrangler.template.json')
+  writeFileSync(templateConfig, JSON.stringify(template))
+
+  // The SPA as the template serves it: under /nexus/, calling /api/nexus/*. Plain `vite build`, so a
+  // Nexus typecheck failure does not stop the template suite.
+  const build = spawnSync('npx', ['vite', 'build', '--base', '/nexus/'], {
+    cwd: nexusDir,
+    // NODE_OPTIONS carries the suite's `--import=tsx/esm`, which does not resolve from the Nexus checkout.
+    env: { ...process.env, NODE_OPTIONS: '', VITE_NEXUS_EMBEDDED: '1' },
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+    timeout: 300_000,
+  })
+  if (build.status !== 0) {
+    console.error(`${build.stdout ?? ''}\n${build.stderr ?? ''}`.slice(-4000))
+    process.exit(build.status ?? 1)
+  }
+  console.log('e2e: built the embedded Nexus SPA')
+
+  const nexusConfig = join(stateDir, 'wrangler.nexus.json')
+  writeFileSync(
+    nexusConfig,
+    JSON.stringify({
+      name: 'nexus-crm-e2e',
+      main: join(nexusDir, 'src/server.ts'),
+      compatibility_date: '2026-07-18',
+      compatibility_flags: ['nodejs_compat'],
+      workers_dev: false,
+      assets: {
+        binding: 'ASSETS',
+        directory: join(nexusDir, 'dist/client'),
+        not_found_handling: 'single-page-application',
+        run_worker_first: ['/api/*', '/mcp'],
+      },
+      vars: {
+        APP_NAME: 'Nexus CRM (e2e)',
+        APP_ENV: 'development',
+        // Also the template admin of nexus-crm.e2e.spec.ts (see the seeded user below).
+        OWNER_EMAIL: 'nexus-admin@example.com',
+        // Not a usable password: nobody signs in to Nexus directly in this suite.
+        OWNER_PASSWORD_HASH: '0'.repeat(64),
+        SESSION_SECRET: 'e2e-nexus-session-secret',
+        DEFAULT_WORKSPACE_SLUG: 'e2e-crm',
+        DELIVERY_MODE: 'disabled',
+        NEXUS_BRIDGE_SECRET: nexusBridgeSecret,
+      },
+      d1_databases: [
+        {
+          binding: 'DB',
+          database_name: 'nexus-crm-e2e',
+          database_id: 'nexus-crm-e2e',
+          migrations_dir: join(nexusDir, 'migrations'),
+        },
+      ],
+      r2_buckets: [{ binding: 'FILES', bucket_name: 'nexus-crm-e2e-files' }],
+      queues: {
+        producers: [{ binding: 'EVENTS', queue: 'nexus-crm-e2e-events' }],
+        consumers: [{ queue: 'nexus-crm-e2e-events', max_batch_size: 10, max_batch_timeout: 1 }],
+      },
+    }),
+  )
+  const d1 = (...args) => {
+    const run = spawnSync(
+      'pnpm',
+      ['exec', 'wrangler', 'd1', ...args, 'nexus-crm-e2e', '--local', '--persist-to', stateDir, '-c', nexusConfig],
+      { cwd: root, env: { ...env, CI: 'true' }, encoding: 'utf8', shell: process.platform === 'win32', timeout: 180_000 },
+    )
+    if (run.status !== 0) {
+      console.error(`${run.stdout ?? ''}\n${run.stderr ?? ''}`.slice(-4000))
+      process.exit(run.status ?? 1)
+    }
+  }
+  d1('migrations', 'apply')
+  // The owner as a real install has it after signing in to Nexus once: an existing user, under
+  // Nexus's own id, whose email is also a template user's.
+  d1('execute', '--command', "INSERT INTO users (id, email, display_name, status, created_at, updated_at) VALUES ('usr_owner', 'nexus-admin@example.com', 'Owner', 'active', '2026-01-01', '2026-01-01')")
+  console.log('e2e: migrated the local Nexus D1')
+
+  const nexusLog = createWriteStream(join(logDir, log.replace('.log', '-crm.log')))
+  const nexus = spawn(
+    'pnpm',
+    [
+      'exec', 'wrangler', 'dev', '-c', nexusConfig, '--local', '--ip', 'localhost',
+      '--port', String(nexusPort), '--inspector-port', String(nexusPort + 1000),
+      '--persist-to', stateDir, '--show-interactive-dev-session', 'false',
+    ],
+    { cwd: root, env: { ...env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' },
+  )
+  workers.push(nexus)
+  nexus.stdout.pipe(nexusLog, { end: false })
+  nexus.stderr.pipe(nexusLog, { end: false })
+  await untilAnswering(`http://localhost:${nexusPort}/api/health`, nexus)
+  console.log('e2e: Nexus Worker is up')
+  return ['-c', templateConfig]
 }
 
 /** Resolves once the URL answers with anything, so the next instance (and Playwright) start after it. */
