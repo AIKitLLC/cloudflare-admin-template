@@ -348,11 +348,18 @@ test.describe('The Nexus app under /nexus/', () => {
 
   test('a non-asset /nexus/ path returns 404 and never reaches Nexus Worker routes', async ({ request }) => {
     const headers = { cookie: `payload-token=${adminJwt}`, 'sec-fetch-site': 'none' }
-    for (const path of ['/nexus/api/health', '/nexus/api/v1/records', '/nexus/api/auth/login', '/nexus/mcp', '/nexus/api/health.js', '/nexus/mcp.js', '/nexus/api/bridge/mcp-token.map', '/nexus/%61pi/v1/records/x.js', '/nexus//api/health.js', '/nexus/API/health.js', '/nexus/%2e%2e/api']) {
+    for (const path of ['/nexus/api/health', '/nexus/api/v1/records', '/nexus/api/auth/login', '/nexus/mcp', '/nexus/api/health.js', '/nexus/mcp.js', '/nexus/api/bridge/mcp-token.map', '/nexus/%61pi/v1/records/x.js', '/nexus/API/health.js', '/nexus/%2e%2e/api']) {
       const response = await request.get(path, { headers, maxRedirects: 0 })
       expect(response.status(), path).toBe(404)
       expect(await response.text(), path).toMatch(/not found/i)
     }
+    // Next.js collapses a doubled slash with a 308 before the route runs; the collapsed path is
+    // still refused, so the doubled spelling never reaches a Nexus Worker route.
+    const doubled = await request.get('/nexus//api/health.js', { headers, maxRedirects: 0 })
+    expect(doubled.status()).toBe(308)
+    expect(new URL(doubled.headers()['location'], 'http://localhost').pathname).toBe('/nexus/api/health.js')
+    const followed = await request.get('/nexus//api/health.js', { headers })
+    expect(followed.status()).toBe(404)
     // API traffic still uses the authenticated bridge.
     const bridged = await api(request, { method: 'GET', path: '/api/nexus/health', token: adminJwt })
     expect(bridged).toMatchObject({ status: 200, body: { ok: true } })
@@ -363,10 +370,14 @@ test.describe('The Nexus app under /nexus/', () => {
     const favicon = await request.get('/nexus/favicon.ico?v=1', { headers, maxRedirects: 0 })
     expect(favicon.status()).toBe(200)
     expect(favicon.headers()['content-type'] ?? '').not.toContain('text/html')
-    for (const path of ['/nexus/%66avicon.ico', '/nexus//favicon.ico', '/nexus/./favicon.ico', '/nexus/api/favicon.ico', '/nexus/MCP/robots.txt', '/nexus/Assets/favicon.ico', '/nexus/favicon.png', '/nexus/aPi/health']) {
+    for (const path of ['/nexus/%66avicon.ico', '/nexus/./favicon.ico', '/nexus/api/favicon.ico', '/nexus/MCP/robots.txt', '/nexus/Assets/favicon.ico', '/nexus/favicon.png', '/nexus/aPi/health']) {
       const response = await request.get(path, { headers, maxRedirects: 0 })
       expect(response.status(), path).toBe(404)
     }
+    // A doubled slash is collapsed by Next.js (308) to the canonical path, not served as is.
+    const doubled = await request.get('/nexus//favicon.ico', { headers, maxRedirects: 0 })
+    expect(doubled.status()).toBe(308)
+    expect(new URL(doubled.headers()['location'], 'http://localhost').pathname).toBe('/nexus/favicon.ico')
   })
 
   test('the query string is not forwarded to the asset store', async ({ request }) => {
