@@ -351,7 +351,7 @@ test.describe('The Nexus app under /nexus/', () => {
     for (const path of ['/nexus/api/health', '/nexus/api/v1/records', '/nexus/api/auth/login', '/nexus/mcp', '/nexus/api/health.js', '/nexus/mcp.js', '/nexus/api/bridge/mcp-token.map', '/nexus/%61pi/v1/records/x.js', '/nexus/API/health.js', '/nexus/%2e%2e/api']) {
       const response = await request.get(path, { headers, maxRedirects: 0 })
       expect(response.status(), path).toBe(404)
-      expect(await response.text(), path).toMatch(/not found/i)
+      expect(await response.text(), path).toMatch(/not (be )?found/i) // the route answers "Not found"; a path Next.js resolves outside /nexus/ gets its "could not be found" page
     }
     // Next.js collapses a doubled slash with a 308 before the route runs; the collapsed path is
     // still refused, so the doubled spelling never reaches a Nexus Worker route.
