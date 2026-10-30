@@ -42,6 +42,9 @@ test('resolveNexusSpaUpstreamPath refuses non-asset paths that would reach Nexus
     '/nexus/secret.env',
     '/nexus/assets/index.exe',
     '/nexus/config.json',
+    '/nexus/api/health.js',
+    '/nexus/mcp.js',
+    '/nexus/api/bridge/mcp-token.map',
   ]) {
     assert.equal(resolveNexusSpaUpstreamPath(path), null, path)
   }

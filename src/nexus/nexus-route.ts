@@ -209,12 +209,13 @@ const NEXUS_SPA_ASSET_EXT = /\.(?:js|mjs|css|html|svg|png|jpe?g|gif|webp|ico|wof
 export function resolveNexusSpaUpstreamPath(pathname: string): string | null {
   const path = pathname.replace(/^\/nexus/, '') || '/'
   if (path === '/' || path === '/index.html') return path
+  // Block Nexus Worker routes before the asset check so `/nexus/api/x.js` never reaches Nexus.
+  if (path === '/api' || path.startsWith('/api/') || path === '/mcp' || path.startsWith('/mcp/') || /^\/(api|mcp)\./.test(path)) {
+    return null
+  }
   if (NEXUS_SPA_ASSET_EXT.test(path)) return path
   const last = path.split('/').pop() ?? ''
   if (last.includes('.')) return null
-  if (path === '/api' || path.startsWith('/api/') || path === '/mcp' || path.startsWith('/mcp/')) {
-    return null
-  }
   return '/'
 }
 
