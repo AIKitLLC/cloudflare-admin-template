@@ -144,3 +144,18 @@ test('fetchNexusAsset returns 404 for a root file missing from the build', async
   const gone = await fetchNexusAsset(missing.nexus, '/favicon.svg', new Request('https://template.example/nexus/favicon.svg'))
   assert.equal(gone.status, 404)
 })
+
+test('resolveNexusSpaUpstreamPath keeps the case of a hashed asset file name', () => {
+  // Bundler content hashes are mixed case and the asset store is case-sensitive.
+  assert.equal(resolveNexusSpaUpstreamPath('/nexus/assets/index-B3xK_q9Z.js'), '/assets/index-B3xK_q9Z.js')
+  assert.equal(resolveNexusSpaUpstreamPath('/nexus/assets/vendor-DkP0a-Lm.css'), '/assets/vendor-DkP0a-Lm.css')
+  assert.equal(resolveNexusSpaUpstreamPath('/nexus/ASSETS/index-B3xK_q9Z.js'), '/assets/index-B3xK_q9Z.js')
+  assert.equal(resolveNexusSpaUpstreamPath('/nexus/assets/index-B3xK_q9Z.EXE'), null)
+})
+
+test('fetchNexusAsset returns 404 when the asset store answers an asset with the SPA index', async () => {
+  const spa = fakeNexus(() => new Response('<html></html>', { headers: { 'content-type': 'text/html; charset=utf-8' } }))
+  const response = await fetchNexusAsset(spa.nexus, '/assets/missing-Ab12.js', new Request('https://template.example/nexus/assets/missing-Ab12.js'))
+  assert.equal(response.status, 404)
+  assert.deepEqual(spa.fetches, ['https://nexus.internal/assets/missing-Ab12.js'])
+})

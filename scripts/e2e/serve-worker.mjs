@@ -187,7 +187,10 @@ async function start({ name, port: instancePort, stateDir, log, nexusDir }, wait
     ],
     {
       cwd: process.cwd(),
-      env,
+      // Each `wrangler dev` watches the dev registry for the other local Workers. Only the nexus
+      // instance needs the shared one (its `NEXUS` binding); the others get their own, so a registry
+      // update made by another instance cannot reach a Worker that never reads it.
+      env: nexusDir ? env : { ...env, WRANGLER_REGISTRY_PATH: join(stateDir, 'registry') },
       // Piped so the log can also go to a file CI uploads when a run fails (see the pipes below).
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
@@ -271,11 +274,16 @@ async function startNexus(stateDir, nexusDir, env, nexusPort, log) {
         APP_ENV: 'development',
         // Also the template admin of nexus-crm.e2e.spec.ts (see the seeded user below).
         OWNER_EMAIL: 'nexus-admin@example.com',
-        // Not a usable password: nobody signs in to Nexus directly in this suite.
-        OWNER_PASSWORD_HASH: '0'.repeat(64),
+        // Not a usable password: nobody signs in to Nexus directly in this suite. Deliberately not
+        // hex, so it cannot be mistaken for (or masked as) a real hash in the Worker log.
+        OWNER_PASSWORD_HASH: 'e2e-placeholder-not-a-password-hash',
         SESSION_SECRET: 'e2e-nexus-session-secret',
         DEFAULT_WORKSPACE_SLUG: 'e2e-crm',
         DELIVERY_MODE: 'disabled',
+        // Nexus fails closed (503 on every /api/* request) when ACCESS_ENFORCEMENT is unset outside
+        // production. This local Worker is reached only through the service binding, with no
+        // Cloudflare Access in front, so the gate is explicitly off.
+        ACCESS_ENFORCEMENT: 'off',
         NEXUS_BRIDGE_SECRET: nexusBridgeSecret,
       },
       d1_databases: [
@@ -321,9 +329,25 @@ async function startNexus(stateDir, nexusDir, env, nexusPort, log) {
     { cwd: root, env: { ...env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' },
   )
   workers.push(nexus)
-  nexus.stdout.pipe(nexusLog, { end: false })
-  nexus.stderr.pipe(nexusLog, { end: false })
-  await untilAnswering(`http://localhost:${nexusPort}/api/health`, nexus)
+  // Redacted line by line like the template Worker's log (wrangler prints the vars), and kept in
+  // memory so an early exit can show why.
+  const nexusLines = []
+  for (const stream of [nexus.stdout, nexus.stderr]) {
+    createInterface({ input: stream }).on('line', (line) => {
+      const clean = redact(line)
+      nexusLines.push(clean)
+      if (nexusLines.length > 200) nexusLines.shift()
+      nexusLog.write(clean + '\n')
+    })
+  }
+  try {
+    await untilAnswering(`http://localhost:${nexusPort}/api/health`, nexus)
+  } catch (error) {
+    // Give the pipes a moment to drain so the crash message is in the buffer.
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+    console.error(`e2e: last lines of the Nexus Worker (redacted):\n${nexusLines.slice(-60).join('\n')}`)
+    throw error
+  }
   console.log('e2e: Nexus Worker is up')
   return ['-c', templateConfig]
 }

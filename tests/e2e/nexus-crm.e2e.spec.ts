@@ -348,11 +348,18 @@ test.describe('The Nexus app under /nexus/', () => {
 
   test('a non-asset /nexus/ path returns 404 and never reaches Nexus Worker routes', async ({ request }) => {
     const headers = { cookie: `payload-token=${adminJwt}`, 'sec-fetch-site': 'none' }
-    for (const path of ['/nexus/api/health', '/nexus/api/v1/records', '/nexus/api/auth/login', '/nexus/mcp', '/nexus/api/health.js', '/nexus/mcp.js', '/nexus/api/bridge/mcp-token.map', '/nexus/%61pi/v1/records/x.js', '/nexus//api/health.js', '/nexus/API/health.js', '/nexus/%2e%2e/api']) {
+    for (const path of ['/nexus/api/health', '/nexus/api/v1/records', '/nexus/api/auth/login', '/nexus/mcp', '/nexus/api/health.js', '/nexus/mcp.js', '/nexus/api/bridge/mcp-token.map', '/nexus/%61pi/v1/records/x.js', '/nexus/API/health.js', '/nexus/%2e%2e/api']) {
       const response = await request.get(path, { headers, maxRedirects: 0 })
       expect(response.status(), path).toBe(404)
-      expect(await response.text(), path).toMatch(/not found/i)
+      expect(await response.text(), path).toMatch(/not (be )?found/i) // the route answers "Not found"; a path Next.js resolves outside /nexus/ gets its "could not be found" page
     }
+    // Next.js collapses a doubled slash with a 308 before the route runs; the collapsed path is
+    // still refused, so the doubled spelling never reaches a Nexus Worker route.
+    const doubled = await request.get('/nexus//api/health.js', { headers, maxRedirects: 0 })
+    expect(doubled.status()).toBe(308)
+    expect(new URL(doubled.headers()['location'], 'http://localhost').pathname).toBe('/nexus/api/health.js')
+    const followed = await request.get('/nexus//api/health.js', { headers })
+    expect(followed.status()).toBe(404)
     // API traffic still uses the authenticated bridge.
     const bridged = await api(request, { method: 'GET', path: '/api/nexus/health', token: adminJwt })
     expect(bridged).toMatchObject({ status: 200, body: { ok: true } })
@@ -361,12 +368,18 @@ test.describe('The Nexus app under /nexus/', () => {
   test('serves root files of the Nexus build and refuses spellings that bypass the allowlist', async ({ request }) => {
     const headers = { cookie: `payload-token=${adminJwt}`, 'sec-fetch-site': 'none' }
     const favicon = await request.get('/nexus/favicon.ico?v=1', { headers, maxRedirects: 0 })
-    expect(favicon.status()).toBe(200)
+    // A Nexus build need not ship a favicon: an allowlisted root file is served when the build has
+    // it and is a 404 when it does not, never the SPA's index.html.
+    expect([200, 404]).toContain(favicon.status())
     expect(favicon.headers()['content-type'] ?? '').not.toContain('text/html')
-    for (const path of ['/nexus/%66avicon.ico', '/nexus//favicon.ico', '/nexus/./favicon.ico', '/nexus/api/favicon.ico', '/nexus/MCP/robots.txt', '/nexus/Assets/favicon.ico', '/nexus/favicon.png', '/nexus/aPi/health']) {
+    for (const path of ['/nexus/%66avicon.ico', '/nexus/./favicon.ico', '/nexus/api/favicon.ico', '/nexus/MCP/robots.txt', '/nexus/Assets/favicon.ico', '/nexus/favicon.png', '/nexus/aPi/health']) {
       const response = await request.get(path, { headers, maxRedirects: 0 })
       expect(response.status(), path).toBe(404)
     }
+    // A doubled slash is collapsed by Next.js (308) to the canonical path, not served as is.
+    const doubled = await request.get('/nexus//favicon.ico', { headers, maxRedirects: 0 })
+    expect(doubled.status()).toBe(308)
+    expect(new URL(doubled.headers()['location'], 'http://localhost').pathname).toBe('/nexus/favicon.ico')
   })
 
   test('the query string is not forwarded to the asset store', async ({ request }) => {
@@ -377,12 +390,15 @@ test.describe('The Nexus app under /nexus/', () => {
     expect(await withQuery.text()).toBe(plain)
   })
 
-  test('the app runs in the browser with the template session', async ({ page }: { page: Page }) => {
+  test('the app runs in the browser with the template session', async ({ page, request }: { page: Page; request: APIRequestContext }) => {
     // page.request shares the browser's cookie jar, so userWith's sign-in is the page's session.
     const user = await userWith(page.request, ['nexus:write'])
     await page.goto('/admin', { waitUntil: 'domcontentloaded' })
     // The admin sidebar links to the app (it may be collapsed, so the link is checked, not clicked).
     await expect(page.getByRole('link', { name: 'Nexus CRM' })).toHaveAttribute('href', '/nexus')
+    // A fresh Nexus workspace opens its first-run setup; an admin finishes it so the app shows its pages.
+    const setup = await api(request, { method: 'POST', path: '/api/nexus/v1/setup/complete', token: adminJwt, data: { packKey: 'universal', skipped: true } })
+    expect(setup.status).toBe(200)
     await page.goto('/nexus/contacts')
     // The profile chip shows the bridged template user, and the app called /api/nexus/*.
     await expect(page.locator('.profile-chip')).toContainText(user.email)

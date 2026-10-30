@@ -1,12 +1,13 @@
 // Fails when a Worker log still holds something `redact-log.mjs` would mask, and removes that log so
 // the artifact upload that follows cannot publish it. Prints the rule names and line numbers, never
-// the matching text.
+// the matching text, followed by the first lines of the log with every rule applied (redact-log.mjs),
+// so a failure stays diagnosable; a line that is still unclean after redaction is left out.
 //
 // Usage: node scripts/e2e/check-log-secrets.mjs [directory]   (default: .wrangler/e2e-logs)
 import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { unredactedRules } from './redact-log.mjs'
+import { redact, unredactedRules } from './redact-log.mjs'
 
 const directory = process.argv[2] ?? join('.wrangler', 'e2e-logs')
 let leaked = false
@@ -15,21 +16,25 @@ if (existsSync(directory)) {
   for (const name of readdirSync(directory).filter((file) => file.endsWith('.log'))) {
     const path = join(directory, name)
     const found = new Map()
-    readFileSync(path, 'utf8')
-      .split('\n')
-      .forEach((line, index) => {
-        for (const rule of unredactedRules(line)) {
-          found.set(rule, [...(found.get(rule) ?? []), index + 1])
-        }
-      })
+    const lines = readFileSync(path, 'utf8').split('\n')
+    lines.forEach((line, index) => {
+      for (const rule of unredactedRules(line)) {
+        found.set(rule, [...(found.get(rule) ?? []), index + 1])
+      }
+    })
     if (found.size === 0) continue
     leaked = true
     rmSync(path)
-    for (const [rule, lines] of found) {
+    for (const [rule, numbers] of found) {
       console.error(
-        `${path}: ${rule} on line(s) ${lines.slice(0, 10).join(', ')}; the log was removed`,
+        `${path}: ${rule} on line(s) ${numbers.slice(0, 10).join(', ')}; the log was removed`,
       )
     }
+    const preview = lines
+      .slice(0, 60)
+      .map((line) => redact(line))
+      .filter((line) => unredactedRules(line).length === 0)
+    console.error(`${path}: first lines, redacted:\n${preview.join('\n')}`)
   }
 }
 
