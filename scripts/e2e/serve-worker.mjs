@@ -187,7 +187,10 @@ async function start({ name, port: instancePort, stateDir, log, nexusDir }, wait
     ],
     {
       cwd: process.cwd(),
-      env,
+      // Each `wrangler dev` watches the dev registry for the other local Workers. Only the nexus
+      // instance needs the shared one (its `NEXUS` binding); the others get their own, so a registry
+      // update made by another instance cannot reach a Worker that never reads it.
+      env: nexusDir ? env : { ...env, WRANGLER_REGISTRY_PATH: join(stateDir, 'registry') },
       // Piped so the log can also go to a file CI uploads when a run fails (see the pipes below).
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
