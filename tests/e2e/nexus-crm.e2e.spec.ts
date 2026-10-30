@@ -368,7 +368,9 @@ test.describe('The Nexus app under /nexus/', () => {
   test('serves root files of the Nexus build and refuses spellings that bypass the allowlist', async ({ request }) => {
     const headers = { cookie: `payload-token=${adminJwt}`, 'sec-fetch-site': 'none' }
     const favicon = await request.get('/nexus/favicon.ico?v=1', { headers, maxRedirects: 0 })
-    expect(favicon.status()).toBe(200)
+    // A Nexus build need not ship a favicon: an allowlisted root file is served when the build has
+    // it and is a 404 when it does not, never the SPA's index.html.
+    expect([200, 404]).toContain(favicon.status())
     expect(favicon.headers()['content-type'] ?? '').not.toContain('text/html')
     for (const path of ['/nexus/%66avicon.ico', '/nexus/./favicon.ico', '/nexus/api/favicon.ico', '/nexus/MCP/robots.txt', '/nexus/Assets/favicon.ico', '/nexus/favicon.png', '/nexus/aPi/health']) {
       const response = await request.get(path, { headers, maxRedirects: 0 })
