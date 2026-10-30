@@ -390,12 +390,15 @@ test.describe('The Nexus app under /nexus/', () => {
     expect(await withQuery.text()).toBe(plain)
   })
 
-  test('the app runs in the browser with the template session', async ({ page }: { page: Page }) => {
+  test('the app runs in the browser with the template session', async ({ page, request }: { page: Page; request: APIRequestContext }) => {
     // page.request shares the browser's cookie jar, so userWith's sign-in is the page's session.
     const user = await userWith(page.request, ['nexus:write'])
     await page.goto('/admin', { waitUntil: 'domcontentloaded' })
     // The admin sidebar links to the app (it may be collapsed, so the link is checked, not clicked).
     await expect(page.getByRole('link', { name: 'Nexus CRM' })).toHaveAttribute('href', '/nexus')
+    // A fresh Nexus workspace opens its first-run setup; an admin finishes it so the app shows its pages.
+    const setup = await api(request, { method: 'POST', path: '/api/nexus/v1/setup/complete', token: adminJwt, data: { packKey: 'universal', skipped: true } })
+    expect(setup.status).toBe(200)
     await page.goto('/nexus/contacts')
     // The profile chip shows the bridged template user, and the app called /api/nexus/*.
     await expect(page.locator('.profile-chip')).toContainText(user.email)
