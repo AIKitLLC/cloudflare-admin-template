@@ -326,8 +326,8 @@ async function startNexus(stateDir, nexusDir, env, nexusPort, log) {
     { cwd: root, env: { ...env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' },
   )
   workers.push(nexus)
-  // Redacted line by line like the template Worker's log (wrangler prints the vars, and the
-  // placeholder hash is a long hex string), and kept in memory so an early exit can show why.
+  // Redacted line by line like the template Worker's log (wrangler prints the vars), and kept in
+  // memory so an early exit can show why.
   const nexusLines = []
   for (const stream of [nexus.stdout, nexus.stderr]) {
     createInterface({ input: stream }).on('line', (line) => {

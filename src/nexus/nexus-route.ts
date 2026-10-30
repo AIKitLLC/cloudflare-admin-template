@@ -194,8 +194,12 @@ async function handleMcp(request: Request, payload: Payload, nexus: Fetcher, sec
   return relay(upstream, { 'Cache-Control': 'no-store' })
 }
 
-/** Static asset file names served from `/nexus/assets/`. */
-const NEXUS_ASSET_FILE = /^\/assets\/[a-z0-9][a-z0-9._-]*\.(?:js|mjs|css|svg|png|jpe?g|gif|webp|ico|woff2?|map)$/
+/**
+ * Static asset file names served from `/nexus/assets/`. Matched case-insensitively because bundler
+ * content hashes are mixed case (`index-B3xK_q.js`); the asset store is case-sensitive, so the
+ * file name is forwarded with its original case.
+ */
+const NEXUS_ASSET_FILE = /^\/assets\/[a-z0-9][a-z0-9._-]*\.(?:js|mjs|css|svg|png|jpe?g|gif|webp|ico|woff2?|map)$/i
 /** Extensionless SPA deep links (client-side routes); they always resolve to the index. */
 const NEXUS_SPA_ROUTE = /^(?:\/[a-z0-9_-]+)+\/?$/
 /** Root-level files of the Nexus build that may be served from `/nexus/<file>`, if the build has them. */
@@ -223,7 +227,7 @@ export function resolveNexusSpaUpstreamPath(pathname: string): string | null {
   if (path.split('/').some((segment) => segment === '.' || segment === '..')) return null
   const lower = path.toLowerCase()
   if (lower === '/' || lower === '/index.html') return lower
-  if (NEXUS_ASSET_FILE.test(lower)) return lower
+  if (NEXUS_ASSET_FILE.test(path)) return `/assets/${path.slice('/assets/'.length)}`
   if (NEXUS_ROOT_FILES.has(lower)) return lower
   if (NEXUS_RESERVED_SEGMENT.test(lower)) return null
   if (NEXUS_SPA_ROUTE.test(lower)) return '/'
@@ -263,9 +267,9 @@ export async function fetchNexusAsset(nexus: Fetcher, upstreamPath: string, requ
     method: request.method,
     headers: copyHeaders(request, ['accept', 'if-none-match']),
   })
-  // A root file is served only when the build has it. The asset store answers a missing file with
-  // the SPA index (text/html), which must not be passed off as that file.
-  if (NEXUS_ROOT_FILES.has(upstreamPath)) {
+  // A root file or an asset is served only when the build has it. The asset store answers a missing
+  // file with the SPA index (text/html), which must not be passed off as that file.
+  if (NEXUS_ROOT_FILES.has(upstreamPath) || upstreamPath.startsWith('/assets/')) {
     const html = (upstream.headers.get('content-type') ?? '').toLowerCase().startsWith('text/html')
     if ((upstream.status !== 200 && upstream.status !== 304) || html) {
       await upstream.body?.cancel()
