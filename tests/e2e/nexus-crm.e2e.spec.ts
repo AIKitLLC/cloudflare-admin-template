@@ -358,6 +358,25 @@ test.describe('The Nexus app under /nexus/', () => {
     expect(bridged).toMatchObject({ status: 200, body: { ok: true } })
   })
 
+  test('serves root files of the Nexus build and refuses spellings that bypass the allowlist', async ({ request }) => {
+    const headers = { cookie: `payload-token=${adminJwt}`, 'sec-fetch-site': 'none' }
+    const favicon = await request.get('/nexus/favicon.ico?v=1', { headers, maxRedirects: 0 })
+    expect(favicon.status()).toBe(200)
+    expect(favicon.headers()['content-type'] ?? '').not.toContain('text/html')
+    for (const path of ['/nexus/%66avicon.ico', '/nexus//favicon.ico', '/nexus/./favicon.ico', '/nexus/api/favicon.ico', '/nexus/MCP/robots.txt', '/nexus/Assets/favicon.ico', '/nexus/favicon.png', '/nexus/aPi/health']) {
+      const response = await request.get(path, { headers, maxRedirects: 0 })
+      expect(response.status(), path).toBe(404)
+    }
+  })
+
+  test('the query string is not forwarded to the asset store', async ({ request }) => {
+    const headers = { cookie: `payload-token=${adminJwt}`, 'sec-fetch-site': 'none' }
+    const plain = await (await request.get('/nexus/contacts', { headers, maxRedirects: 0 })).text()
+    const withQuery = await request.get('/nexus/contacts?debug=1&next=/api/health', { headers, maxRedirects: 0 })
+    expect(withQuery.status()).toBe(200)
+    expect(await withQuery.text()).toBe(plain)
+  })
+
   test('the app runs in the browser with the template session', async ({ page }: { page: Page }) => {
     // page.request shares the browser's cookie jar, so userWith's sign-in is the page's session.
     const user = await userWith(page.request, ['nexus:write'])
