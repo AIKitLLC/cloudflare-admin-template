@@ -198,12 +198,21 @@ async function handleMcp(request: Request, payload: Payload, nexus: Fetcher, sec
 const NEXUS_ASSET_FILE = /^\/assets\/[a-z0-9][a-z0-9._-]*\.(?:js|mjs|css|svg|png|jpe?g|gif|webp|ico|woff2?|map)$/
 /** Extensionless SPA deep links (client-side routes); they always resolve to the index. */
 const NEXUS_SPA_ROUTE = /^(?:\/[a-z0-9_-]+)+\/?$/
+/** Root-level files of the Nexus build that may be served from `/nexus/<file>`, if the build has them. */
+const NEXUS_ROOT_FILES = new Set([
+  '/favicon.ico',
+  '/favicon.svg',
+  '/robots.txt',
+  '/manifest.webmanifest',
+  '/apple-touch-icon.png',
+])
 /** First path segments that belong to Nexus Worker routes, never to the SPA. */
 const NEXUS_RESERVED_SEGMENT = /^\/(?:api|mcp|assets)(?:[/.]|$)/
 
 /**
  * Map a `/nexus…` pathname to the upstream asset path, or `null` when the request must 404.
- * Strict allowlist: only `/`, `/index.html` and `/assets/<file>` are fetched from the asset store;
+ * Strict allowlist: only `/`, `/index.html`, `/assets/<file>` and a few named root files (favicon,
+ * robots.txt, web manifest, touch icon) are fetched from the asset store;
  * extensionless SPA deep links fetch `/`. Any path with `%`, `//`, a backslash or a dot segment is
  * refused, and matching is case-insensitive, so no spelling of a Worker route can get through.
  */
@@ -215,6 +224,7 @@ export function resolveNexusSpaUpstreamPath(pathname: string): string | null {
   const lower = path.toLowerCase()
   if (lower === '/' || lower === '/index.html') return lower
   if (NEXUS_ASSET_FILE.test(lower)) return lower
+  if (NEXUS_ROOT_FILES.has(lower)) return lower
   if (NEXUS_RESERVED_SEGMENT.test(lower)) return null
   if (NEXUS_SPA_ROUTE.test(lower)) return '/'
   return null
@@ -239,15 +249,33 @@ export function createNexusAppRoute({ getServices }: Options) {
       return new Response(null, { status: 302, headers: { location: `/admin/login?redirect=${redirect}` } })
     }
     if (caller === 'denied') return new Response(DENIED, { status: 403 })
-    const upstream = await nexus.fetch(`${NEXUS_ORIGIN}${upstreamPath}${url.search}`, {
-      method: request.method,
-      headers: copyHeaders(request, ['accept', 'if-none-match']),
-    })
-    return relay(upstream, {
-      'Content-Security-Policy': NEXUS_CSP,
-      'Cache-Control':
-        upstreamPath.startsWith('/assets/') ? 'private, max-age=31536000, immutable' : 'private, no-store',
-      'X-Content-Type-Options': 'nosniff',
-    })
+    return fetchNexusAsset(nexus, upstreamPath, request)
   }
+}
+
+/**
+ * Fetch an allowlisted path (from `resolveNexusSpaUpstreamPath`) from the Nexus asset store and
+ * relay it with the Nexus CSP. Exported for tests.
+ */
+export async function fetchNexusAsset(nexus: Fetcher, upstreamPath: string, request: Request): Promise<Response> {
+  // The client's query string is never forwarded: the asset store does not need it.
+  const upstream = await nexus.fetch(`${NEXUS_ORIGIN}${upstreamPath}`, {
+    method: request.method,
+    headers: copyHeaders(request, ['accept', 'if-none-match']),
+  })
+  // A root file is served only when the build has it. The asset store answers a missing file with
+  // the SPA index (text/html), which must not be passed off as that file.
+  if (NEXUS_ROOT_FILES.has(upstreamPath)) {
+    const html = (upstream.headers.get('content-type') ?? '').toLowerCase().startsWith('text/html')
+    if ((upstream.status !== 200 && upstream.status !== 304) || html) {
+      await upstream.body?.cancel()
+      return new Response('Not Found', { status: 404 })
+    }
+  }
+  return relay(upstream, {
+    'Content-Security-Policy': NEXUS_CSP,
+    'Cache-Control':
+      upstreamPath.startsWith('/assets/') ? 'private, max-age=31536000, immutable' : 'private, no-store',
+    'X-Content-Type-Options': 'nosniff',
+  })
 }
