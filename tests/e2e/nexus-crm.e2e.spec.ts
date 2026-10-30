@@ -348,7 +348,7 @@ test.describe('The Nexus app under /nexus/', () => {
 
   test('a non-asset /nexus/ path returns 404 and never reaches Nexus Worker routes', async ({ request }) => {
     const headers = { cookie: `payload-token=${adminJwt}`, 'sec-fetch-site': 'none' }
-    for (const path of ['/nexus/api/health', '/nexus/api/v1/records', '/nexus/api/auth/login', '/nexus/mcp', '/nexus/api/health.js', '/nexus/mcp.js', '/nexus/api/bridge/mcp-token.map']) {
+    for (const path of ['/nexus/api/health', '/nexus/api/v1/records', '/nexus/api/auth/login', '/nexus/mcp', '/nexus/api/health.js', '/nexus/mcp.js', '/nexus/api/bridge/mcp-token.map', '/nexus/%61pi/v1/records/x.js', '/nexus//api/health.js', '/nexus/API/health.js', '/nexus/%2e%2e/api']) {
       const response = await request.get(path, { headers, maxRedirects: 0 })
       expect(response.status(), path).toBe(404)
       expect(await response.text(), path).toMatch(/not found/i)

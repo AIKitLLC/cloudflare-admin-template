@@ -16,13 +16,9 @@ test('resolveNexusSpaUpstreamPath allows static asset extensions', () => {
   const cases: Array<[string, string]> = [
     ['/nexus/assets/index-abc123.js', '/assets/index-abc123.js'],
     ['/nexus/assets/index-abc123.css', '/assets/index-abc123.css'],
-    ['/nexus/favicon.ico', '/favicon.ico'],
-    ['/nexus/logo.svg', '/logo.svg'],
-    ['/nexus/hero.png', '/hero.png'],
-    ['/nexus/photo.jpg', '/photo.jpg'],
-    ['/nexus/photo.jpeg', '/photo.jpeg'],
-    ['/nexus/font.woff', '/font.woff'],
-    ['/nexus/font.woff2', '/font.woff2'],
+    ['/nexus/assets/logo.svg', '/assets/logo.svg'],
+    ['/nexus/assets/photo.jpeg', '/assets/photo.jpeg'],
+    ['/nexus/assets/font.woff2', '/assets/font.woff2'],
     ['/nexus/assets/index-abc123.js.map', '/assets/index-abc123.js.map'],
   ]
   for (const [input, expected] of cases) {
@@ -45,6 +41,19 @@ test('resolveNexusSpaUpstreamPath refuses non-asset paths that would reach Nexus
     '/nexus/api/health.js',
     '/nexus/mcp.js',
     '/nexus/api/bridge/mcp-token.map',
+    '/nexus/%61pi/v1/records/x.js',
+    '/nexus//api/health.js',
+    '/nexus/API/health.js',
+    '/nexus/%2e%2e/api',
+    '/nexus/assets/%2e%2e/api/health.js',
+    '/nexus/assets/../api/health.js',
+    '/nexus/./api',
+    '/nexus/assets\\..\\api',
+    '/nexus/Mcp',
+    '/nexus/favicon.ico',
+    '/nexus/logo.svg',
+    '/nexus/assets/',
+    '/nexusapi/health',
   ]) {
     assert.equal(resolveNexusSpaUpstreamPath(path), null, path)
   }

@@ -194,29 +194,30 @@ async function handleMcp(request: Request, payload: Payload, nexus: Fetcher, sec
   return relay(upstream, { 'Cache-Control': 'no-store' })
 }
 
-/**
- * Paths under `/nexus/*` that may be fetched from the Nexus asset store. Only static assets and the
- * SPA index (for client-side navigation) are allowed; API and other Worker routes are never
- * forwarded here (those go through the authenticated `/api/nexus/*` bridge).
- */
-const NEXUS_SPA_ASSET_EXT = /\.(?:js|mjs|css|html|svg|png|jpe?g|gif|webp|ico|woff2?|map)$/i
+/** Static asset file names served from `/nexus/assets/`. */
+const NEXUS_ASSET_FILE = /^\/assets\/[a-z0-9][a-z0-9._-]*\.(?:js|mjs|css|svg|png|jpe?g|gif|webp|ico|woff2?|map)$/
+/** Extensionless SPA deep links (client-side routes); they always resolve to the index. */
+const NEXUS_SPA_ROUTE = /^(?:\/[a-z0-9_-]+)+\/?$/
+/** First path segments that belong to Nexus Worker routes, never to the SPA. */
+const NEXUS_RESERVED_SEGMENT = /^\/(?:api|mcp|assets)(?:[/.]|$)/
 
 /**
  * Map a `/nexus…` pathname to the upstream asset path, or `null` when the request must 404.
- * SPA deep links (no file extension) resolve to `/` so the asset store's index is served; they
- * never reach Nexus Worker routes such as `/api/*` or `/mcp`.
+ * Strict allowlist: only `/`, `/index.html` and `/assets/<file>` are fetched from the asset store;
+ * extensionless SPA deep links fetch `/`. Any path with `%`, `//`, a backslash or a dot segment is
+ * refused, and matching is case-insensitive, so no spelling of a Worker route can get through.
  */
 export function resolveNexusSpaUpstreamPath(pathname: string): string | null {
-  const path = pathname.replace(/^\/nexus/, '') || '/'
-  if (path === '/' || path === '/index.html') return path
-  // Block Nexus Worker routes before the asset check so `/nexus/api/x.js` never reaches Nexus.
-  if (path === '/api' || path.startsWith('/api/') || path === '/mcp' || path.startsWith('/mcp/') || /^\/(api|mcp)\./.test(path)) {
-    return null
-  }
-  if (NEXUS_SPA_ASSET_EXT.test(path)) return path
-  const last = path.split('/').pop() ?? ''
-  if (last.includes('.')) return null
-  return '/'
+  if (pathname !== '/nexus' && !pathname.startsWith('/nexus/')) return null
+  const path = pathname.slice('/nexus'.length) || '/'
+  if (path.includes('%') || path.includes('\\') || path.includes('//')) return null
+  if (path.split('/').some((segment) => segment === '.' || segment === '..')) return null
+  const lower = path.toLowerCase()
+  if (lower === '/' || lower === '/index.html') return lower
+  if (NEXUS_ASSET_FILE.test(lower)) return lower
+  if (NEXUS_RESERVED_SEGMENT.test(lower)) return null
+  if (NEXUS_SPA_ROUTE.test(lower)) return '/'
+  return null
 }
 
 /**
