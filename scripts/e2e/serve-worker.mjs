@@ -271,11 +271,16 @@ async function startNexus(stateDir, nexusDir, env, nexusPort, log) {
         APP_ENV: 'development',
         // Also the template admin of nexus-crm.e2e.spec.ts (see the seeded user below).
         OWNER_EMAIL: 'nexus-admin@example.com',
-        // Not a usable password: nobody signs in to Nexus directly in this suite.
-        OWNER_PASSWORD_HASH: '0'.repeat(64),
+        // Not a usable password: nobody signs in to Nexus directly in this suite. Deliberately not
+        // hex, so it cannot be mistaken for (or masked as) a real hash in the Worker log.
+        OWNER_PASSWORD_HASH: 'e2e-placeholder-not-a-password-hash',
         SESSION_SECRET: 'e2e-nexus-session-secret',
         DEFAULT_WORKSPACE_SLUG: 'e2e-crm',
         DELIVERY_MODE: 'disabled',
+        // Nexus fails closed (503 on every /api/* request) when ACCESS_ENFORCEMENT is unset outside
+        // production. This local Worker is reached only through the service binding, with no
+        // Cloudflare Access in front, so the gate is explicitly off.
+        ACCESS_ENFORCEMENT: 'off',
         NEXUS_BRIDGE_SECRET: nexusBridgeSecret,
       },
       d1_databases: [
