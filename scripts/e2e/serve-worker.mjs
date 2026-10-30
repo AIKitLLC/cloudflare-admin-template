@@ -321,9 +321,25 @@ async function startNexus(stateDir, nexusDir, env, nexusPort, log) {
     { cwd: root, env: { ...env, CI: 'true' }, stdio: ['ignore', 'pipe', 'pipe'], shell: process.platform === 'win32' },
   )
   workers.push(nexus)
-  nexus.stdout.pipe(nexusLog, { end: false })
-  nexus.stderr.pipe(nexusLog, { end: false })
-  await untilAnswering(`http://localhost:${nexusPort}/api/health`, nexus)
+  // Redacted line by line like the template Worker's log (wrangler prints the vars, and the
+  // placeholder hash is a long hex string), and kept in memory so an early exit can show why.
+  const nexusLines = []
+  for (const stream of [nexus.stdout, nexus.stderr]) {
+    createInterface({ input: stream }).on('line', (line) => {
+      const clean = redact(line)
+      nexusLines.push(clean)
+      if (nexusLines.length > 200) nexusLines.shift()
+      nexusLog.write(clean + '\n')
+    })
+  }
+  try {
+    await untilAnswering(`http://localhost:${nexusPort}/api/health`, nexus)
+  } catch (error) {
+    // Give the pipes a moment to drain so the crash message is in the buffer.
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+    console.error(`e2e: last lines of the Nexus Worker (redacted):\n${nexusLines.slice(-60).join('\n')}`)
+    throw error
+  }
   console.log('e2e: Nexus Worker is up')
   return ['-c', templateConfig]
 }
