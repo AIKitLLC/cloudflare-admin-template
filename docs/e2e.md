@@ -41,7 +41,8 @@ With `E2E_NEXUS_DIR` set to a nexus-crm checkout (its `npm ci` done), `serve-wor
 E2E_NEXUS_DIR=../NexusCRM pnpm test:e2e
 ```
 
-CI does not run it yet: the Nexus repository is private, so the job needs a read token or a published Nexus build (ADR 0001, follow-ups).
+CI runs it in `.github/workflows/nexus-e2e.yml` (below, "Nexus CRM on CI").
+
 
 A spec that needs to be signed out uses `test.use({ storageState: { cookies: [], origins: [] } })`.
 
@@ -117,6 +118,36 @@ The OpenNext build bundles `sharp`'s native binary on Windows and fails. Run the
 Job `e2e` in `.github/workflows/ci.yml` runs on every pull request and push to `main`, in parallel with `verify`. On failure it uploads the Playwright report, `test-results` (traces) and the Worker logs (`.wrangler/e2e-logs/`, a hidden folder, hence `include-hidden-files`).
 
 The Worker logs are redacted line by line before they reach the job log or `.wrangler/e2e-logs/` (`scripts/e2e/redact-log.mjs`): JWTs, `Authorization` and cookie values, password, hash, salt and token fields, tokens in URLs (reset links), the bound values of a failed query, long hex strings and the fixed E2E `PAYLOAD_SECRET`. A step after the suite (`scripts/e2e/check-log-secrets.mjs`) fails the job if any rule still matches a log, and deletes that log so the upload cannot publish it. The rules are masks for patterns, not a guarantee: a secret with a shape no rule knows would pass, so add a rule when a new one appears. The Playwright report and the traces in `test-results` hold every request the tests made, so after a failure `scripts/e2e/redact-artifacts.mjs` runs before the upload: it masks the same patterns (without the blanket hex rule, whose 40 character ids are the SHA-1 names the trace viewer needs) in the JSON of each trace, in the request and response bodies stored under `resources/` (a changed body is renamed to the SHA-1 of its new content and its references are rewritten), in the data embedded in the report's `index.html` and in the text attachments, then checks again and deletes the folders, failing the step, if anything is still masked or a trace cannot be processed. It needs `python3` (its `zipfile` module), which every GitHub runner has. Screenshots and the screencast frames are images and are not redacted: a token that is on screen would stay in them.
+
+### Nexus CRM on CI
+
+`.github/workflows/nexus-e2e.yml` runs only the `nexus` project (`E2E_EXTRA_INSTANCE=0`). It checks out the private `AIKitLLC/nexus-crm` into `.nexus-crm` (git-ignored and in the ESLint ignores; TypeScript and the Next build skip it as a dot-folder) with a read-only deploy key.
+
+- **Which Nexus:** pull requests and pushes to `main` use the commit in `.github/nexus-crm.ref`, so a Nexus change cannot turn an unrelated template pull request red. A daily scheduled run, and any run started from the Actions tab on the schedule, uses nexus-crm `main`, which catches contract drift between the two repositories within a day. The commit under test is printed as a notice.
+- **No key, no run:** the job `key` checks for the secret `NEXUS_CRM_DEPLOY_KEY`. Forks, Dependabot and this repository before the key exists do not have it, so the E2E job is skipped with a notice instead of failing.
+- **Uploads:** after a failure the same redaction runs as for `e2e`. The Nexus Worker's own log (`worker-nexus-crm.log`) is deleted before the upload, because this repository is public and its stack traces can quote nexus-crm source.
+
+**Raising the pin:** open a pull request that changes `.github/nexus-crm.ref` to the new full nexus-crm commit SHA. Its own `nexus-e2e` run tests that commit.
+
+**Setting up the key** (owner only; agents never handle keys or secrets):
+
+```bash
+ssh-keygen -t ed25519 -N '' -C 'cloudflare-admin-template CI (read nexus-crm)' -f nexus-crm-ci
+```
+
+```bash
+gh repo deploy-key add nexus-crm-ci.pub --repo AIKitLLC/nexus-crm --title 'cloudflare-admin-template CI (read-only)'
+```
+
+```bash
+gh secret set NEXUS_CRM_DEPLOY_KEY --repo AIKitLLC/cloudflare-admin-template < nexus-crm-ci
+```
+
+```bash
+rm nexus-crm-ci nexus-crm-ci.pub
+```
+
+`gh repo deploy-key add` creates a read-only key unless `--allow-write` is passed; do not pass it. Rotating the key is the same four commands, followed by deleting the old key on nexus-crm (Settings, Deploy keys).
 
 ### Timings and the decision (15 runs on 2026-10-26, 32 to 93 tests)
 

@@ -1,10 +1,10 @@
 # Status
 
-Last updated: 2026-10-26.
+Last updated: 2026-11-06.
 
 Update this file in the same pull request as the change it describes. A pull request that leaves it stale is not ready for review.
 
-The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-10-26 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `43fa610`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
+The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKitLLC/cloudflare-admin-template` on 2026-11-06 [CT](https://en.wikipedia.org/wiki/Central_Time_Zone). `main` is `9cd52ef`. Acronyms are defined in [Acronyms](#acronyms) at the end of this file.
 
 ## What is on `main`
 
@@ -41,6 +41,18 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 | `91abbc3` | #63 | E2E: users and Media through the admin screens, and the audit trail. |
 | `da4476c` | #75 | E2E: row scope, client security, homepage cleanup and interrupted setup (#64, #65, #73, #66). |
 | `43fa610` | #77 | CI: bounded apt stalls in the `e2e` job and one retry. |
+| `9d11cdc` | #78 | Media uploads limited to 5 MB. Closes #72. |
+| `d444854` | #79 | A repeated organization, branch or data-class slug answers 400, not 500. Closes #68. |
+| `0fb4d92` | #84 | The E2E Worker log is redacted, and CI fails if a secret is left in it. Closes #74. |
+| `2101dad` | #85 | An early retry of an interrupted setup no longer seals it. Closes #71. |
+| `3284443` | #81 | A branch and its parent share an organization for every actor. Closes #69. |
+| `aed429c` | #83 | Deleting your own account keeps its DELETE audit entry. Closes #70. |
+| `e5c0355` | #86 | The `admin:create` retry reports its output and the setup row when it fails. Refs #76. |
+| `ff65a39` | #87 | Removes the unused `dotenv` dependency. |
+| `24c99b7` | #88 | CI redacts the Playwright traces and report before uploading them. |
+| `59e3850` | #82 | Nexus CRM behind an optional `NEXUS` service binding: ADR 0001, workspaces per organization, the app at `/nexus`, MCP at `/api/nexus/mcp`. Refs #44. |
+| `8208807` | #91 | Nexus app route: no query string upstream, allowlisted root files. |
+| `9cd52ef` | #92 | Nexus E2E: no Access gate locally, its own dev registry for the other Workers. |
 
 ## Toolchain and CI
 
@@ -50,21 +62,21 @@ The snapshot below is from `gh issue list`, `gh pr list`, and `git log` on `AIKi
 - `.github/workflows/ci.yml` runs the same script in job `verify` on every pull request and on pushes to `main`. Runner `ubuntu-24.04`, Node from `.nvmrc`, actions pinned by commit SHA, `contents: read`.
 - `.github/workflows/architecture.yml` (added by #27, tightened by #28) runs a report-only architecture analysis on pull requests as an inline, hash-locked job. See `AGENTS.md`.
 - Playwright E2E tests (`tests/e2e`, see `docs/e2e.md`) run in CI as job `e2e`, parallel to `verify`. They are not part of `ci:local`.
+- `.github/workflows/nexus-e2e.yml` (this change) runs the `nexus` project against the private `AIKitLLC/nexus-crm`. Pull requests and pushes use the commit pinned in `.github/nexus-crm.ref`; a daily run uses nexus-crm `main`. It is skipped until the owner adds the deploy-key secret `NEXUS_CRM_DEPLOY_KEY` (`docs/e2e.md`, "Nexus CRM on CI").
 
 ## Open pull requests
 
 | Pull request | Title | Issue | Base | State |
 | --- | --- | --- | --- | --- |
-| #80 | fix: scope slugs, cross-organization branch parents, self-delete audit, early setup retry, Media size limit | #68–#72 (refs #76) | `main` | Draft |
-| This change | feat: Nexus CRM as its own Worker behind a service binding | #44 (refs) | `main` | Draft |
+| This change | ci: run the Nexus E2E project against the private nexus-crm repository | #93 | `main` | Draft |
 
-#11–#15, #18, and #19 were closed as superseded by #29. #20 (plugin split, base `integration/admin-stack`) was closed on 2026-10-23; that work is on hold.
+#80 was closed unmerged on 2026-10-27; its fixes landed as #78, #79, #81, #83, #85 and #86. #11–#15, #18, and #19 were closed as superseded by #29. #20 (plugin split, base `integration/admin-stack`) was closed on 2026-10-23; that work is on hold.
 
 ## Merge order
 
 A maintainer decides the merge order. Do not merge any pull request without maintainer approval.
 
-#31, #33, #32, #39, #41, #48, #50, #51, #52, #55, #56, #57, #58, #59, #60, #61, #62, #63, #75, and #77 were merged in that order.
+#31, #33, #32, #39, #41, #48, #50, #51, #52, #55, #56, #57, #58, #59, #60, #61, #62, #63, #75, #77, #78, #79, #84, #85, #81, #83, #86, #87, #88, #82, #91, and #92 were merged in that order.
 
 ## Deploy prerequisites
 
@@ -94,17 +106,12 @@ Labels exist (`type:*`, `area:*`, `status:*`, `priority:*`). No milestones exist
 | #8 | Advanced data grid | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
 | #10 | Safe script runner | `type:feature`, `area:admin`, `status:ready`, `priority:p2` | — |
 | #49 | Mandatory CI/CD deploy; no deploys from a local machine | `priority:p0` | — |
-| #68 | Duplicate organization, branch or data-class slug answers 500 | — | #80 |
-| #69 | A branch can have a parent from another organization | — | #80 |
-| #70 | Deleting your own account drops its DELETE audit entry | — | #80 |
-| #71 | An early first-run setup retry seals setup and blocks web recovery | — | #80 |
-| #72 | Media has no upload size limit | — | #80 |
-| #74 | Filter tokens and secrets from `worker.log` before CI uploads it | — | — |
-| #76 | Flaky integration test: first-admin setup recovery retry | `bug` | #80 adds diagnostics only |
+| #76 | Flaky integration test: first-admin setup recovery retry | `bug` | #86 (merged) adds diagnostics; open until a failure shows the cause |
 | #40 | Deploy-button inputs and isolated demo rollout | — | #41 (merged). Stays open until a demo deploy and sign-in check succeed and the demo URL is recorded. |
-| #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | This change: ADR 0001 (accepted 2026-10-26), organizations as workspaces, the app under `/nexus`, MCP at `/api/nexus/mcp`. Open: CI for the `nexus` project, cutover runbook. |
+| #44 | nexus-crm as a vertical plugin for the admin template | `type:feature`, `area:admin`, `status:ready`, `priority:p1` | #82 (merged): ADR 0001, workspaces per organization, the app at `/nexus`, MCP. CI for the `nexus` project: #93 (this change). Open: cutover runbook for `nexus-crm-prod`. |
+| #93 | Run the Nexus E2E project on CI against the private nexus-crm | — | This change |
 
-Closed on 2026-10-17 as resolved by #29 (`0180b63`): #1 (RBAC and permission matrix), #2 (row-level scope), #3 (audit trail), and #9 (system parameters). Closed by #31: #34. Closed by #33: #35 and #36. Closed by #32: #37. Closed by #39: #38. Closed by #50: #47. Closed by #51: #45. Closed by #52: #46. Closed by #55: #54. Closed by #57: #53. #41 (merged) refs #40 but does not close it.
+Closed on 2026-10-17 as resolved by #29 (`0180b63`): #1 (RBAC and permission matrix), #2 (row-level scope), #3 (audit trail), and #9 (system parameters). Closed by #31: #34. Closed by #33: #35 and #36. Closed by #32: #37. Closed by #39: #38. Closed by #50: #47. Closed by #51: #45. Closed by #52: #46. Closed by #55: #54. Closed by #57: #53. Closed by #78: #72. By #79: #68. By #84: #74. By #85: #71. By #81: #69. By #83: #70. #41 (merged) refs #40 but does not close it.
 
 Proposed milestones, for a person with permission to create them:
 
@@ -121,20 +128,17 @@ Proposed milestones, for a person with permission to create them:
 
 ## This change
 
-Refs #44. It does not close it: CI for the `nexus` E2E project and the `nexus-crm-prod` cutover runbook are still open. ADR 0001 (`docs/adr/0001-nexus-crm-service-binding.md`) was accepted on 2026-10-26 and describes each phase.
+Fixes #93; refs #44 (ADR 0001, follow-up 4).
 
-- **Proxy** (`src/nexus`, `src/app/api/nexus/[...path]`, `src/app/nexus-services.ts`):
-  - `/api/nexus/v1/*`, `/health` and `/auth/me` (read-only) are forwarded to the optional `NEXUS` binding.
-  - Payload authenticates the caller.
-  - The keys `nexus:read`, `nexus:write` and `nexus:admin` map to Nexus roles; full access maps to owner.
-  - The request carries an HMAC-signed `x-nexus-identity` header, valid for 60 s, that names the user and the workspace.
-  - The keys and the sidebar link exist only while the binding does.
-- **Organizations as workspaces** (`src/nexus/workspaces.ts`): one workspace per organization, keyed by id and creation time. The user's organizations and their descendants are open to them; with no assignment they get the default workspace. `GET /api/nexus/workspaces` lists them, and the `nexus_org` cookie or `x-nexus-org` header picks one.
-- **App** (`src/app/nexus/[[...path]]`): the embedded Nexus SPA at `/nexus` with Nexus's CSP. It needs a session and a Nexus role, and redirects to the admin login otherwise.
-- **MCP** (`/api/nexus/mcp`): the template looks up the token's owner over the binding, checks their current grants and scope, and signs the call. Nexus refuses MCP tokens without that identity.
-- Nexus side: AIKitLLC/nexus-crm#114.
-- `wrangler.jsonc`: the binding stays commented.
-- E2E: Nexus runs as its own `wrangler dev` (`E2E_NEXUS_DIR`); project `nexus`, 16 cases. Not in CI yet, because the Nexus repository is private.
+- `.github/workflows/nexus-e2e.yml`: runs `pnpm test:e2e --project nexus`.
+  - It checks out the private `AIKitLLC/nexus-crm` into `.nexus-crm` with a read-only deploy key.
+  - Pull requests and pushes to `main` use the commit in `.github/nexus-crm.ref` (`98f6de4`). The daily schedule uses nexus-crm `main`.
+  - Without the secret `NEXUS_CRM_DEPLOY_KEY` (forks, Dependabot, or until the owner adds it), the job is skipped with a notice.
+  - After a failure the uploads are redacted as in `e2e`, and the Nexus Worker's own log is not uploaded, because it can quote private source.
+- `.gitignore` and `eslint.config.mjs` ignore `.nexus-crm/`, so a local copy of the CI layout does not break `pnpm lint`.
+- `docs/e2e.md`, "Nexus CRM on CI": the key and secret setup (owner only) and how to raise the pin.
+
+The owner still has to create the deploy key and the secret. Until then the workflow only reports that it skipped.
 
 ## Acronyms
 
