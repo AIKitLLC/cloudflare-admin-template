@@ -29,6 +29,8 @@ const eslintConfig = [
       '.open-next/**',
       '.wrangler/**',
       '.qa/**',
+      // The nexus-crm checkout of the nexus-e2e workflow (docs/e2e.md); it has its own lint.
+      '.nexus-crm/**',
       'src/payload-types.ts',
       'src/payload-generated-schema.ts',
       'cloudflare-env.d.ts',

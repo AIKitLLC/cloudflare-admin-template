@@ -81,5 +81,5 @@ Contacts and deals end to end through the binding: list and create, refused with
 
 ## Still open
 
-4. CI: the E2E project needs the Nexus repository (private), so CI needs a read token or a published Nexus build.
+4. CI: `.github/workflows/nexus-e2e.yml` (#93) runs the `nexus` project with a read-only deploy key on nexus-crm, on a pinned commit for pull requests and on `main` daily. Active once the owner adds the secret `NEXUS_CRM_DEPLOY_KEY`.
 5. Cutover runbook for `nexus-crm-prod`.
